@@ -1,0 +1,58 @@
+.animated-footer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    padding: 1rem;
+    text-align: center;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.4);
+    z-index: 10;
+}
+
+.footer-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1200px;
+    margin: 0 auto;
+    flex-wrap: wrap; /* Agar responsif di layar kecil */
+    gap: 1rem; /* Jarak antar item saat wrap */
+}
+
+.contact-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem; /* Jarak antara ikon dan teks */
+}
+
+.contact-icon {
+    margin-bottom: 2px; /* Menyesuaikan posisi ikon */
+}
+
+
+/* Breathing animation */
+@keyframes breathing {
+    0% {
+        text-shadow: 0 0 3px rgba(255, 255, 255, 0.2);
+    }
+    50% {
+        text-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
+    }
+    100% {
+        text-shadow: 0 0 3px rgba(255, 255, 255, 0.2);
+    }
+}
+
+.animated-footer span {
+    animation: breathing 5s infinite ease-in-out;
+}
+
+/* Responsiveness for smaller screens */
+@media (max-width: 768px) {
+    .footer-content {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+}
+

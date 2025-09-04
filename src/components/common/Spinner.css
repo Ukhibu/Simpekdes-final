@@ -1,0 +1,153 @@
+.spinner-wrapper {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  padding: 1.5em 0;
+  font-size: 16px; /* Ukuran default, akan di-override oleh kelas ukuran */
+}
+
+.sp {
+  display: block;
+  width: 1em; /* Ukuran relatif terhadap font-size wrapper */
+  height: 1em;
+}
+
+/* --- PERUBAHAN: Warna dikontrol penuh oleh CSS --- */
+.sp__ring,
+.sp-worm-color-1,
+.sp-worm-color-2,
+.sp-worm-color-3 {
+    transition: stroke 0.4s ease-in-out;
+}
+
+.sp__ring {
+  stroke: hsla(223, 90%, 50%, 0.1);
+}
+.sp-worm-color-1 {
+    stroke: hsl(343, 90%, 55%); /* Pink/Red */
+}
+.sp-worm-color-2 {
+    stroke: hsl(223, 90%, 55%); /* Blue */
+}
+.sp-worm-color-3 {
+    stroke: hsl(283, 90%, 55%); /* Purple */
+}
+
+/* --- PERUBAHAN: Gaya dark mode yang lebih komprehensif --- */
+html.dark .sp__ring {
+    stroke: hsla(223, 90%, 95%, 0.15);
+}
+html.dark .sp-worm-color-1 {
+    stroke: hsl(343, 90%, 65%);
+}
+html.dark .sp-worm-color-2 {
+    stroke: hsl(223, 90%, 65%);
+}
+html.dark .sp-worm-color-3 {
+    stroke: hsl(283, 90%, 65%);
+}
+
+
+.sp__worm1,
+.sp__worm2,
+.sp__worm2-1 {
+  animation: worm1 5s ease-in infinite;
+}
+
+.sp__worm1 {
+  transform-origin: 64px 64px;
+}
+
+.sp__worm2,
+.sp__worm2-1 {
+  transform-origin: 22px 22px;
+}
+
+.sp__worm2 {
+  animation-name: worm2;
+  animation-timing-function: linear;
+}
+
+.sp__worm2-1 {
+  animation-name: worm2-1;
+  stroke-dashoffset: 175.92;
+}
+
+
+/* Animations */
+@keyframes worm1 {
+  from,
+  to {
+    stroke-dashoffset: 0;
+  }
+  12.5% {
+    animation-timing-function: ease-out;
+    stroke-dashoffset: -175.91;
+  }
+  25% {
+    animation-timing-function: cubic-bezier(0, 0, 0.43, 1);
+    stroke-dashoffset: -307.88;
+  }
+  50% {
+    animation-timing-function: ease-in;
+    stroke-dashoffset: -483.8;
+  }
+  62.5% {
+    animation-timing-function: ease-out;
+    stroke-dashoffset: -307.88;
+  }
+  75% {
+    animation-timing-function: cubic-bezier(0, 0, 0.43, 1);
+    stroke-dashoffset: -175.91;
+  }
+}
+
+@keyframes worm2 {
+  from,
+  12.5%,
+  75%,
+  to {
+    transform: rotate(0) translate(-42px, 0);
+  }
+  25%,
+  62.5% {
+    transform: rotate(0.5turn) translate(-42px, 0);
+  }
+}
+
+@keyframes worm2-1 {
+  from {
+    stroke-dashoffset: 175.91;
+    transform: rotate(0);
+  }
+  12.5% {
+    animation-timing-function: cubic-bezier(0, 0, 0.42, 1);
+    stroke-dashoffset: 0;
+    transform: rotate(0);
+  }
+  25% {
+    animation-timing-function: linear;
+    stroke-dashoffset: 0;
+    transform: rotate(1.5turn);
+  }
+  37.5%,
+  50% {
+    stroke-dashoffset: -175.91;
+    transform: rotate(1.5turn);
+  }
+  62.5% {
+    animation-timing-function: cubic-bezier(0, 0, 0.42, 1);
+    stroke-dashoffset: 0;
+    transform: rotate(1.5turn);
+  }
+  75% {
+    animation-timing-function: linear;
+    stroke-dashoffset: 0;
+    transform: rotate(0);
+  }
+  87.5%,
+  to {
+    stroke-dashoffset: 175.92;
+    transform: rotate(0);
+  }
+}

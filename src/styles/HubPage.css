@@ -90,12 +90,12 @@
 .hub-title-container.fade-out {
     opacity: 0;
     transform: translateY(-20px);
-    pointer-events: none; /* Mencegah interaksi saat disembunyikan */
+    pointer-events: none;
 }
 
 .main-title {
     font-size: 2.8rem;
-    font-weight: 800; /* Dibuat lebih tebal */
+    font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: #ffffff;
@@ -110,14 +110,14 @@
 
 .subtitle {
     font-size: 1.1rem;
-    font-weight: 500; /* Dibuat bold */
+    font-weight: 500;
     color: #a0aec0;
     margin-top: 0.75rem;
 }
 
 .subtitle-small {
     font-size: 0.9rem;
-    font-weight: 500; /* Dibuat bold */
+    font-weight: 500;
     color: #718096;
 }
 
@@ -177,20 +177,26 @@
     pointer-events: none;
 }
 
-.hub-main-circle-container.menu-visible .menu-item {
+.hub-main-circle-container.menu-visible-expanded .menu-item {
     opacity: 1;
     pointer-events: auto;
 }
 
 /* Staggered animation delay */
-.hub-main-circle-container.menu-visible .menu-item-1 { transition-delay: 0.0s; }
-.hub-main-circle-container.menu-visible .menu-item-2 { transition-delay: 0.1s; }
-.hub-main-circle-container.menu-visible .menu-item-3 { transition-delay: 0.2s; }
+.hub-main-circle-container.menu-visible-expanded .menu-item-1 { transition-delay: 0.0s; }
+.hub-main-circle-container.menu-visible-expanded .menu-item-2 { transition-delay: 0.05s; }
+.hub-main-circle-container.menu-visible-expanded .menu-item-3 { transition-delay: 0.1s; }
+.hub-main-circle-container.menu-visible-expanded .menu-item-4 { transition-delay: 0.15s; }
+.hub-main-circle-container.menu-visible-expanded .menu-item-5 { transition-delay: 0.2s; }
 
-/* Positioning for each menu item */
-.hub-main-circle-container.menu-visible .menu-item-1 { transform: translateY(-160px) scale(1); }
-.hub-main-circle-container.menu-visible .menu-item-2 { transform: translateX(-140px) translateY(85px) scale(1); }
-.hub-main-circle-container.menu-visible .menu-item-3 { transform: translateX(140px) translateY(85px) scale(1); }
+
+/* Positioning for each menu item (EXPANDED for 5 items) */
+.hub-main-circle-container.menu-visible-expanded .menu-item-1 { transform: rotate(-144deg) translateY(-160px) rotate(144deg) scale(1); }
+.hub-main-circle-container.menu-visible-expanded .menu-item-2 { transform: rotate(-72deg) translateY(-160px) rotate(72deg) scale(1); }
+.hub-main-circle-container.menu-visible-expanded .menu-item-3 { transform: translateY(-160px) scale(1); }
+.hub-main-circle-container.menu-visible-expanded .menu-item-4 { transform: rotate(72deg) translateY(-160px) rotate(-72deg) scale(1); }
+.hub-main-circle-container.menu-visible-expanded .menu-item-5 { transform: rotate(144deg) translateY(-160px) rotate(-144deg) scale(1); }
+
 
 .menu-item:hover {
     background: #2d3748;
@@ -199,14 +205,16 @@
     transform: scale(1.1);
 }
 
-/* Re-apply position transform on hover */
-.hub-main-circle-container.menu-visible .menu-item-1:hover { transform: translateY(-160px) scale(1.1); }
-.hub-main-circle-container.menu-visible .menu-item-2:hover { transform: translateX(-140px) translateY(85px) scale(1.1); }
-.hub-main-circle-container.menu-visible .menu-item-3:hover { transform: translateX(140px) translateY(85px) scale(1.1); }
+/* Re-apply position transform on hover for expanded menu */
+.hub-main-circle-container.menu-visible-expanded .menu-item-1:hover { transform: rotate(-144deg) translateY(-160px) rotate(144deg) scale(1.1); }
+.hub-main-circle-container.menu-visible-expanded .menu-item-2:hover { transform: rotate(-72deg) translateY(-160px) rotate(72deg) scale(1.1); }
+.hub-main-circle-container.menu-visible-expanded .menu-item-3:hover { transform: translateY(-160px) scale(1.1); }
+.hub-main-circle-container.menu-visible-expanded .menu-item-4:hover { transform: rotate(72deg) translateY(-160px) rotate(-72deg) scale(1.1); }
+.hub-main-circle-container.menu-visible-expanded .menu-item-5:hover { transform: rotate(144deg) translateY(-160px) rotate(-144deg) scale(1.1); }
+
 
 .menu-item-label {
     font-size: 0.75rem;
     margin-top: 5px;
     font-weight: 500;
 }
-

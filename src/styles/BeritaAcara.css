@@ -1,0 +1,151 @@
+/* Container Utama */
+.ba-container {
+    display: flex;
+    gap: 1.5rem;
+    height: calc(100vh - 120px); /* Adjust based on your header height */
+    width: 100%;
+}
+
+/* Panel Kontrol (Sebelah Kiri) */
+.ba-controls {
+    flex: 0 0 380px; /* Lebar tetap untuk panel kontrol */
+    display: flex;
+    flex-direction: column;
+    background-color: white;
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    max-height: 100%;
+    overflow: hidden;
+}
+
+.dark .ba-controls {
+    background-color: #1f2937; /* gray-800 */
+}
+
+/* Area Pratinjau (Sebelah Kanan) */
+.ba-preview {
+    flex-grow: 1;
+    overflow-y: auto; /* Memungkinkan scroll jika konten lebih panjang dari layar */
+    background-color: #f3f4f6; /* gray-100 */
+    padding: 2rem;
+    border-radius: 0.75rem;
+}
+
+.dark .ba-preview {
+    background-color: #111827; /* gray-900 */
+}
+
+/* Styling Kertas Dokumen */
+.ba-paper {
+    background-color: white;
+    width: 210mm; /* A4 width */
+    min-height: 297mm; /* A4 height */
+    margin: 0 auto;
+    padding: 2cm;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    box-sizing: border-box;
+}
+
+/* Styling Isi Dokumen */
+.document-body {
+    font-family: 'Times New Roman', Times, serif;
+    color: black;
+    font-size: 9pt; /* Ukuran font diubah di sini */
+    line-height: 1.5;
+}
+
+.doc-header {
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.doc-header p {
+    margin: 0;
+    line-height: 1.4;
+}
+
+.header-line {
+    border-top: 1px solid black;
+    border-bottom: 3px solid black;
+    height: 2px;
+    margin: 0.5rem 0;
+}
+
+.doc-content {
+    text-align: justify;
+    white-space: pre-wrap; /* Menjaga format spasi dan baris baru */
+    margin-top: 1.5rem;
+    outline: none; /* Menghilangkan border saat contentEditable aktif */
+}
+
+.signature-table {
+    width: 100%;
+    margin-top: 3rem;
+    border-collapse: collapse;
+}
+
+.signature-table td {
+    width: 50%;
+    vertical-align: top;
+    text-align: center;
+}
+
+.signature-space {
+    height: 70px;
+}
+
+.witness-section {
+    margin-top: 3rem;
+    text-align: center;
+}
+
+.font-bold {
+    font-weight: bold;
+}
+
+.underline {
+    text-decoration: underline;
+}
+
+/* --- CSS KHUSUS UNTUK CETAK (DIPERBARUI DAN DISEDERHANAKAN) --- */
+@media print {
+    /* Sembunyikan semua elemen di halaman secara default */
+    body * {
+        visibility: hidden;
+    }
+
+    /* Tampilkan hanya area cetak yang kita inginkan dan semua elemen di dalamnya */
+    #print-area, #print-area * {
+        visibility: visible;
+    }
+
+    /* Posisikan area cetak di pojok kiri atas halaman cetak */
+    #print-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+    }
+
+    /* Hapus bayangan, margin, dan border yang tidak perlu dari kertas pratinjau */
+    .ba-paper {
+        box-shadow: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        width: 100% !important;
+        min-height: initial !important;
+    }
+
+    /* Aturan untuk halaman cetak itu sendiri */
+    @page {
+        size: A4 portrait;
+        margin: 2cm; /* Margin standar untuk dokumen resmi */
+    }
+
+    /* Hindari elemen terpotong antar halaman jika dokumen panjang */
+    .signature-table, .witness-section {
+        page-break-inside: avoid;
+    }
+}
+

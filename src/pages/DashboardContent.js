@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import Spinner from '../components/common/Spinner';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
-import { FiUsers, FiCheckCircle, FiAlertCircle, FiEdit, FiMapPin } from 'react-icons/fi';
+import { FiUsers, FiCheckCircle, FiAlertCircle, FiEdit, FiMapPin, FiCalendar } from 'react-icons/fi';
 
 // Komponen Kartu Statistik dengan Ikon
 const StatCard = ({ icon, title, value, colorClass }) => (
@@ -25,9 +25,10 @@ const StatCard = ({ icon, title, value, colorClass }) => (
 const isDataLengkap = (perangkat) => {
     const requiredFields = [
         'nama', 'jabatan', 'nik', 'tempat_lahir', 'tgl_lahir', 
-        'pendidikan', 'no_sk', 'tgl_sk', 'tgl_pelantikan', 'akhir_jabatan', 
+        'pendidikan', 'no_sk', 'tgl_sk', 'tgl_pelantikan', 
         'foto_url', 'ktp_url'
     ];
+    // Akhir jabatan tidak wajib karena bisa dihitung otomatis
     return requiredFields.every(field => perangkat[field] && String(perangkat[field]).trim() !== '');
 };
 
@@ -37,10 +38,23 @@ const DESA_LIST = [
     "Sambong", "Klapa", "Kecepit", "Mlaya", "Sidarata", "Purwasana", "Tlaga"
 ];
 
+const getAge = (dateString) => {
+    if (!dateString) return null;
+    const birthDate = new Date(dateString);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+    }
+    return age;
+};
+
 const DashboardContent = () => {
     const { currentUser } = useAuth();
     const [perangkatData, setPerangkatData] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [dateRange, setDateRange] = useState({ start: '', end: '' });
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -50,20 +64,34 @@ const DashboardContent = () => {
         }
 
         const perangkatCollection = collection(db, 'perangkat');
-        const q = currentUser.role === 'admin_kecamatan' 
-            ? query(perangkatCollection)
-            : query(perangkatCollection, where("desa", "==", currentUser.desa));
+        let q;
+        if (currentUser.role === 'admin_kecamatan') {
+            q = query(perangkatCollection);
+        } else {
+            q = query(perangkatCollection, where("desa", "==", currentUser.desa));
+        }
+        
+        // Menambahkan filter tanggal jika ada
+        if(dateRange.start) {
+            q = query(q, where("tgl_pelantikan", ">=", dateRange.start));
+        }
+        if(dateRange.end) {
+            q = query(q, where("tgl_pelantikan", "<=", dateRange.end));
+        }
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setPerangkatData(list);
             setLoading(false);
+        }, (error) => {
+            console.error("Error fetching data:", error);
+            setLoading(false);
         });
 
         return () => unsubscribe();
-    }, [currentUser]);
+    }, [currentUser, dateRange]);
 
-    const { stats, barChartData, doughnutChartData, incompleteList } = useMemo(() => {
+    const { stats, barChartData, doughnutChartData, ageChartData, incompleteList } = useMemo(() => {
         const totalPerangkat = perangkatData.length;
         const lengkap = perangkatData.filter(isDataLengkap).length;
         const belumLengkap = totalPerangkat - lengkap;
@@ -89,18 +117,33 @@ const DashboardContent = () => {
             pendidikanMap.set(pendidikan, (pendidikanMap.get(pendidikan) || 0) + 1);
         });
 
-        const doughnutLabels = [...pendidikanMap.keys()];
-        const doughnutCounts = [...pendidikanMap.values()];
-
         const doughnutData = {
-            labels: doughnutLabels,
+            labels: [...pendidikanMap.keys()],
             datasets: [{
                 label: 'Jumlah Perangkat',
-                data: doughnutCounts,
-                backgroundColor: [
-                    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF', '#7BC225', '#F263E3', '#E4572E', '#17BEBB', '#FFC914'
-                ],
+                data: [...pendidikanMap.values()],
+                backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'],
                 hoverOffset: 4
+            }]
+        };
+        
+        // Data untuk demografi usia
+        const ageGroups = { '< 30': 0, '30-40': 0, '41-50': 0, '> 50': 0, 'N/A': 0 };
+        perangkatData.forEach(p => {
+            const age = getAge(p.tgl_lahir);
+            if (age === null) ageGroups['N/A']++;
+            else if (age < 30) ageGroups['< 30']++;
+            else if (age <= 40) ageGroups['30-40']++;
+            else if (age <= 50) ageGroups['41-50']++;
+            else ageGroups['> 50']++;
+        });
+
+        const ageData = {
+            labels: Object.keys(ageGroups),
+            datasets: [{
+                label: 'Jumlah Perangkat per Kelompok Usia',
+                data: Object.values(ageGroups),
+                backgroundColor: 'rgba(75, 192, 192, 0.6)',
             }]
         };
 
@@ -108,14 +151,35 @@ const DashboardContent = () => {
             stats: { totalPerangkat, lengkap, belumLengkap },
             barChartData: barData,
             doughnutChartData: doughnutData,
+            ageChartData: ageData,
             incompleteList: listBelumLengkap
         };
     }, [perangkatData, currentUser.role]);
+    
+    const handleDateChange = (e) => {
+        setDateRange({ ...dateRange, [e.target.name]: e.target.value });
+    };
 
     if (loading) return <Spinner />;
 
     return (
         <div className="space-y-8">
+             {/* Filter Tanggal */}
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md">
+                <div className="flex flex-wrap items-center gap-4">
+                    <FiCalendar className="text-gray-600 dark:text-gray-300"/>
+                    <h3 className="font-semibold text-gray-700 dark:text-gray-200">Filter Data Berdasarkan Tanggal Pelantikan:</h3>
+                    <div>
+                        <label htmlFor="start-date" className="text-sm mr-2 dark:text-gray-400">Dari:</label>
+                        <input type="date" name="start" value={dateRange.start} onChange={handleDateChange} className="p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white"/>
+                    </div>
+                     <div>
+                        <label htmlFor="end-date" className="text-sm mr-2 dark:text-gray-400">Sampai:</label>
+                        <input type="date" name="end" value={dateRange.end} onChange={handleDateChange} className="p-2 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white"/>
+                    </div>
+                </div>
+            </div>
+
             {/* Kartu Statistik */}
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {currentUser.role === 'admin_kecamatan' && (
@@ -127,10 +191,23 @@ const DashboardContent = () => {
             </div>
 
             {/* Area Grafik */}
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-                {currentUser.role === 'admin_kecamatan' && barChartData && (
-                    <div className="lg:col-span-3 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
-                        <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">Rekapitulasi Data Per Desa (Batang)</h2>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
+                    <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">Demografi Usia Perangkat</h2>
+                     <Bar options={{ responsive: true, plugins: { legend: { display: false } } }} data={ageChartData} />
+                </div>
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
+                    <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">Statistik Pendidikan Perangkat</h2>
+                    <div className="max-h-80 mx-auto flex justify-center">
+                        <Doughnut data={doughnutChartData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top', labels: { color: '#9CA3AF' } } } }} />
+                    </div>
+                </div>
+            </div>
+
+            {currentUser.role === 'admin_kecamatan' && barChartData && (
+                <>
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
+                        <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">Rekapitulasi Data Per Desa (Diagram Batang)</h2>
                         <Bar 
                             options={{
                                 responsive: true,
@@ -140,27 +217,14 @@ const DashboardContent = () => {
                             data={barChartData} 
                         />
                     </div>
-                )}
-                <div className={`${currentUser.role === 'admin_kecamatan' ? 'lg:col-span-2' : 'lg:col-span-5'} bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md`}>
-                    <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">Statistik Pendidikan Perangkat</h2>
-                    <div className="max-h-80 mx-auto flex justify-center">
-                        <Doughnut data={doughnutChartData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top', labels: { color: '#9CA3AF' } } } }} />
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
+                        <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">Rekapitulasi Data Per Desa (Diagram Kurva)</h2>
+                        <Line
+                            options={{ responsive: true, plugins: { legend: { position: 'top', labels: { color: '#9CA3AF' } } }, scales: { y: { beginAtZero: true, ticks: { color: '#9CA3AF'} }, x: { ticks: { color: '#9CA3AF'} } } }}
+                            data={barChartData}
+                        />
                     </div>
-                </div>
-            </div>
-
-            {currentUser.role === 'admin_kecamatan' && barChartData && (
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
-                    <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">Rekapitulasi Data Per Desa (Kurva)</h2>
-                    <Line
-                        options={{
-                            responsive: true,
-                            plugins: { legend: { position: 'top', labels: { color: '#9CA3AF' } } },
-                            scales: { y: { beginAtZero: true, ticks: { color: '#9CA3AF'} }, x: { ticks: { color: '#9CA3AF'} } }
-                        }}
-                        data={barChartData}
-                    />
-                </div>
+                </>
             )}
 
             {/* Tabel Data Belum Lengkap */}
@@ -187,7 +251,6 @@ const DashboardContent = () => {
                                         {currentUser.role === 'admin_kecamatan' && <td className="px-6 py-4">{p.desa}</td>}
                                         <td className="px-6 py-4">{p.jabatan}</td>
                                         <td className="px-6 py-4">
-                                            {/* --- FIX DI SINI --- */}
                                             <button 
                                                 onClick={() => navigate(`/app/perangkat?edit=${p.id}`)} 
                                                 className="flex items-center gap-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
@@ -209,3 +272,4 @@ const DashboardContent = () => {
 };
 
 export default DashboardContent;
+

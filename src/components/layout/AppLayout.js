@@ -5,10 +5,21 @@ import Header from './Header';
 
 // Fungsi ini menentukan judul halaman dan modul mana yang aktif
 const getPageContext = (pathname) => {
+    // Modul Keuangan
+    if (pathname.startsWith('/app/keuangan')) {
+        return { module: 'keuangan', title: 'Manajemen Keuangan Desa' };
+    }
+    // Modul Aset
+    if (pathname.startsWith('/app/aset')) {
+        return { module: 'aset', title: 'Manajemen Aset Desa' };
+    }
     // Modul BPD
     if (pathname.startsWith('/app/bpd')) {
         if (pathname === '/app/bpd') return { module: 'bpd', title: 'Dashboard BPD' };
         if (pathname.startsWith('/app/bpd/data')) return { module: 'bpd', title: 'Manajemen Data BPD' };
+        if (pathname.startsWith('/app/bpd/berita-acara')) return { module: 'bpd', title: 'Berita Acara BPD' };
+        // Konteks baru untuk Setelan BPD
+        if (pathname.startsWith('/app/bpd/pengaturan')) return { module: 'bpd', title: 'Setelan Modul BPD' };
         return { module: 'bpd', title: 'Manajemen BPD' };
     }
     // Modul E-File

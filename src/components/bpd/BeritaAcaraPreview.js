@@ -1,89 +1,89 @@
-import React, { forwardRef } from 'react';
+import React, { useRef, useEffect, memo } from 'react';
 
-const EditableText = ({ name, value, onChange }) => {
-    const style = {
-        width: '100%',
-        backgroundColor: 'transparent',
-        border: '1px dashed rgba(0, 0, 0, 0.2)',
-        padding: '4px',
-        resize: 'vertical',
-        minHeight: '40px',
-        lineHeight: '1.5',
-        fontFamily: "'Times New Roman', Times, serif",
-        color: 'inherit',
-    };
-    const autoResize = (e) => {
-        e.target.style.height = 'inherit';
-        e.target.style.height = `${e.target.scrollHeight}px`;
-    };
-    return (
-        <textarea
-            name={name}
-            value={value}
-            onChange={onChange}
-            onInput={autoResize}
-            style={style}
-            rows={15}
-        />
-    );
-};
+// **PERBAIKAN**: Menggunakan React.memo dan useRef untuk mencegah konflik render React dengan contentEditable
+const BeritaAcaraPreview = memo(({ config, bpd, content, onContentChange }) => {
+    const contentRef = useRef(null);
 
-const BeritaAcaraPreview = forwardRef(({ data, bpd, content, onContentChange, isPrinting = false }, ref) => {
-    
-    const documentStyle = {
-        fontFamily: "'Times New Roman', Times, serif",
-        color: 'black',
-        lineHeight: '1.5',
-    };
-
-    const textCenter = { textAlign: 'center' };
-    const textUnderline = { textDecoration: 'underline' };
-    const textBold = { fontWeight: 'bold' };
-
-    const renderMainContent = () => {
-        if (isPrinting) {
-            return <pre style={{ whiteSpace: 'pre-wrap', fontFamily: "'Times New Roman', Times, serif" }}>{content}</pre>;
+    // Efek ini menyinkronkan state dari induk ke div yang dapat diedit.
+    // Ini penting untuk memuat data awal atau ketika anggota BPD baru dipilih.
+    useEffect(() => {
+        if (contentRef.current && contentRef.current.innerText !== content) {
+            contentRef.current.innerText = content;
         }
-        return <EditableText name="mainContent" value={content} onChange={onContentChange} />;
+    }, [content]);
+
+    // Handler ini memastikan bahwa teks biasa ditempel, bukan HTML yang diformat.
+    const handlePaste = (e) => {
+        e.preventDefault();
+        const text = e.clipboardData.getData('text/plain');
+        document.execCommand('insertText', false, text);
     };
 
+    const namaLengkapBpd = `${bpd?.nama || '[Nama Anggota]'}${bpd?.gelar ? `, ${bpd.gelar}` : ''}`;
+    const namaLengkapPejabat = `${config?.pejabatNama || '[Nama Pejabat]'}${config?.pejabatGelar ? `, ${config.pejabatGelar}` : ''}`;
+    const namaLengkapSaksi1 = `${config?.saksi1Nama || '[Nama Saksi 1]'}${config?.saksi1Gelar ? `, ${config.saksi1Gelar}` : ''}`;
+    const namaLengkapSaksi2 = `${config?.saksi2Nama || '[Nama Saksi 2]'}${config?.saksi2Gelar ? `, ${config.saksi2Gelar}` : ''}`;
+    
     return (
-        <div ref={ref} className="bg-white p-8 md:p-12" style={documentStyle}>
-            <div style={textCenter}>
-                <p style={textBold}>BERITA ACARA</p>
-                <p style={textBold}>PENGAMBILAN SUMPAH JABATAN ANGGOTA BADAN PERMUSYAWARATAN DESA AULA KANTOR KECAMATAN PUNGGELAN</p>
-                <p>NOMOR : {data?.nomor || '[Nomor Surat]'}</p>
-            </div>
-            <hr className="border-t-2 border-b-2 border-black my-4" />
-
-            {renderMainContent()}
-
-            <div className="grid grid-cols-2 gap-8 mt-16" style={textCenter}>
-                <div>
-                    <p>Anggota Badan Permusyawaratan Desa</p><p>Yang mengangkat sumpah,</p>
-                    <div className="h-24"></div>
-                    <p style={{...textBold, ...textUnderline}}>{bpd?.nama || '[Nama Anggota BPD]'}</p>
-                </div>
-                <div>
-                    <p>Pejabat</p><p>Yang mengambil sumpah</p><p>{data?.pejabatJabatan || '[Jabatan Pejabat]'}</p>
-                    <div className="h-24"></div>
-                    <p style={{...textBold, ...textUnderline}}>{data?.pejabatNama || '[Nama Pejabat]'}</p>
-                </div>
+        <div className="document-body">
+            <div className="doc-header">
+                <p className="font-bold">BERITA ACARA</p>
+                <p className="font-bold">PENGAMBILAN SUMPAH JABATAN ANGGOTA BADAN PERMUSYAWARATAN DESA</p>
+                <p className="font-bold">KANTOR KECAMATAN PUNGGELAN</p>
+                <div className="header-line"></div>
+                <p>NOMOR : {config?.nomor || '[Nomor Surat]'}</p>
             </div>
 
-            <div style={textCenter} className="mt-12">
-                <p style={textBold}>SAKSI - SAKSI</p>
-                <div className="grid grid-cols-2 gap-8 mt-4">
-                    <div>
-                        <div className="h-24"></div>
-                        <p style={{...textBold, ...textUnderline}}>{data?.saksi2Nama || '[Nama Saksi 2]'}</p>
-                    </div>
-                     <div>
-                        <div className="h-24"></div>
-                        <p style={{...textBold, ...textUnderline}}>{data?.saksi1Nama || '[Nama Saksi 1]'}</p>
-                    </div>
-                </div>
+            <div 
+                ref={contentRef}
+                className="doc-content"
+                contentEditable={true}
+                suppressContentEditableWarning={true}
+                onBlur={onContentChange} 
+                onPaste={handlePaste}
+            />
+
+            <table className="signature-table">
+                <tbody>
+                    <tr>
+                        <td className="signature-cell">
+                            <div contentEditable={true} suppressContentEditableWarning={true} onPaste={handlePaste}>
+                                <p>Anggota Badan Permusyawaratan Desa</p>
+                                <p>Yang mengangkat sumpah,</p>
+                            </div>
+                            <div contentEditable={true} suppressContentEditableWarning={true} onPaste={handlePaste} className="signature-space-editable" dangerouslySetInnerHTML={{ __html: '<br/><br/><br/>' }} />
+                            <p className="font-bold underline">{namaLengkapBpd.toUpperCase()}</p>
+                        </td>
+                        <td className="signature-cell">
+                             <div contentEditable={true} suppressContentEditableWarning={true} onPaste={handlePaste}>
+                                <p>Pejabat</p>
+                                <p>Yang mengambil sumpah</p>
+                                <p>{config?.pejabatJabatan || '[Jabatan Pejabat]'}</p>
+                            </div>
+                            <div contentEditable={true} suppressContentEditableWarning={true} onPaste={handlePaste} className="signature-space-editable" dangerouslySetInnerHTML={{ __html: '<br/><br/><br/>' }} />
+                            <p className="font-bold underline">{namaLengkapPejabat.toUpperCase()}</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <div className="witness-section" contentEditable={true} suppressContentEditableWarning={true} onPaste={handlePaste}>
+                <p className="font-bold">SAKSI - SAKSI</p>
             </div>
+            <table className="signature-table">
+                <tbody>
+                    <tr>
+                        <td className="signature-cell">
+                            <div contentEditable={true} suppressContentEditableWarning={true} onPaste={handlePaste} className="signature-space-editable" dangerouslySetInnerHTML={{ __html: '<br/><br/><br/>' }} />
+                            <p className="font-bold underline">{namaLengkapSaksi2.toUpperCase()}</p>
+                        </td>
+                        <td className="signature-cell">
+                            <div contentEditable={true} suppressContentEditableWarning={true} onPaste={handlePaste} className="signature-space-editable" dangerouslySetInnerHTML={{ __html: '<br/><br/><br/>' }} />
+                            <p className="font-bold underline">{namaLengkapSaksi1.toUpperCase()}</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
     );
 });

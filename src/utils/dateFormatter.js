@@ -57,8 +57,15 @@ const formatIndonesianDate = (date, format) => {
         
         return `${dayTranslations[dayOfWeekEn]}, ${day} ${monthYear}`;
     }
+
+    if (format === 'long-dayless') {
+        return new Intl.DateTimeFormat('id-ID', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+        }).format(date);
+    }
     
     // Format default: 02/09/2025
     return new Intl.DateTimeFormat('id-ID', optionsDefault).format(date);
 };
-

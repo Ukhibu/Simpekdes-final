@@ -5,7 +5,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import Spinner from '../components/common/Spinner';
-import { FiLogOut, FiUsers, FiBriefcase, FiFileText } from 'react-icons/fi';
+import { FiLogOut, FiUsers, FiBriefcase, FiFileText, FiDollarSign, FiArchive } from 'react-icons/fi'; // Ikon baru
 import '../styles/HubPage.css';
 import AnimatedFooter from '../components/common/AnimatedFooter';
 
@@ -15,17 +15,14 @@ const HubPage = () => {
     const navigate = useNavigate();
     const hubContainerRef = useRef(null);
 
-    // State untuk mengontrol visibilitas menu dan judul
     const [isMenuVisible, setIsMenuVisible] = useState(false);
     const [isMenuLocked, setIsMenuLocked] = useState(false);
     const [isTitleVisible, setIsTitleVisible] = useState(true);
 
-    // --- FIX: useEffect untuk animasi latar belakang ---
-    // Efek ini sekarang hanya berjalan setelah loading selesai dan container sudah ada.
     useEffect(() => {
         const container = hubContainerRef.current;
         if (!container || brandingLoading || authLoading) {
-            return; // Jangan jalankan jika masih loading atau container belum ada
+            return;
         }
 
         const handleMouseMove = (e) => {
@@ -38,12 +35,8 @@ const HubPage = () => {
         };
 
         container.addEventListener('mousemove', handleMouseMove);
-
-        // Cleanup function
-        return () => {
-            container.removeEventListener('mousemove', handleMouseMove);
-        };
-    }, [brandingLoading, authLoading]); // <-- Bergantung pada status loading
+        return () => container.removeEventListener('mousemove', handleMouseMove);
+    }, [brandingLoading, authLoading]);
 
     const handleLogout = async () => {
         try {
@@ -54,31 +47,14 @@ const HubPage = () => {
         }
     };
 
-    // Fungsi untuk menampilkan menu (saat hover)
-    const showMenu = () => {
-        if (!isMenuLocked) {
-            setIsMenuVisible(true);
-            setIsTitleVisible(false);
-        }
-    };
-
-    // Fungsi untuk menyembunyikan menu (saat kursor meninggalkan area)
-    const hideMenu = () => {
-        if (!isMenuLocked) {
-            setIsMenuVisible(false);
-            setIsTitleVisible(true);
-        }
-    };
-    
-    // Fungsi untuk mengunci/membuka menu saat diklik
+    const showMenu = () => !isMenuLocked && (setIsMenuVisible(true), setIsTitleVisible(false));
+    const hideMenu = () => !isMenuLocked && (setIsMenuVisible(false), setIsTitleVisible(true));
     const toggleMenuLock = (e) => {
         e.stopPropagation();
         setIsMenuLocked(!isMenuLocked);
-        setIsMenuVisible(true); 
+        setIsMenuVisible(true);
         setIsTitleVisible(isMenuLocked);
     };
-
-    // Fungsi untuk menutup menu saat mengklik di luar
     const handleBackdropClick = () => {
         if (isMenuLocked) {
             setIsMenuLocked(false);
@@ -88,11 +64,7 @@ const HubPage = () => {
     };
 
     if (brandingLoading || authLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-gray-900">
-                <Spinner />
-            </div>
-        );
+        return <div className="flex items-center justify-center min-h-screen bg-gray-900"><Spinner /></div>;
     }
 
     return (
@@ -112,15 +84,13 @@ const HubPage = () => {
 
             <main className="hub-main-content">
                 <div className={`hub-title-container ${isTitleVisible ? 'fade-in' : 'fade-out'}`}>
-                    <h1 className="main-title">
-                         {branding.appName}
-                    </h1>
-                    <p className="subtitle">Sistem Informasi Manajemen Perangkat Desa</p>
+                    <h1 className="main-title">{branding.appName}</h1>
+                    <p className="subtitle">Sistem Informasi Manajemen Pemerintahan Desa</p>
                     <p className="subtitle-small">Kecamatan Punggelan</p>
                 </div>
 
                 <div 
-                    className={`hub-main-circle-container ${isMenuVisible || isMenuLocked ? 'menu-visible' : ''}`}
+                    className={`hub-main-circle-container ${isMenuVisible || isMenuLocked ? 'menu-visible-expanded' : ''}`}
                     onMouseEnter={showMenu}
                     onMouseLeave={hideMenu}
                 >
@@ -128,6 +98,7 @@ const HubPage = () => {
                         <img src={branding.loginLogoUrl} alt="Logo Aplikasi" />
                     </div>
 
+                    {/* Menu Items Updated */}
                     <Link to="/app" className="menu-item menu-item-1">
                         <FiUsers size={32} />
                         <span className="menu-item-label">Perangkat Desa</span>
@@ -140,6 +111,14 @@ const HubPage = () => {
                         <FiFileText size={32} />
                         <span className="menu-item-label">E-File</span>
                     </Link>
+                    <Link to="/app/keuangan" className="menu-item menu-item-4">
+                        <FiDollarSign size={32} />
+                        <span className="menu-item-label">Keuangan</span>
+                    </Link>
+                    <Link to="/app/aset" className="menu-item menu-item-5">
+                        <FiArchive size={32} />
+                        <span className="menu-item-label">Aset Desa</span>
+                    </Link>
                 </div>
             </main>
             <AnimatedFooter />
@@ -148,4 +127,3 @@ const HubPage = () => {
 };
 
 export default HubPage;
-

@@ -14,13 +14,16 @@ import BPDDashboard from './pages/BPDDashboard';
 import EFileDashboard from './pages/EFileDashboard';
 import RekapitulasiAparatur from './pages/RekapitulasiAparatur';
 import BeritaAcaraBPDPage from './pages/BeritaAcaraBPDPage';
+import KeuanganDesa from './pages/KeuanganDesa';
+import AsetDesa from './pages/AsetDesa';
+// Impor halaman setelan BPD baru
+import PengaturanBPD from './pages/PengaturanBPD';
 import { BrandingProvider } from './context/BrandingContext';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, RadialLinearScale, Title, Tooltip, Legend } from 'chart.js';
 import Spinner from './components/common/Spinner';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, RadialLinearScale, Title, Tooltip, Legend);
 
-// --- PrivateRoute menangani status pemuatan secara terpusat ---
 function PrivateRoute({ children }) {
   const { currentUser, loading } = useAuth();
 
@@ -50,16 +53,20 @@ function App() {
               <Route path="rekapitulasi-aparatur" element={<RekapitulasiAparatur />} />
               <Route path="manajemen-admin" element={<ManajemenAdmin />} />
               <Route path="pengaturan" element={<PengaturanAplikasi />} />
+              
               <Route path="bpd" element={<BPDDashboard />} />
               <Route path="bpd/data" element={<BPDPage />} />
-              <Route path="bpd/berita-acara" element={<BeritaAcaraBPDPage />} /> {/* Rute baru */}
+              <Route path="bpd/berita-acara" element={<BeritaAcaraBPDPage />} />
+              {/* Rute baru untuk Setelan BPD */}
+              <Route path="bpd/pengaturan" element={<PengaturanBPD />} />
 
-              {/* --- FIX: Rute E-File yang Benar --- */}
               <Route path="efile" element={<EFileDashboard />} />
               <Route path="efile/manage" element={<EFilePage />} />
+
+              <Route path="keuangan" element={<KeuanganDesa />} />
+              <Route path="aset" element={<AsetDesa />} />
             </Route>
             
-            {/* Rute fallback untuk halaman yang tidak ditemukan */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrandingProvider>

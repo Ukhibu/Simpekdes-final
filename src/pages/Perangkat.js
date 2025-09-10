@@ -67,7 +67,6 @@ const calculateAkhirJabatan = (tglLahir) => {
     }
 };
 
-
 const Perangkat = () => {
     const { currentUser } = useAuth();
     const [allPerangkat, setAllPerangkat] = useState([]);
@@ -334,12 +333,13 @@ const Perangkat = () => {
         }
     };
 
+    
     const handleFileUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        if (!uploadConfig || Object.keys(uploadConfig).length === 0) {
-            alert("Pengaturan format upload belum dimuat atau diatur. Silakan atur di halaman Pengaturan.");
+        if (!uploadConfig || Object.values(uploadConfig).every(v => v === '')) {
+            alert("Pengaturan format upload belum diatur. Silakan atur di halaman Pengaturan Aplikasi.");
             e.target.value = null;
             return;
         }
@@ -349,105 +349,112 @@ const Perangkat = () => {
 
         reader.onload = async (evt) => {
             try {
-                const existingNiks = new Set(allPerangkat.map(p => p.nik).filter(Boolean));
+                const existingNiks = new Set(allPerangkat.map(p => String(p.nik || '').trim()).filter(Boolean));
+                const existingNameDobDesa = new Set(allPerangkat.map(p => {
+                    const nik = String(p.nik || '').trim();
+                    if (!nik) {
+                        const nama = String(p.nama || '').toLowerCase().trim();
+                        const tglLahir = String(p.tgl_lahir || '').trim();
+                        const desa = String(p.desa || '').trim();
+                        if (nama && tglLahir && desa) return `${nama}_${tglLahir}_${desa}`;
+                    }
+                    return null;
+                }).filter(Boolean));
+
                 const fileContent = evt.target.result;
-                let parsedData = [];
-                let defaultDesa = 'Unknown';
+                const wb = XLSX.read(fileContent, { type: 'binary', cellDates: true });
+                const wsname = wb.SheetNames[0];
+                const ws = wb.Sheets[wsname];
+                const data = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, raw: false });
 
-                if (file.type === 'application/json') {
-                    parsedData = JSON.parse(fileContent);
-                } else if (file.type === 'text/csv') {
-                    const lines = fileContent.split(/\r?\n/);
-                    if (lines.length < 2) throw new Error("File CSV tidak valid.");
-                    const headers = lines[0].split(',').map(h => h.trim());
-                    parsedData = lines.slice(1).map(line => {
-                        if (!line) return null;
-                        const values = line.split(',').map(v => v.trim());
-                        const obj = {};
-                        headers.forEach((header, index) => {
-                            obj[header] = values[index];
-                        });
-                        return obj;
-                    }).filter(Boolean);
-                } else if (file.type.includes('sheet') || file.type.includes('excel')) {
-                    const wb = XLSX.read(fileContent, { type: 'binary' });
-                    const wsname = wb.SheetNames[0];
-                    const ws = wb.Sheets[wsname];
-                    const data = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false });
-                    
-                    if (data && data[0] && data[0][0] && typeof data[0][0] === 'string') {
-                        const match = data[0][0].match(/DESA\s(.*?)\s\(/i);
-                        if (match && match[1]) defaultDesa = match[1].trim();
-                    }
-
-                    const headerRowIndex = data.findIndex(row => row.some(cell => Object.values(uploadConfig).includes(cell)));
-                    if (headerRowIndex === -1) throw new Error(`Tidak ada header yang cocok dengan pengaturan ditemukan.`);
-                    const headers = data[headerRowIndex].map(h => typeof h === 'string' ? h.trim() : h);
-                    const dataRows = data.slice(headerRowIndex + 1);
-
-                    parsedData = dataRows.map(row => {
-                        const obj = {};
-                        headers.forEach((header, index) => {
-                            if(header) obj[header] = row[index];
-                        });
-                        return obj;
-                    });
-                } else {
-                    throw new Error("Tipe file tidak didukung. Harap unggah file XLSX, CSV, atau JSON.");
-                }
-
-                if (parsedData.length === 0) {
-                    throw new Error("Tidak ada data valid yang ditemukan di dalam file.");
-                }
-
-                const mappedData = parsedData.map(item => {
-                    const newItem = {};
-                    for (const key in uploadConfig) {
-                        const fileHeader = uploadConfig[key];
-                        if (item[fileHeader] !== undefined && item[fileHeader] !== null) {
-                            newItem[key] = item[fileHeader];
-                        }
-                    }
-
-                    if (!newItem.desa) {
-                        newItem.desa = defaultDesa;
-                    }
-
-                    if (uploadConfig.ttl && item[uploadConfig.ttl]) {
-                        const [tempat_lahir, tgl_lahir] = String(item[uploadConfig.ttl]).split(',').map(s => s.trim());
-                        newItem.tempat_lahir = tempat_lahir;
-                        newItem.tgl_lahir = tgl_lahir;
-                    }
-                    
-                    if (newItem.nik) newItem.nik = String(newItem.nik);
-
-                    if (newItem.tgl_lahir) {
-                        newItem.akhir_jabatan = calculateAkhirJabatan(newItem.tgl_lahir);
-                    }
-
-                    return newItem;
-                }).filter(p => p.nama && p.jabatan);
-
-
-                if (mappedData.length === 0) {
-                    throw new Error("Data setelah pemetaan tidak valid atau kosong. Pastikan setidaknya kolom 'Nama' dan 'Jabatan' terisi dan terpetakan dengan benar.");
-                }
+                const namaHeader = uploadConfig.nama;
+                if (!namaHeader) throw new Error("Format upload tidak valid: Header untuk 'nama' tidak diatur.");
                 
-                const newData = mappedData.filter(p => p.nik && !existingNiks.has(p.nik));
-                const skippedCount = mappedData.length - newData.length;
+                const headerRowIndex = data.findIndex(row => Array.isArray(row) && row.some(cell => String(cell || '').trim() === namaHeader));
+                if (headerRowIndex === -1) throw new Error(`Header '${namaHeader}' tidak ditemukan di file. Pastikan format upload sesuai dengan pengaturan.`);
 
-                if (newData.length === 0) {
-                    alert(`Proses selesai. Tidak ada data baru untuk ditambahkan. ${skippedCount} data dilewati karena NIK sudah ada.`);
-                    return;
+                const headers = data[headerRowIndex].map(h => String(h || '').trim());
+                const dataRows = data.slice(headerRowIndex + 1);
+
+                const reverseUploadConfig = {};
+                for (const key in uploadConfig) {
+                    reverseUploadConfig[uploadConfig[key]] = key;
                 }
 
                 const batch = writeBatch(db);
-                newData.forEach(perangkat => {
-                    const docRef = doc(collection(db, 'perangkat'));
-                    batch.set(docRef, perangkat);
+                let newEntriesCount = 0;
+                const duplicatesByNik = [];
+                const duplicatesByData = [];
+
+                dataRows.forEach(rowArray => {
+                    if (!Array.isArray(rowArray) || rowArray.length === 0 || !rowArray.some(cell => cell)) return;
+
+                    const item = {};
+                    headers.forEach((header, index) => {
+                        if (header && rowArray[index] !== undefined) item[header] = rowArray[index];
+                    });
+
+                    const newItem = {};
+                    for (const fileHeader in item) {
+                        const firestoreKey = reverseUploadConfig[fileHeader];
+                        if (firestoreKey) {
+                            let value = item[fileHeader];
+                            if (firestoreKey.toLowerCase().includes('tgl') && value instanceof Date) {
+                                const userTimezoneOffset = value.getTimezoneOffset() * 60000;
+                                value = new Date(value.getTime() - userTimezoneOffset).toISOString().split('T')[0];
+                            }
+                            newItem[firestoreKey] = value;
+                        }
+                    }
+
+                    if (uploadConfig.ttl && item[uploadConfig.ttl]) {
+                        const [tempat_lahir, tgl_lahir_str] = String(item[uploadConfig.ttl]).split(',').map(s => s.trim());
+                        newItem.tempat_lahir = tempat_lahir;
+                        if (tgl_lahir_str) {
+                             try {
+                               const parsedDate = new Date(tgl_lahir_str.replace(/(\d{2})[/-](\d{2})[/-](\d{4})/, '$3-$2-$1'));
+                               if (!isNaN(parsedDate)) newItem.tgl_lahir = parsedDate.toISOString().split('T')[0];
+                             } catch(e) {}
+                        }
+                    }
+
+                    if (currentUser.role === 'admin_desa') newItem.desa = currentUser.desa;
+                    
+                    if (!newItem.nama || !newItem.jabatan) return;
+
+                    const nik = String(newItem.nik || '').trim();
+                    const nama = String(newItem.nama || '').toLowerCase().trim();
+                    const tglLahir = String(newItem.tgl_lahir || '').trim();
+                    const desa = String(newItem.desa || '').trim();
+                    
+                    let isDuplicate = false;
+                    if (nik) {
+                        if (existingNiks.has(nik)) {
+                            duplicatesByNik.push(newItem.nama);
+                            isDuplicate = true;
+                        }
+                    } else if (nama && tglLahir && desa) {
+                        if (existingNameDobDesa.has(`${nama}_${tglLahir}_${desa}`)) {
+                            duplicatesByData.push(newItem.nama);
+                            isDuplicate = true;
+                        }
+                    }
+
+                    if (!isDuplicate) {
+                        const docRef = doc(collection(db, 'perangkat'));
+                        batch.set(docRef, newItem);
+                        if (nik) existingNiks.add(nik);
+                        if (!nik && nama && tglLahir && desa) existingNameDobDesa.add(`${nama}_${tglLahir}_${desa}`);
+                        newEntriesCount++;
+                    }
                 });
-                await batch.commit();
-                alert(`${newData.length} data baru berhasil di-upload! ${skippedCount} data dilewati karena NIK sudah ada.`);
+
+                if (newEntriesCount > 0) await batch.commit();
+
+                let alertMessage = `${newEntriesCount} data baru berhasil diimpor.`;
+                if (duplicatesByNik.length > 0) alertMessage += `\n\n${duplicatesByNik.length} data dilewati karena NIK sudah ada:\n- ${duplicatesByNik.join('\n- ')}`;
+                if (duplicatesByData.length > 0) alertMessage += `\n\n${duplicatesByData.length} data dilewati karena Nama + Tgl Lahir + Desa sudah ada:\n- ${duplicatesByData.join('\n- ')}`;
+                alert(alertMessage);
 
             } catch (error) {
                 console.error("Error processing file: ", error);
@@ -458,13 +465,8 @@ const Perangkat = () => {
             }
         };
 
-        if (file.type.includes('sheet') || file.type.includes('excel')) {
-            reader.readAsBinaryString(file);
-        } else {
-            reader.readAsText(file);
-        }
+        reader.readAsBinaryString(file);
     };
-
     if (loading) return <Spinner size="lg"/>;
 
     return (

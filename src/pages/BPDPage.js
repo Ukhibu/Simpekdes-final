@@ -1,20 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
-import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, where } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, where, writeBatch, getDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import Modal from '../components/common/Modal';
 import Spinner from '../components/common/Spinner';
-import { FiEdit, FiTrash2, FiSearch, FiFilter, FiPlus, FiDownload } from 'react-icons/fi';
+import { FiEdit, FiTrash2, FiSearch, FiFilter, FiPlus, FiUpload, FiDownload } from 'react-icons/fi';
+import * as XLSX from 'xlsx';
 import { generateBpdXLSX } from '../utils/generateBpdXLSX';
 import InputField from '../components/common/InputField';
 
-const DESA_LIST = [
-    "Punggelan", "Petuguran", "Karangsari", "Jembangan", "Tanjungtirta", 
-    "Sawangan", "Bondolharjo", "Danakerta", "Badakarya", "Tribuana", 
-    "Sambong", "Klapa", "Kecepit", "Mlaya", "Sidarata", "Purwasana", "Tlaga"
-];
-
-const JABATAN_BPD = ["Ketua", "Wakil Ketua", "Sekretaris", "Anggota"];
+const DESA_LIST = [ "Punggelan", "Petuguran", "Karangsari", "Jembangan", "Tanjungtirta", "Sawangan", "Bondolharjo", "Danakerta", "Badakarya", "Tribuana", "Sambong", "Klapa", "Kecepit", "Mlaya", "Sidarata", "Purwasana", "Tlaga" ];
+const JABATAN_BPD_LIST = ["Ketua", "Wakil Ketua", "Sekretaris", "Anggota"];
 const PENDIDIKAN_LIST = ["SD", "SLTP", "SLTA", "D1", "D2", "D3", "S1", "S2", "S3"];
 const AGAMA_LIST = ["Islam", "Kristen", "Katolik", "Hindu", "Budha", "Konghucu"];
 const JENIS_KELAMIN_LIST = ["Laki-laki", "Perempuan"];
@@ -28,10 +25,26 @@ const BPDPage = () => {
     const [formData, setFormData] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
     const [filterDesa, setFilterDesa] = useState('all');
-    const [filterPeriode, setFilterPeriode] = useState('');
+    const [periodeFilter, setPeriodeFilter] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadConfig, setUploadConfig] = useState(null);
+    
+    const [searchParams, setSearchParams] = useSearchParams();
+    const navigate = useNavigate();
 
     useEffect(() => {
+        const fetchUploadConfig = async () => {
+            const docRef = doc(db, 'settings', 'bpdUploadConfig');
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                setUploadConfig(docSnap.data());
+            } else {
+                setUploadConfig({}); 
+            }
+        };
+        fetchUploadConfig();
+
         if (!currentUser) return;
         setLoading(true);
         const bpdCollection = collection(db, 'bpd');
@@ -43,28 +56,21 @@ const BPDPage = () => {
             const list = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setAllBpd(list);
             setLoading(false);
-        }, (error) => {
-            console.error("Error fetching BPD data: ", error);
-            setLoading(false);
         });
-
         return () => unsubscribe();
     }, [currentUser]);
 
-    const filteredBpd = useMemo(() => {
-        return allBpd
-            .filter(p => currentUser.role === 'admin_kecamatan' ? (filterDesa === 'all' ? true : p.desa === filterDesa) : p.desa === currentUser.desa)
-            .filter(p => {
-                if (!searchTerm) return true;
-                const search = searchTerm.toLowerCase();
-                return (p.nama && p.nama.toLowerCase().includes(search)) || (p.jabatan && p.jabatan.toLowerCase().includes(search));
-            })
-            .filter(p => {
-                if (!filterPeriode) return true;
-                return p.periode && p.periode.includes(filterPeriode);
-            });
-    }, [allBpd, searchTerm, filterDesa, filterPeriode, currentUser]);
-
+    useEffect(() => {
+        const editId = searchParams.get('edit');
+        if (editId && allBpd.length > 0) {
+            const bpdToEdit = allBpd.find(b => b.id === editId);
+            if (bpdToEdit) {
+                handleOpenModal(bpdToEdit);
+                setSearchParams({}, { replace: true });
+            }
+        }
+    }, [allBpd, searchParams, setSearchParams]);
+    
     const handleOpenModal = (bpd = null) => {
         setSelectedBpd(bpd);
         const initialDesa = currentUser.role === 'admin_desa' ? currentUser.desa : (bpd ? bpd.desa : '');
@@ -85,16 +91,18 @@ const BPDPage = () => {
 
     const handleFormSubmit = async (e) => {
         e.preventDefault();
+        if (!formData.desa) {
+            alert("Desa wajib diisi!");
+            return;
+        }
         setIsSubmitting(true);
-        const dataToSave = { ...formData };
-        
         try {
             if (selectedBpd) {
                 const docRef = doc(db, 'bpd', selectedBpd.id);
-                await updateDoc(docRef, dataToSave);
+                await updateDoc(docRef, formData);
                 alert('Data berhasil diperbarui!');
             } else {
-                await addDoc(collection(db, 'bpd'), dataToSave);
+                await addDoc(collection(db, 'bpd'), formData);
                 alert('Data berhasil ditambahkan!');
             }
             handleCloseModal();
@@ -107,53 +115,148 @@ const BPDPage = () => {
     };
 
     const handleDelete = async (id) => {
-        if (window.confirm("Apakah Anda yakin ingin menghapus data ini?")) {
+        if (window.confirm("Yakin ingin menghapus data BPD ini?")) {
             await deleteDoc(doc(db, 'bpd', id));
         }
     };
 
-    const handleExportXLSX = () => {
-        if (filteredBpd.length === 0) {
-            alert("Tidak ada data untuk diekspor.");
+    const handleFileUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!uploadConfig || Object.values(uploadConfig).every(v => !v)) {
+            alert("Pengaturan format upload belum diatur. Silakan atur di halaman Setelan BPD.");
+            e.target.value = null;
             return;
         }
 
-        const groupedByDesa = filteredBpd.reduce((acc, bpd) => {
-            const desa = bpd.desa || 'Tanpa Desa';
-            if (!acc[desa]) {
-                acc[desa] = [];
+        setIsUploading(true);
+        const reader = new FileReader();
+
+        reader.onload = async (event) => {
+            try {
+                // **PERBAIKAN**: Pengecekan duplikasi sekarang menggunakan Nama dan No. SK Bupati
+                const existingDataCheck = new Set(allBpd.map(b => `${String(b.nama || '').toLowerCase().trim()}_${String(b.no_sk_bupati || '').toString().trim()}`));
+                const data = new Uint8Array(event.target.result);
+                const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                
+                const namaHeader = uploadConfig.nama;
+                if (!namaHeader) throw new Error("Format upload tidak valid: Header untuk 'nama' tidak diatur.");
+                
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, {raw: false});
+                
+                if (jsonData.length === 0) throw new Error('File Excel kosong atau format tidak sesuai.');
+
+                const batch = writeBatch(db);
+                const duplicates = [];
+                let newEntriesCount = 0;
+
+                const reverseUploadConfig = {};
+                for (const key in uploadConfig) {
+                    if (uploadConfig[key]) reverseUploadConfig[uploadConfig[key]] = key;
+                }
+
+                jsonData.forEach(row => {
+                    const newDoc = {};
+                    for (const excelHeader in row) {
+                        const firestoreField = reverseUploadConfig[excelHeader.trim()];
+                        if (firestoreField) {
+                            let value = row[excelHeader];
+                            if (value instanceof Date) {
+                                const userTimezoneOffset = value.getTimezoneOffset() * 60000;
+                                value = new Date(value.getTime() - userTimezoneOffset).toISOString().split('T')[0];
+                            }
+                            newDoc[firestoreField] = value;
+                        }
+                    }
+
+                    if (currentUser.role === 'admin_desa') newDoc.desa = currentUser.desa;
+
+                    const nama = String(newDoc.nama || '').toLowerCase().trim();
+                    const noSkBupati = String(newDoc.no_sk_bupati || '').toString().trim();
+
+                    // **PERBAIKAN**: Validasi menggunakan Nama dan No. SK
+                    if (!nama || !noSkBupati) return;
+
+                    const uniqueKey = `${nama}_${noSkBupati}`;
+                    
+                    if (existingDataCheck.has(uniqueKey)) {
+                        duplicates.push(newDoc.nama);
+                    } else {
+                        const newDocRef = doc(collection(db, 'bpd'));
+                        batch.set(newDocRef, newDoc);
+                        existingDataCheck.add(uniqueKey);
+                        newEntriesCount++;
+                    }
+                });
+
+                if (newEntriesCount > 0) await batch.commit();
+
+                let alertMessage = `${newEntriesCount} data BPD baru berhasil diimpor.`;
+                if (duplicates.length > 0) {
+                    alertMessage += `\n\n${duplicates.length} data tidak diimpor karena duplikat (Nama & No. SK Bupati sudah ada):\n- ${duplicates.join('\n- ')}`;
+                }
+                alert(alertMessage);
+
+            } catch (error) {
+                console.error("Error processing file:", error);
+                alert(`Gagal memproses file: ${error.message}`);
+            } finally {
+                setIsUploading(false);
+                e.target.value = null;
             }
-            acc[desa].push(bpd);
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
+    const filteredBpd = useMemo(() => {
+        return allBpd.filter(b => {
+            const filterByDesaCond = currentUser.role === 'admin_kecamatan' && filterDesa !== 'all' ? b.desa === filterDesa : true;
+            const searchLower = searchTerm.toLowerCase();
+            const filterBySearchCond = !searchTerm ||
+                (b.nama && b.nama.toLowerCase().includes(searchLower)) ||
+                (b.jabatan && b.jabatan.toLowerCase().includes(searchLower)); // Diubah dari NIK ke jabatan
+            const filterByPeriodeCond = !periodeFilter || (b.periode && b.periode.includes(periodeFilter));
+            return filterByDesaCond && filterBySearchCond && filterByPeriodeCond;
+        });
+    }, [allBpd, searchTerm, filterDesa, currentUser.role, periodeFilter]);
+    
+    const handleExportXLSX = () => {
+        const dataToExport = filteredBpd.length > 0 ? filteredBpd : allBpd;
+         if (dataToExport.length === 0) {
+            alert("Tidak ada data untuk diekspor.");
+            return;
+        }
+        const groupedData = dataToExport.reduce((acc, p) => {
+            const desa = p.desa || 'Lainnya';
+            (acc[desa] = acc[desa] || []).push(p);
             return acc;
         }, {});
-        
-        generateBpdXLSX(groupedByDesa, filterPeriode);
+        generateBpdXLSX(groupedData, periodeFilter);
     };
+
 
     if (loading) return <Spinner size="lg" />;
 
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div className="relative">
-                    <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input type="text" placeholder="Cari nama atau jabatan..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white"/>
-                </div>
-                <div className="relative">
-                    <FiFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input type="text" placeholder="Filter periode (cth: 2020-2025)" value={filterPeriode} onChange={(e) => setFilterPeriode(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white"/>
-                </div>
+                <InputField type="text" placeholder="Cari nama atau jabatan..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} icon={<FiSearch />} />
+                <InputField type="text" placeholder="Filter periode (cth: 2020-2025)" value={periodeFilter} onChange={(e) => setPeriodeFilter(e.target.value)} icon={<FiFilter />} />
                 {currentUser.role === 'admin_kecamatan' && (
-                    <div className="relative">
-                        <FiFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <select value={filterDesa} onChange={(e) => setFilterDesa(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg appearance-none bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                            <option value="all">Semua Desa</option>
-                            {DESA_LIST.map(desa => <option key={desa} value={desa}>{desa}</option>)}
-                        </select>
-                    </div>
+                    <InputField type="select" value={filterDesa} onChange={(e) => setFilterDesa(e.target.value)} icon={<FiFilter />}>
+                        <option value="all">Semua Desa</option>
+                        {DESA_LIST.map(desa => <option key={desa} value={desa}>{desa}</option>)}
+                    </InputField>
                 )}
             </div>
             <div className="flex flex-wrap justify-end gap-2 mb-4">
+                 <label className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 cursor-pointer flex items-center gap-2">
+                    <FiUpload/> {isUploading ? 'Mengimpor...' : 'Impor Data'}
+                    <input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading}/>
+                </label>
                 <button onClick={handleExportXLSX} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"><FiDownload/> Ekspor XLSX</button>
                 <button onClick={() => handleOpenModal()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"><FiPlus/> Tambah Data</button>
             </div>
@@ -172,7 +275,10 @@ const BPDPage = () => {
                     <tbody>
                         {filteredBpd.map((p) => (
                             <tr key={p.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                                <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{p.nama}</td>
+                                <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
+                                    <p className="font-semibold">{p.nama}</p>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">No. SK: {p.no_sk_bupati || 'N/A'}</p>
+                                </td>
                                 <td className="px-6 py-4">{p.jabatan}</td>
                                 {currentUser.role === 'admin_kecamatan' && <td className="px-6 py-4">{p.desa}</td>}
                                 <td className="px-6 py-4">{p.periode}</td>
@@ -191,51 +297,51 @@ const BPDPage = () => {
                     <div className="border-b border-gray-200 dark:border-gray-700 pb-4">
                         <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Informasi Keanggotaan</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                            <InputField label="Nama Lengkap" name="nama" value={formData.nama} onChange={handleFormChange} required />
-                            <InputField label="Jabatan" name="jabatan" value={formData.jabatan} onChange={handleFormChange} type="select" required>
+                            <InputField label="Jabatan" name="jabatan" value={formData.jabatan || ''} onChange={handleFormChange} type="select" required>
                                 <option value="">Pilih Jabatan</option>
-                                {JABATAN_BPD.map(j => <option key={j} value={j}>{j}</option>)}
+                                {JABATAN_BPD_LIST.map(j => <option key={j} value={j}>{j}</option>)}
                             </InputField>
-                            <InputField label="No. SK Bupati" name="no_sk_bupati" value={formData.no_sk_bupati} onChange={handleFormChange} />
-                            <InputField label="Tgl. SK Bupati" name="tgl_sk_bupati" value={formData.tgl_sk_bupati} onChange={handleFormChange} type="date" />
-                            <InputField label="Periode" name="periode" value={formData.periode} onChange={handleFormChange} placeholder="Contoh: 2019-2025" />
-                            <InputField label="Tgl Pelantikan" name="tgl_pelantikan" value={formData.tgl_pelantikan} onChange={handleFormChange} type="date" />
-                            <InputField label="Wilayah Pemilihan" name="wil_pmlhn" value={formData.wil_pmlhn} onChange={handleFormChange} />
+                             <InputField label="Periode" name="periode" value={formData.periode || ''} onChange={handleFormChange} placeholder="Contoh: 2019-2025" />
+                            <InputField label="No. SK Bupati" name="no_sk_bupati" value={formData.no_sk_bupati || ''} onChange={handleFormChange} />
+                            <InputField label="Tgl. SK Bupati" name="tgl_sk_bupati" value={formData.tgl_sk_bupati || ''} onChange={handleFormChange} type="date" />
+                            <InputField label="Tgl Pelantikan" name="tgl_pelantikan" value={formData.tgl_pelantikan || ''} onChange={handleFormChange} type="date" />
+                            <InputField label="Wilayah Pemilihan" name="wil_pmlhn" value={formData.wil_pmlhn || ''} onChange={handleFormChange} />
                         </div>
                     </div>
                     
                     <div className="border-b border-gray-200 dark:border-gray-700 pb-4">
                         <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Data Pribadi</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                             <InputField label="NIK" name="nik" value={formData.nik} onChange={handleFormChange} placeholder="330xxxxxxxxxxxxx" />
-                             <InputField label="Jenis Kelamin" name="jenis_kelamin" value={formData.jenis_kelamin} onChange={handleFormChange} type="select">
+                             <InputField label="Nama Lengkap" name="nama" value={formData.nama || ''} onChange={handleFormChange} required />
+                             {/* NIK dihapus dari sini */}
+                             <InputField label="Jenis Kelamin" name="jenis_kelamin" value={formData.jenis_kelamin || ''} onChange={handleFormChange} type="select">
                                 <option value="">Pilih Jenis Kelamin</option>
                                 {JENIS_KELAMIN_LIST.map(jk => <option key={jk} value={jk}>{jk}</option>)}
                              </InputField>
-                             <InputField label="Tempat Lahir" name="tempat_lahir" value={formData.tempat_lahir} onChange={handleFormChange} />
-                             <InputField label="Tgl Lahir" name="tgl_lahir" value={formData.tgl_lahir} onChange={handleFormChange} type="date" />
-                             <InputField label="Pekerjaan" name="pekerjaan" value={formData.pekerjaan} onChange={handleFormChange} />
-                             <InputField label="Pendidikan" name="pendidikan" value={formData.pendidikan} onChange={handleFormChange} type="select">
+                             <InputField label="Tempat Lahir" name="tempat_lahir" value={formData.tempat_lahir || ''} onChange={handleFormChange} />
+                             <InputField label="Tgl Lahir" name="tgl_lahir" value={formData.tgl_lahir || ''} onChange={handleFormChange} type="date" />
+                             <InputField label="Pekerjaan" name="pekerjaan" value={formData.pekerjaan || ''} onChange={handleFormChange} />
+                             <InputField label="Pendidikan" name="pendidikan" value={formData.pendidikan || ''} onChange={handleFormChange} type="select">
                                 <option value="">Pilih Pendidikan</option>
                                 {PENDIDIKAN_LIST.map(p => <option key={p} value={p}>{p}</option>)}
                              </InputField>
-                             <InputField label="Agama" name="agama" value={formData.agama} onChange={handleFormChange} type="select">
+                             <InputField label="Agama" name="agama" value={formData.agama || ''} onChange={handleFormChange} type="select">
                                 <option value="">Pilih Agama</option>
                                 {AGAMA_LIST.map(a => <option key={a} value={a}>{a}</option>)}
                              </InputField>
-                             <InputField label="No. HP / WA" name="no_hp" value={formData.no_hp} onChange={handleFormChange} />
+                             <InputField label="No. HP / WA" name="no_hp" value={formData.no_hp || ''} onChange={handleFormChange} />
                         </div>
                     </div>
 
                     <div>
                         <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Alamat</h3>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
-                            <InputField label="Desa" name="desa" value={formData.desa} onChange={handleFormChange} type="select" required disabled={currentUser.role === 'admin_desa'}>
+                            <InputField label="Desa" name="desa" value={formData.desa || ''} onChange={handleFormChange} type="select" required disabled={currentUser.role === 'admin_desa'}>
                                 <option value="">Pilih Desa</option>
                                 {DESA_LIST.map(d => <option key={d} value={d}>{d}</option>)}
                             </InputField>
-                            <InputField label="RT" name="rt" value={formData.rt} onChange={handleFormChange} placeholder="001" />
-                            <InputField label="RW" name="rw" value={formData.rw} onChange={handleFormChange} placeholder="001" />
+                            <InputField label="RT" name="rt" value={formData.rt || ''} onChange={handleFormChange} placeholder="001" />
+                            <InputField label="RW" name="rw" value={formData.rw || ''} onChange={handleFormChange} placeholder="001" />
                         </div>
                     </div>
 

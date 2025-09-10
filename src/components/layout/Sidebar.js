@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useBranding } from '../../context/BrandingContext';
 import { 
     FiGrid, FiUsers, FiFileText, FiUserPlus, FiSettings, 
-    FiBarChart2, FiArrowLeft, FiBriefcase, FiBookOpen 
+    FiBarChart2, FiArrowLeft, FiBriefcase, FiBookOpen, FiDollarSign, FiArchive 
 } from 'react-icons/fi';
 
 const Sidebar = ({ currentModule, isOpen, setIsOpen }) => {
@@ -51,10 +51,18 @@ const Sidebar = ({ currentModule, isOpen, setIsOpen }) => {
             <NavLink to="/app/bpd/data" className={navLinkClasses}>
                 <FiBriefcase className="w-5 h-5 mr-3" /><span>Data Anggota</span>
             </NavLink>
-            {/* Tautan Baru */}
             <NavLink to="/app/bpd/berita-acara" className={navLinkClasses}>
                 <FiBookOpen className="w-5 h-5 mr-3" /><span>Manajemen BA</span>
             </NavLink>
+            {/* Tautan Setelan BPD baru untuk Admin Kecamatan */}
+            {currentUser?.role === 'admin_kecamatan' && (
+                 <>
+                    <hr className="my-2 border-gray-700" />
+                    <NavLink to="/app/bpd/pengaturan" className={navLinkClasses}>
+                        <FiSettings className="w-5 h-5 mr-3" /><span>Setelan BPD</span>
+                    </NavLink>
+                </>
+            )}
         </>
     );
 
@@ -65,6 +73,22 @@ const Sidebar = ({ currentModule, isOpen, setIsOpen }) => {
             </NavLink>
             <NavLink to="/app/efile/manage" className={navLinkClasses}>
                 <FiFileText className="w-5 h-5 mr-3" /><span>Manajemen SK</span>
+            </NavLink>
+        </>
+    );
+
+    const KeuanganMenu = () => (
+        <>
+             <NavLink to="/app/keuangan" end className={navLinkClasses}>
+                <FiDollarSign className="w-5 h-5 mr-3" /><span>APBDes</span>
+            </NavLink>
+        </>
+    );
+
+    const AsetMenu = () => (
+         <>
+             <NavLink to="/app/aset" end className={navLinkClasses}>
+                <FiArchive className="w-5 h-5 mr-3" /><span>Manajemen Aset</span>
             </NavLink>
         </>
     );
@@ -92,6 +116,8 @@ const Sidebar = ({ currentModule, isOpen, setIsOpen }) => {
                         {currentModule === 'perangkat' && <PerangkatMenu />}
                         {currentModule === 'bpd' && <BpdMenu />}
                         {currentModule === 'efile' && <EFileMenu />}
+                        {currentModule === 'keuangan' && <KeuanganMenu />}
+                        {currentModule === 'aset' && <AsetMenu />}
                     </div>
                     <div>
                         <hr className="my-4 border-gray-600" />

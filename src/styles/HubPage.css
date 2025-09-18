@@ -3,26 +3,48 @@
     position: relative;
     min-height: 100vh;
     overflow: hidden;
-    background-color: #0d1117;
+    background-color: #000000; /* Latar belakang hitam pekat */
     color: white;
     display: flex;
     flex-direction: column;
 }
 
-.interactive-background {
+/* --- SVG Background Baru --- */
+.interactive-background-svg {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
     z-index: 0;
-    pointer-events: none;
-    background: radial-gradient(
-        800px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
-        rgba(25, 55, 109, 0.3),
-        transparent 40%
-    );
-    transition: background 0.2s linear;
+    touch-action: none;
+    cursor: pointer;
+}
+
+.interactive-background-svg use {
+    opacity: 1;
+    fill: #ffffff;
+}
+
+/* --- Efek Cahaya untuk Naga --- */
+.dragon-stretched {
+    filter: drop-shadow(0 0 8px #00ffff) drop-shadow(0 0 16px #00ffff);
+    opacity: 1;
+}
+
+.dragon-collapsed {
+    filter: drop-shadow(0 0 8px #ff00ff) drop-shadow(0 0 16px #ff00ff);
+    opacity: 1;
+}
+
+.dragon-head-glow {
+    filter: drop-shadow(0 0 10px #ffff00) drop-shadow(0 0 20px #ffff00);
+    opacity: 1;
+}
+
+.dragon-fins-glow {
+    filter: drop-shadow(0 0 8px #00ff00) drop-shadow(0 0 16px #00ff00);
+    opacity: 1;
 }
 
 /* --- Header --- */
@@ -33,6 +55,10 @@
     justify-content: space-between;
     align-items: center;
     z-index: 10;
+    /* Efek kaca agar kontras dengan background naga */
+    background: rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
 }
 
 .user-greeting {
@@ -80,6 +106,7 @@
     text-align: center;
     margin-bottom: 4rem; 
     transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+    z-index: 5; /* Pastikan judul di atas background */
 }
 
 .hub-title-container.fade-in {
@@ -129,6 +156,7 @@
     align-items: center;
     width: 200px;
     height: 200px;
+    z-index: 5;
 }
 
 .hub-main-circle {

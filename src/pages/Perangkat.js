@@ -8,7 +8,6 @@ import { FiEdit, FiTrash2, FiSearch, FiFilter, FiUpload, FiDownload, FiPlus, FiE
 import * as XLSX from 'xlsx';
 import { generatePerangkatPDF } from '../utils/generatePerangkatPDF';
 import { generatePerangkatXLSX } from '../utils/generatePerangkatXLSX';
-// PERUBAHAN 1: Tambahkan useLocation
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 
 const DESA_LIST = [
@@ -82,19 +81,19 @@ const Perangkat = () => {
     const [filterDesa, setFilterDesa] = useState('all');
     const [isUploading, setIsUploading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false); // State untuk hapus massal
     const [modalMode, setModalMode] = useState('edit');
     const [exportConfig, setExportConfig] = useState(null);
     const [uploadConfig, setUploadConfig] = useState(null);
 
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
-    // PERUBAHAN 2: Inisialisasi useLocation
     const location = useLocation();
 
     useEffect(() => {
         const fetchConfigs = async () => {
             const exportRef = doc(db, 'settings', 'exportConfig');
-            const uploadRef = doc(db, 'settings', 'uploadConfig');
+            const uploadRef = doc(db, 'settings', 'uploadConfig'); // Kembali ke config umum
             const exportSnap = await getDoc(exportRef);
             const uploadSnap = await getDoc(uploadRef);
             if (exportSnap.exists()) setExportConfig(exportSnap.data());
@@ -122,21 +121,15 @@ const Perangkat = () => {
         return () => unsubscribe();
     }, [currentUser]);
 
-    // PERUBAHAN 3: Memperbaiki useEffect untuk auto-edit
     useEffect(() => {
         const editId = searchParams.get('edit');
-        // Hanya jalankan jika ID ada di URL dan data sudah dimuat
         if (editId && allPerangkat.length > 0) {
             const perangkatToEdit = allPerangkat.find(p => p.id === editId);
             if (perangkatToEdit) {
-                // Buka modal dengan data yang ditemukan
                 handleOpenModal(perangkatToEdit, 'edit');
-                // Ganti URL untuk menghapus '?edit=...' 
-                // Menggunakan location.pathname memastikan kita tetap di halaman yang benar (/app/perangkat)
                 navigate(location.pathname, { replace: true });
             }
         }
-        // Efek ini bergantung pada `allPerangkat`, jadi akan berjalan lagi saat data tiba.
     }, [allPerangkat, searchParams, navigate, location.pathname]);
 
     useEffect(() => {
@@ -281,6 +274,41 @@ const Perangkat = () => {
         }
     };
     
+    // Fungsi baru untuk hapus massal
+    const handleDeleteFiltered = async () => {
+        if (filteredPerangkat.length === 0) {
+            alert("Tidak ada data untuk dihapus.");
+            return;
+        }
+
+        let confirmationMessage = `Apakah Anda yakin ingin menghapus ${filteredPerangkat.length} data perangkat yang ditampilkan?`;
+        if (currentUser.role === 'admin_kecamatan') {
+            if (filterDesa === 'all') {
+                confirmationMessage = `PERINGATAN! Anda akan menghapus ${filteredPerangkat.length} data perangkat dari SEMUA DESA yang ditampilkan. Tindakan ini tidak dapat diurungkan. Lanjutkan?`;
+            } else {
+                confirmationMessage = `Anda akan menghapus ${filteredPerangkat.length} data perangkat dari Desa ${filterDesa}. Lanjutkan?`;
+            }
+        }
+        
+        if (window.confirm(confirmationMessage)) {
+            setIsDeleting(true);
+            try {
+                const batch = writeBatch(db);
+                filteredPerangkat.forEach(perangkat => {
+                    const docRef = doc(db, 'perangkat', perangkat.id);
+                    batch.delete(docRef);
+                });
+                await batch.commit();
+                alert(`${filteredPerangkat.length} data berhasil dihapus.`);
+            } catch (error) {
+                console.error("Gagal menghapus data massal:", error);
+                alert("Terjadi kesalahan saat menghapus data.");
+            } finally {
+                setIsDeleting(false);
+            }
+        }
+    };
+
     const getExportData = () => {
         return allPerangkat
             .filter(p => {
@@ -332,8 +360,8 @@ const Perangkat = () => {
             generatePerangkatXLSX(groupedData, exportConfig);
         }
     };
-
     
+    // Logika upload dikembalikan ke versi sederhana
     const handleFileUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -417,6 +445,12 @@ const Perangkat = () => {
                              } catch(e) {}
                         }
                     }
+                    
+                    Object.keys(newItem).forEach(key => {
+                        if (newItem[key] === undefined) {
+                            newItem[key] = null;
+                        }
+                    });
 
                     if (currentUser.role === 'admin_desa') newItem.desa = currentUser.desa;
                     
@@ -487,6 +521,13 @@ const Perangkat = () => {
                 )}
             </div>
             <div className="flex flex-wrap justify-end gap-2 mb-4">
+                <button
+                    onClick={handleDeleteFiltered}
+                    className="px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 flex items-center gap-2 disabled:bg-red-400 disabled:cursor-not-allowed"
+                    disabled={isDeleting || filteredPerangkat.length === 0}
+                >
+                    <FiTrash2 /> {isDeleting ? 'Menghapus...' : `Hapus ${filteredPerangkat.length} Data`}
+                </button>
                 {currentUser.role === 'admin_kecamatan' && (
                     <>
                         <label className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 cursor-pointer flex items-center gap-2">

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../firebase';
 import { collection, query, where, onSnapshot, doc, getDoc, setDoc } from 'firebase/firestore';
@@ -25,14 +25,17 @@ const generateInitialContent = (bpd, config) => {
     
     // Menggabungkan nama dan gelar jika ada
     const namaLengkap = `${bpd.nama || '[Nama Anggota BPD]'}${bpd.gelar ? `, ${bpd.gelar}` : ''}`;
+    const saksi1Nama = `${config.saksi1Nama || '[Nama Saksi 1]'}${config.saksi1Gelar ? `, ${config.saksi1Gelar}` : ''}`;
+    const saksi2Nama = `${config.saksi2Nama || '[Nama Saksi 2]'}${config.saksi2Gelar ? `, ${config.saksi2Gelar}` : ''}`;
 
+    // Menggunakan spasi untuk perataan yang lebih konsisten daripada tab
     return `Pada hari ini ${pelantikanDate}, dengan mengambil tempat di Aula Kantor Kecamatan Punggelan, saya, nama ${config.pejabatNama || '[Nama Pejabat]'} Jabatan ${config.pejabatJabatan || '[Jabatan Pejabat]'} Kabupaten Banjarnegara berdasarkan Peraturan Bupati Banjarnegara Nomor 29 Tahun 2018 tentang Petunjuk Pelaksanaan Peraturan Daerah Kabupaten Banjarnegara Nomor 18 Tahun 2017 tentang Badan Permusyawaratan Desa, dengan disaksikan oleh 2 (dua) saksi masing-masing:
 
-1. Nama\t\t: ${config.saksi1Nama || '[Nama Saksi 1]'}
-   Jabatan\t: ${config.saksi1Jabatan || '[Jabatan Saksi 1]'}
+1. Nama    : ${saksi1Nama}
+   Jabatan  : ${config.saksi1Jabatan || '[Jabatan Saksi 1]'}
 
-2. Nama\t\t: ${config.saksi2Nama || '[Nama Saksi 2]'}
-   Jabatan\t: ${config.saksi2Jabatan || '[Jabatan Saksi 2]'}
+2. Nama    : ${saksi2Nama}
+   Jabatan  : ${config.saksi2Jabatan || '[Jabatan Saksi 2]'}
 
 Telah mengambil sumpah Jabatan Anggota Badan Permusyawaratan Desa nama ${namaLengkap} yang dengan Keputusan Bupati Banjarnegara NOMOR: ${bpd.no_sk_bupati || '[Nomor SK Bupati]'} Tanggal ${skDate} diangkat dalam Jabatan sebagai Anggota Badan Permusyawaratan Desa Aula Kantor Kecamatan Punggelan Kecamatan Punggelan Kabupaten Banjarnegara Periode Tahun ${bpd.periode || '[Periode]'}.
 
@@ -141,7 +144,6 @@ const BeritaAcaraBPDPage = () => {
             alert("Silakan pilih anggota BPD terlebih dahulu.");
             return;
         }
-        // Cukup panggil window.print(), sisanya diurus oleh CSS
         window.print();
     };
 
@@ -156,11 +158,11 @@ const BeritaAcaraBPDPage = () => {
         const fileName = `Berita_Acara_Sumpah_${bpdName}.pdf`;
     
         const opt = {
-          margin:       [2, 2, 2, 2],
+          margin:       [1.5, 1.5, 1.5, 1.5], // margin in cm [top, left, bottom, right]
           filename:     fileName,
           image:        { type: 'jpeg', quality: 0.98 },
           html2canvas:  { scale: 2, useCORS: true, letterRendering: true },
-          jsPDF:        { unit: 'cm', format: 'a4', orientation: 'portrait' }
+          jsPDF:        { unit: 'cm', format: 'letter', orientation: 'portrait' }
         };
     
         html2pdf().from(element).set(opt).save();
@@ -176,7 +178,6 @@ const BeritaAcaraBPDPage = () => {
 
     return (
         <div className="ba-container">
-            {/* Control Panel - Disembunyikan saat print oleh kelas 'no-print' */}
             <div className="ba-controls no-print">
                 <div className="p-6 space-y-6 overflow-y-auto">
                     <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Pengaturan Dokumen</h2>
@@ -234,7 +235,6 @@ const BeritaAcaraBPDPage = () => {
 
             {/* Document Preview Area */}
             <div className="ba-preview">
-                {/* ID ini penting untuk ditargetkan oleh CSS print */}
                 <div id="print-area" className="ba-paper">
                     {selectedBpd ? (
                         <BeritaAcaraPreview 
@@ -255,4 +255,3 @@ const BeritaAcaraBPDPage = () => {
 };
 
 export default BeritaAcaraBPDPage;
-

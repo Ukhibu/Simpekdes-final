@@ -4,7 +4,7 @@ import { collection, query, where, onSnapshot, addDoc, doc, deleteDoc, updateDoc
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/common/Modal';
 import Spinner from '../components/common/Spinner';
-import { FiUpload, FiSearch, FiFilter, FiEye, FiDownload, FiTrash2, FiDatabase, FiCheckSquare } from 'react-icons/fi';
+import { FiUpload, FiSearch, FiFilter, FiEye, FiDownload, FiTrash2, FiDatabase, FiCheckSquare, FiUser } from 'react-icons/fi';
 
 const DESA_LIST = [
     "Punggelan", "Petuguran", "Karangsari", "Jembangan", "Tanjungtirta",
@@ -30,28 +30,29 @@ const Notification = ({ message, type, onClose }) => {
 const EFilePage = () => {
     const { currentUser } = useAuth();
     const [activeTab, setActiveTab] = useState('manajemen');
-    const [perangkatList, setPerangkatList] = useState([]);
+    const [allPerangkat, setAllPerangkat] = useState([]);
+    const [selectedDesaForUpload, setSelectedDesaForUpload] = useState(currentUser?.role === 'admin_desa' ? currentUser.desa : '');
     const [selectedPerangkat, setSelectedPerangkat] = useState('');
     const [selectedFile, setSelectedFile] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
     const [skDocuments, setSkDocuments] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterDesa, setFilterDesa] = useState('all');
+    const [filterDesa, setFilterDesa] = useState(currentUser?.role === 'admin_kecamatan' ? 'all' : currentUser.desa);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [previewUrl, setPreviewUrl] = useState('');
     const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
 
+    // Fetch all perangkat data for lookups (foto, jabatan)
     useEffect(() => {
-        if (currentUser?.role === 'admin_desa' && currentUser.desa) {
-            const q = query(collection(db, "perangkat"), where("desa", "==", currentUser.desa));
-            const unsubscribe = onSnapshot(q, (snapshot) => {
-                setPerangkatList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            });
-            return () => unsubscribe();
-        }
-    }, [currentUser]);
+        const q = query(collection(db, "perangkat"));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setAllPerangkat(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+        return () => unsubscribe();
+    }, []);
 
+    // Fetch SK documents based on role
     useEffect(() => {
         if (!currentUser) return;
         setLoading(true);
@@ -73,6 +74,13 @@ const EFilePage = () => {
     const showNotification = (message, type = 'success') => {
         setNotification({ show: true, message, type });
     };
+    
+    // Create a memoized list of perangkat for the upload dropdown, filtered by selected desa
+    const perangkatListForUpload = useMemo(() => {
+        if (!selectedDesaForUpload) return [];
+        return allPerangkat.filter(p => p.desa === selectedDesaForUpload);
+    }, [allPerangkat, selectedDesaForUpload]);
+
 
     const handleFileChange = (e) => {
         const file = e.target.files[0];
@@ -94,7 +102,7 @@ const EFilePage = () => {
     const handleUpload = async (e) => {
         e.preventDefault();
         if (!selectedPerangkat || !selectedFile) {
-            showNotification('Harap pilih perangkat dan file SK.', 'error');
+            showNotification('Harap pilih desa, perangkat, dan file SK.', 'error');
             return;
         }
 
@@ -110,7 +118,10 @@ const EFilePage = () => {
         setIsUploading(true);
 
         try {
-            const perangkat = perangkatList.find(p => p.id === selectedPerangkat);
+            const perangkat = allPerangkat.find(p => p.id === selectedPerangkat);
+            if (!perangkat) {
+                throw new Error('Data perangkat tidak ditemukan.');
+            }
             const fileName = `${perangkat.desa}_${perangkat.nama.replace(/\s/g, '_')}_${Date.now()}.pdf`;
             const filePath = `sk_documents/${fileName}`;
 
@@ -143,13 +154,16 @@ const EFilePage = () => {
                 fileName: selectedFile.name,
                 fileUrl: fileUrl,
                 githubPath: filePath,
-                status: 'menunggu_verifikasi', // Status Awal
+                status: 'menunggu_verifikasi',
                 uploadedAt: new Date(),
             });
 
             showNotification('Dokumen SK berhasil diunggah dan menunggu verifikasi.', 'success');
             setSelectedPerangkat('');
             setSelectedFile(null);
+            if (currentUser.role === 'admin_kecamatan') {
+                setSelectedDesaForUpload('');
+            }
             document.getElementById('file-upload-form').reset();
 
         } catch (error) {
@@ -161,7 +175,7 @@ const EFilePage = () => {
     };
     
     const handleDelete = async (skDoc) => {
-        if (window.confirm(`Apakah Anda yakin ingin menghapus catatan SK "${skDoc.fileName}"? Ini tidak akan menghapus file fisik di GitHub.`)) {
+        if (window.confirm(`Apakah Anda yakin ingin menghapus catatan SK "${skDoc.fileName}"? Ini tidak akan menghapus file fisik.`)) {
             try {
                 await deleteDoc(doc(db, 'efile', skDoc.id));
                 showNotification('Catatan dokumen SK berhasil dihapus.', 'success');
@@ -173,13 +187,10 @@ const EFilePage = () => {
         }
     };
 
-    // Fungsi baru untuk verifikasi dokumen
     const handleVerify = async (skId) => {
         const docRef = doc(db, 'efile', skId);
         try {
-            await updateDoc(docRef, {
-                status: 'terverifikasi'
-            });
+            await updateDoc(docRef, { status: 'terverifikasi' });
             showNotification('Dokumen berhasil diverifikasi.', 'success');
         } catch (error) {
             console.error("Error verifying document: ", error);
@@ -195,15 +206,25 @@ const EFilePage = () => {
     };
 
     const filteredSkDocuments = useMemo(() => {
-        return skDocuments.filter(doc => {
-            const filterByDesa = currentUser?.role === 'admin_kecamatan' && filterDesa !== 'all' ? doc.desa === filterDesa : true;
-            const search = searchTerm.toLowerCase();
-            const filterBySearch = !searchTerm ? true :
-                (String(doc.perangkatNama).toLowerCase().includes(search)) ||
-                (String(doc.fileName).toLowerCase().includes(search));
-            return filterByDesa && filterBySearch;
-        });
-    }, [skDocuments, searchTerm, filterDesa, currentUser]);
+        return skDocuments
+            .map(sk => {
+                const perangkat = allPerangkat.find(p => p.id === sk.perangkatId);
+                return {
+                    ...sk,
+                    foto_url: perangkat?.foto_url,
+                    jabatan: perangkat?.jabatan || 'N/A'
+                };
+            })
+            .filter(doc => {
+                const filterByDesaCond = currentUser?.role === 'admin_kecamatan' && filterDesa !== 'all' ? doc.desa === filterDesa : true;
+                const search = searchTerm.toLowerCase();
+                const filterBySearchCond = !searchTerm ? true :
+                    (String(doc.perangkatNama).toLowerCase().includes(search)) ||
+                    (String(doc.fileName).toLowerCase().includes(search)) ||
+                    (String(doc.jabatan).toLowerCase().includes(search));
+                return filterByDesaCond && filterBySearchCond;
+            });
+    }, [skDocuments, allPerangkat, searchTerm, filterDesa, currentUser]);
 
     return (
         <div className="space-y-6">
@@ -229,13 +250,22 @@ const EFilePage = () => {
             {activeTab === 'manajemen' ? (
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
                       <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">Unggah Dokumen SK Perangkat Desa</h2>
-                     {currentUser.role === 'admin_desa' ? (
+                     {currentUser.role === 'admin_desa' || currentUser.role === 'admin_kecamatan' ? (
                          <form id="file-upload-form" onSubmit={handleUpload} className="space-y-4 max-w-lg">
+                              {currentUser.role === 'admin_kecamatan' && (
+                                  <div>
+                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Pilih Desa</label>
+                                     <select value={selectedDesaForUpload} onChange={(e) => {setSelectedDesaForUpload(e.target.value); setSelectedPerangkat('');}} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white" required>
+                                         <option value="">-- Pilih Desa --</option>
+                                         {DESA_LIST.map(d => <option key={d} value={d}>{d}</option>)}
+                                     </select>
+                                 </div>
+                              )}
                               <div>
                                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Pilih Perangkat</label>
-                                 <select value={selectedPerangkat} onChange={(e) => setSelectedPerangkat(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white" required>
+                                 <select value={selectedPerangkat} onChange={(e) => setSelectedPerangkat(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white" required disabled={!selectedDesaForUpload}>
                                      <option value="">-- Pilih Perangkat Desa --</option>
-                                     {perangkatList.map(p => <option key={p.id} value={p.id}>{p.nama} - {p.jabatan}</option>)}
+                                     {perangkatListForUpload.map(p => <option key={p.id} value={p.id}>{p.nama} - {p.jabatan}</option>)}
                                  </select>
                              </div>
                              <div>
@@ -249,7 +279,7 @@ const EFilePage = () => {
                              </div>
                          </form>
                      ) : (
-                          <p className="text-gray-500 dark:text-gray-400">Hanya Admin Desa yang dapat mengunggah dokumen SK.</p>
+                          <p className="text-gray-500 dark:text-gray-400">Anda tidak memiliki izin untuk mengunggah dokumen.</p>
                      )}
                 </div>
             ) : (
@@ -257,7 +287,7 @@ const EFilePage = () => {
                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
                             <div className="relative lg:col-span-2">
                                <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                               <input type="text" placeholder="Cari nama perangkat atau nama file..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white"/>
+                               <input type="text" placeholder="Cari nama, jabatan, atau file..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white"/>
                             </div>
                             {currentUser.role === 'admin_kecamatan' && (
                                 <div className="relative">
@@ -275,6 +305,7 @@ const EFilePage = () => {
                                  <thead className="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-50 dark:bg-gray-700">
                                      <tr>
                                          <th className="px-6 py-3">Nama Perangkat</th>
+                                         <th className="px-6 py-3">Jabatan</th>
                                          {currentUser.role === 'admin_kecamatan' && <th className="px-6 py-3">Desa</th>}
                                          <th className="px-6 py-3">Nama File</th>
                                          <th className="px-6 py-3">Status</th>
@@ -284,7 +315,11 @@ const EFilePage = () => {
                                  <tbody>
                                      {filteredSkDocuments.length > 0 ? filteredSkDocuments.map((sk) => (
                                          <tr key={sk.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                                             <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{sk.perangkatNama}</td>
+                                             <td className="px-6 py-4 font-medium text-gray-900 dark:text-white flex items-center gap-3">
+                                                <img src={sk.foto_url || `https://ui-avatars.com/api/?name=${sk.perangkatNama}&background=E2E8F0&color=4A5568`} alt={sk.perangkatNama} className="w-10 h-10 rounded-full object-cover"/>
+                                                {sk.perangkatNama}
+                                             </td>
+                                             <td className="px-6 py-4">{sk.jabatan}</td>
                                              {currentUser.role === 'admin_kecamatan' && <td className="px-6 py-4">{sk.desa}</td>}
                                              <td className="px-6 py-4">{sk.fileName}</td>
                                              <td className="px-6 py-4">
@@ -309,7 +344,7 @@ const EFilePage = () => {
                                          </tr>
                                      )) : (
                                          <tr>
-                                             <td colSpan={currentUser.role === 'admin_kecamatan' ? 5 : 4} className="text-center py-10 text-gray-500 dark:text-gray-400">Tidak ada data SK yang ditemukan.</td>
+                                             <td colSpan={currentUser.role === 'admin_kecamatan' ? 6 : 5} className="text-center py-10 text-gray-500 dark:text-gray-400">Tidak ada data SK yang ditemukan.</td>
                                          </tr>
                                      )}
                                  </tbody>
@@ -333,4 +368,3 @@ const EFilePage = () => {
 };
 
 export default EFilePage;
-

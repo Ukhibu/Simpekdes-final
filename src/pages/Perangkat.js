@@ -1,69 +1,77 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { db } from '../firebase'; // Pastikan path ini benar
-import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, where, writeBatch, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { collection, query, onSnapshot, addDoc, doc, updateDoc, writeBatch, getDocs, where, getDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/common/Modal';
 import Spinner from '../components/common/Spinner';
-import { FiEdit, FiTrash2, FiSearch, FiFilter, FiUpload, FiDownload, FiPlus, FiEye } from 'react-icons/fi';
+import { FiEdit, FiTrash2, FiSearch, FiFilter, FiUpload, FiDownload, FiPlus, FiEye, FiUserX, FiBriefcase } from 'react-icons/fi';
 import * as XLSX from 'xlsx';
-import { generatePerangkatPDF } from '../utils/generatePerangkatPDF';
 import { generatePerangkatXLSX } from '../utils/generatePerangkatXLSX';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 
-const DESA_LIST = [
-    "Punggelan", "Petuguran", "Karangsari", "Jembangan", "Tanjungtirta", 
-    "Sawangan", "Bondolharjo", "Danakerta", "Badakarya", "Tribuana", 
-    "Sambong", "Klapa", "Kecepit", "Mlaya", "Sidarata", "Purwasana", "Tlaga"
-];
-
-const JABATAN_LIST = [
-    "Kepala Desa",
-    "Sekretaris Desa",
-    "Kaur Tata Usaha dan Umum",
-    "Kaur Keuangan",
-    "Kaur Perencanaan",
-    "Kasi Pemerintahan",
-    "Kasi Kesejahteraan",
-    "Kasi Pelayanan",
-    "Kepala Dusun",
-    "Staf Desa",
-];
-
-const PENDIDIKAN_LIST = [
-    "SD", "SLTP", "SLTA", "D1", "D2", "D3", "S1", "S2", "S3"
-];
-
-const isDataLengkap = (perangkat) => {
-    const requiredFields = [
-        'nama', 'jabatan', 'nik', 'tempat_lahir', 'tgl_lahir', 
-        'pendidikan', 'no_sk', 'tgl_sk', 'tgl_pelantikan', 'akhir_jabatan', 
-        'foto_url', 'ktp_url'
-    ];
-    return requiredFields.every(field => perangkat[field] && String(perangkat[field]).trim() !== '');
-};
-
-const calculateAkhirJabatan = (tglLahir) => {
-    if (!tglLahir || typeof tglLahir !== 'string') return null;
-    try {
-        let parts = tglLahir.split('-');
-        let birthDate;
-        if (parts[0].length === 4) { // YYYY-MM-DD
-            birthDate = new Date(tglLahir);
-        } else { // DD-MM-YYYY
-            birthDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+// Komponen Detail Perangkat untuk Modal (didefinisikan di luar komponen utama)
+const PerangkatDetailView = ({ perangkat }) => {
+    if (!perangkat) return null;
+    const statusPurna = perangkat.akhir_jabatan && new Date(perangkat.akhir_jabatan) < new Date();
+    
+    const DetailItem = ({ label, value }) => (
+        <div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">{label}</p>
+            <p className="text-gray-800 dark:text-gray-200">{value || '-'}</p>
+        </div>
+    );
+    
+    const formatDate = (dateString) => {
+        if (!dateString) return '';
+        try {
+            const date = dateString.toDate ? dateString.toDate() : new Date(dateString);
+            if (isNaN(date.getTime())) return dateString;
+            return date.toLocaleDateString('id-ID', {day: '2-digit', month: 'long', year: 'numeric'});
+        } catch {
+            return dateString;
         }
-        
-        if (isNaN(birthDate.getTime())) return null;
-
-        birthDate.setFullYear(birthDate.getFullYear() + 60);
-        const year = birthDate.getFullYear();
-        const month = String(birthDate.getMonth() + 1).padStart(2, '0');
-        const day = String(birthDate.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    } catch (error) {
-        console.error("Invalid date for tglLahir:", tglLahir);
-        return null;
     }
+
+    return (
+        <div className="space-y-6">
+            <div className="text-center p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                <img 
+                    src={perangkat.foto_url || `https://ui-avatars.com/api/?name=${perangkat.nama}&background=0D8ABC&color=fff&size=128`} 
+                    alt={perangkat.nama} 
+                    className="w-32 h-32 rounded-full object-cover mx-auto mb-4 border-4 border-white dark:border-gray-600 shadow-lg"
+                />
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">{perangkat.nama}</h3>
+                <p className="text-gray-600 dark:text-gray-300">{perangkat.jabatan} - Desa {perangkat.desa}</p>
+                 {statusPurna && <p className="mt-2 text-sm font-semibold text-red-500 dark:text-red-400">Telah Purna Tugas</p>}
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <DetailItem label="NIK" value={perangkat.nik} />
+                <DetailItem label="NIP/NIPD" value={perangkat.nip} />
+                <DetailItem label="Jenis Kelamin" value={perangkat.jenis_kelamin === 'L' ? 'Laki-laki' : 'Perempuan'} />
+                <DetailItem label="Tempat, Tanggal Lahir" value={`${perangkat.tempat_lahir || ''}, ${formatDate(perangkat.tgl_lahir)}`} />
+                <DetailItem label="Pendidikan Terakhir" value={perangkat.pendidikan} />
+                <DetailItem label="No. HP / WA" value={perangkat.no_hp} />
+            </div>
+
+            <div>
+                <h4 className="font-semibold text-gray-700 dark:text-gray-300 border-b pb-2 mb-2">Informasi Jabatan</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <DetailItem label="Nomor SK" value={perangkat.no_sk} />
+                    <DetailItem label="Tanggal SK" value={formatDate(perangkat.tgl_sk)} />
+                    <DetailItem label="Tanggal Pelantikan" value={formatDate(perangkat.tgl_pelantikan)} />
+                    <DetailItem label="Akhir Masa Jabatan" value={formatDate(perangkat.akhir_jabatan)} />
+                </div>
+            </div>
+
+            <div>
+                 <h4 className="font-semibold text-gray-700 dark:text-gray-300 border-b pb-2 mb-2">Dokumen KTP</h4>
+                 {perangkat.ktp_url ? (
+                    <img src={perangkat.ktp_url} alt="Foto KTP" className="mt-2 w-full max-w-sm mx-auto object-contain rounded-md"/>
+                 ) : <p className="mt-1 text-gray-500 dark:text-gray-400">Tidak ada foto KTP.</p>}
+            </div>
+        </div>
+    );
 };
 
 const Perangkat = () => {
@@ -74,6 +82,11 @@ const Perangkat = () => {
     const [selectedPerangkat, setSelectedPerangkat] = useState(null);
     const [formData, setFormData] = useState({});
     
+    // State for dynamic lists from settings
+    const [desaList, setDesaList] = useState([]);
+    const [jabatanList, setJabatanList] = useState([]);
+    const [pendidikanList, setPendidikanList] = useState([]);
+
     const [fotoProfilFile, setFotoProfilFile] = useState(null);
     const [fotoKtpFile, setFotoKtpFile] = useState(null);
     
@@ -81,26 +94,46 @@ const Perangkat = () => {
     const [filterDesa, setFilterDesa] = useState('all');
     const [isUploading, setIsUploading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isDeleting, setIsDeleting] = useState(false); // State untuk hapus massal
+    const [isDeleting, setIsDeleting] = useState(false);
     const [modalMode, setModalMode] = useState('edit');
     const [exportConfig, setExportConfig] = useState(null);
-    const [uploadConfig, setUploadConfig] = useState(null);
-
+    
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const location = useLocation();
 
+    // Fetch dynamic settings from Firestore
     useEffect(() => {
-        const fetchConfigs = async () => {
-            const exportRef = doc(db, 'settings', 'exportConfig');
-            const uploadRef = doc(db, 'settings', 'uploadConfig'); // Kembali ke config umum
-            const exportSnap = await getDoc(exportRef);
-            const uploadSnap = await getDoc(uploadRef);
-            if (exportSnap.exists()) setExportConfig(exportSnap.data());
-            if (uploadSnap.exists()) setUploadConfig(uploadSnap.data());
+        const fetchSettings = async () => {
+            try {
+                const settingsDoc = await getDoc(doc(db, 'settings', 'appConfig'));
+                if (settingsDoc.exists()) {
+                    const settings = settingsDoc.data();
+                    setDesaList(settings.desaList || []);
+                    setJabatanList(settings.jabatanList || []);
+                    setPendidikanList(settings.pendidikanList || []);
+                }
+            } catch (error) {
+                console.error("Error fetching settings:", error);
+            }
         };
-        fetchConfigs();
 
+        const fetchExportConfig = async () => {
+            try {
+                const exportRef = doc(db, 'settings', 'exportConfig');
+                const exportSnap = await getDoc(exportRef);
+                if (exportSnap.exists()) setExportConfig(exportSnap.data());
+            } catch (error) {
+                console.error("Error fetching export config:", error);
+            }
+        };
+
+        fetchSettings();
+        fetchExportConfig();
+    }, []);
+
+
+    useEffect(() => {
         if (!currentUser || (currentUser.role === 'admin_desa' && !currentUser.desa)) {
             setLoading(false);
             return;
@@ -131,9 +164,46 @@ const Perangkat = () => {
             }
         }
     }, [allPerangkat, searchParams, navigate, location.pathname]);
+    
+    const isDataLengkap = (perangkat) => {
+        if (!perangkat.nama && !perangkat.nik) return false;
+        const requiredFields = [
+            'nama', 'jabatan', 'nik', 'tempat_lahir', 'tgl_lahir', 
+            'pendidikan', 'no_sk', 'tgl_sk', 'tgl_pelantikan', 
+            'foto_url', 'ktp_url'
+        ];
+        return requiredFields.every(field => perangkat[field] && String(perangkat[field]).trim() !== '');
+    };
+    
+    const calculateAkhirJabatan = (tglLahir) => {
+        if (!tglLahir || !(typeof tglLahir === 'string' || tglLahir instanceof Date)) return null;
+        try {
+            let birthDate = tglLahir instanceof Date ? tglLahir : new Date(tglLahir.replace(/-/g, '/'));
+            
+            if (isNaN(birthDate.getTime())) {
+                 let parts = tglLahir.split('-');
+                 if (parts.length === 3 && parts[2].length === 4) { // DD-MM-YYYY
+                    birthDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                 } else {
+                    return null
+                 }
+            }
+            
+            if (isNaN(birthDate.getTime())) return null;
+    
+            birthDate.setFullYear(birthDate.getFullYear() + 60);
+            const year = birthDate.getFullYear();
+            const month = String(birthDate.getMonth() + 1).padStart(2, '0');
+            const day = String(birthDate.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        } catch (error) {
+            console.error("Invalid date for tglLahir:", tglLahir);
+            return null;
+        }
+    };
 
     useEffect(() => {
-        if (formData.tgl_lahir && modalMode === 'edit') {
+        if (formData.tgl_lahir && (modalMode === 'edit' || modalMode === 'add')) {
             const calculatedDate = calculateAkhirJabatan(formData.tgl_lahir);
             if (calculatedDate !== formData.akhir_jabatan) {
                 setFormData(prevData => ({ ...prevData, akhir_jabatan: calculatedDate }));
@@ -153,8 +223,8 @@ const Perangkat = () => {
                 if (!searchTerm) return true;
                 const search = searchTerm.toLowerCase();
                 return (p.nama && p.nama.toLowerCase().includes(search)) || 
-                       (p.nip && p.nip.includes(search)) ||
-                       (p.nik && p.nik.includes(search));
+                       (p.nip && String(p.nip).includes(search)) ||
+                       (p.nik && String(p.nik).includes(search));
             });
     }, [allPerangkat, searchTerm, filterDesa, currentUser]);
 
@@ -163,16 +233,16 @@ const Perangkat = () => {
         setSelectedPerangkat(perangkat);
         const initialDesa = currentUser.role === 'admin_desa' ? currentUser.desa : (perangkat ? perangkat.desa : '');
         
-        let initialFormData = perangkat ? { ...perangkat } : { desa: initialDesa };
+        let initialFormData = perangkat ? { ...perangkat } : { desa: initialDesa, jabatan: '', pendidikan: '' };
 
-        if (perangkat && perangkat.jabatan && !JABATAN_LIST.includes(perangkat.jabatan)) {
+        if (perangkat && perangkat.jabatan && !jabatanList.includes(perangkat.jabatan)) {
             initialFormData.jabatan_custom = perangkat.jabatan;
             initialFormData.jabatan = 'Lainnya';
         } else {
             initialFormData.jabatan_custom = '';
         }
 
-        if (perangkat && perangkat.pendidikan && !PENDIDIKAN_LIST.includes(perangkat.pendidikan)) {
+        if (perangkat && perangkat.pendidikan && !pendidikanList.includes(perangkat.pendidikan)) {
             initialFormData.pendidikan_custom = perangkat.pendidikan;
             initialFormData.pendidikan = 'Lainnya';
         } else {
@@ -208,6 +278,22 @@ const Perangkat = () => {
         const result = await res.json();
         return result.secure_url;
     };
+    
+    const findJabatanKosongAtauPurna = async (jabatan, desa) => {
+        const q = query(collection(db, 'perangkat'), where("desa", "==", desa), where("jabatan", "==", jabatan));
+        const querySnapshot = await getDocs(q);
+        let docToUpdate = null;
+        querySnapshot.forEach(doc => {
+            const data = doc.data();
+            const isPurna = data.akhir_jabatan && new Date(data.akhir_jabatan) < new Date();
+            const isKosong = !data.nama && !data.nik;
+
+            if (isPurna || isKosong) {
+                docToUpdate = { id: doc.id, data: data };
+            }
+        });
+        return docToUpdate;
+    };
 
     const handleFormSubmit = async (e) => {
         e.preventDefault();
@@ -221,22 +307,12 @@ const Perangkat = () => {
         }
 
         if (dataToSave.jabatan === 'Lainnya') {
-            if (!dataToSave.jabatan_custom || dataToSave.jabatan_custom.trim() === '') {
-                alert("Jabatan Lainnya harus diisi!");
-                setIsSubmitting(false);
-                return;
-            }
-            dataToSave.jabatan = dataToSave.jabatan_custom;
+            dataToSave.jabatan = dataToSave.jabatan_custom || '';
         }
         delete dataToSave.jabatan_custom;
         
         if (dataToSave.pendidikan === 'Lainnya') {
-            if (!dataToSave.pendidikan_custom || dataToSave.pendidikan_custom.trim() === '') {
-                alert("Pendidikan Lainnya harus diisi!");
-                setIsSubmitting(false);
-                return;
-            }
-            dataToSave.pendidikan = dataToSave.pendidikan_custom;
+            dataToSave.pendidikan = dataToSave.pendidikan_custom || '';
         }
         delete dataToSave.pendidikan_custom;
 
@@ -250,15 +326,23 @@ const Perangkat = () => {
 
             if (fotoProfilUrl) dataToSave.foto_url = fotoProfilUrl;
             if (fotoKtpUrl) dataToSave.ktp_url = fotoKtpUrl;
-
+            
             if (selectedPerangkat) {
                 const docRef = doc(db, 'perangkat', selectedPerangkat.id);
                 await updateDoc(docRef, dataToSave);
                 alert('Data berhasil diperbarui!');
             } else {
-                await addDoc(collection(db, 'perangkat'), dataToSave);
-                alert('Data berhasil ditambahkan!');
+                const existingDoc = await findJabatanKosongAtauPurna(dataToSave.jabatan, dataToSave.desa);
+                if (existingDoc) {
+                    const docRef = doc(db, 'perangkat', existingDoc.id);
+                    await updateDoc(docRef, dataToSave);
+                    alert(`Formasi jabatan ${dataToSave.jabatan} yang kosong/purna telah diisi.`);
+                } else {
+                    await addDoc(collection(db, 'perangkat'), dataToSave);
+                    alert('Data baru berhasil ditambahkan!');
+                }
             }
+            
             handleCloseModal();
         } catch (error) {
             console.error("Error saving document: ", error);
@@ -268,241 +352,174 @@ const Perangkat = () => {
         }
     };
     
-    const handleDelete = async (id) => {
-        if (window.confirm("Apakah Anda yakin ingin menghapus data ini?")) {
-            await deleteDoc(doc(db, 'perangkat', id));
+    const kosongkanData = async (id) => {
+        if (window.confirm("Yakin ingin mengosongkan data personel?")) {
+            try {
+                const perangkatRef = doc(db, 'perangkat', id);
+                const perangkatSnap = await getDoc(perangkatRef);
+                if (perangkatSnap.exists()) {
+                    const { jabatan, desa } = perangkatSnap.data();
+                    const dataToUpdate = {
+                        nama: null, nik: null, jenis_kelamin: null, tempat_lahir: null, tgl_lahir: null,
+                        pendidikan: null, no_sk: null, tgl_sk: null, tgl_pelantikan: null,
+                        akhir_jabatan: null, no_hp: null, nip: null, foto_url: null, ktp_url: null,
+                        jabatan, desa, status: 'Jabatan Kosong'
+                    };
+                    await updateDoc(perangkatRef, dataToUpdate);
+                    alert('Data personel telah dikosongkan.');
+                }
+            } catch (error) {
+                console.error("Error clearing data:", error);
+                alert("Gagal mengosongkan data.");
+            }
         }
     };
     
-    // Fungsi baru untuk hapus massal
-    const handleDeleteFiltered = async () => {
-        if (filteredPerangkat.length === 0) {
-            alert("Tidak ada data untuk dihapus.");
-            return;
-        }
+    const kosongkanDataMassal = async () => {
+        if (filteredPerangkat.length === 0) return alert("Tidak ada data untuk dikosongkan.");
 
-        let confirmationMessage = `Apakah Anda yakin ingin menghapus ${filteredPerangkat.length} data perangkat yang ditampilkan?`;
-        if (currentUser.role === 'admin_kecamatan') {
-            if (filterDesa === 'all') {
-                confirmationMessage = `PERINGATAN! Anda akan menghapus ${filteredPerangkat.length} data perangkat dari SEMUA DESA yang ditampilkan. Tindakan ini tidak dapat diurungkan. Lanjutkan?`;
-            } else {
-                confirmationMessage = `Anda akan menghapus ${filteredPerangkat.length} data perangkat dari Desa ${filterDesa}. Lanjutkan?`;
-            }
-        }
-        
-        if (window.confirm(confirmationMessage)) {
+        if (window.confirm(`Yakin ingin mengosongkan ${filteredPerangkat.length} data personel yang ditampilkan?`)) {
             setIsDeleting(true);
             try {
                 const batch = writeBatch(db);
-                filteredPerangkat.forEach(perangkat => {
-                    const docRef = doc(db, 'perangkat', perangkat.id);
-                    batch.delete(docRef);
+                filteredPerangkat.forEach(p => {
+                    const docRef = doc(db, 'perangkat', p.id);
+                    const dataToUpdate = {
+                        nama: null, nik: null, jenis_kelamin: null, tempat_lahir: null, tgl_lahir: null,
+                        pendidikan: null, no_sk: null, tgl_sk: null, tgl_pelantikan: null,
+                        akhir_jabatan: null, no_hp: null, nip: null, foto_url: null, ktp_url: null,
+                        status: 'Jabatan Kosong'
+                    };
+                    batch.update(docRef, dataToUpdate);
                 });
                 await batch.commit();
-                alert(`${filteredPerangkat.length} data berhasil dihapus.`);
+                alert(`${filteredPerangkat.length} data berhasil dikosongkan.`);
             } catch (error) {
-                console.error("Gagal menghapus data massal:", error);
-                alert("Terjadi kesalahan saat menghapus data.");
+                alert("Terjadi kesalahan saat mengosongkan data.");
             } finally {
                 setIsDeleting(false);
             }
         }
     };
 
-    const getExportData = () => {
-        return allPerangkat
-            .filter(p => {
-                if (currentUser.role === 'admin_desa') return p.desa === currentUser.desa;
-                if (filterDesa === 'all') return true;
-                return p.desa === filterDesa;
-            })
-            .filter(p => {
-                if (!searchTerm) return true;
-                const search = searchTerm.toLowerCase();
-                return (p.nama && p.nama.toLowerCase().includes(search)) || 
-                       (p.nip && p.nip.includes(search)) ||
-                       (p.nik && p.nik.includes(search));
-            });
-    };
-
-    const handleExport = (format) => {
-        const dataToExport = getExportData();
+    const handleExportXLSX = () => {
+        const dataToExport = filteredPerangkat;
+        if (dataToExport.length === 0) return alert("Tidak ada data untuk diekspor.");
         
-        if (dataToExport.length === 0) {
-            alert("Tidak ada data untuk diekspor sesuai filter yang dipilih.");
-            return;
-        }
-
-        let groupedData = [];
-        if (currentUser.role === 'admin_kecamatan' && filterDesa === 'all') {
-            const desaGroups = dataToExport.reduce((acc, p) => {
-                const desa = p.desa || 'Tanpa Desa';
-                (acc[desa] = acc[desa] || []).push(p);
+        let groupedData;
+        if (filterDesa === 'all' && currentUser.role === 'admin_kecamatan') {
+            groupedData = dataToExport.reduce((acc, p) => {
+                (acc[p.desa] = acc[p.desa] || []).push(p);
                 return acc;
             }, {});
-            groupedData = Object.keys(desaGroups).map(desa => ({
-                desa: desa,
-                perangkat: desaGroups[desa]
-            }));
+            groupedData = Object.entries(groupedData).map(([desa, perangkat]) => ({ desa, perangkat }));
         } else {
-            const desaName = currentUser.role === 'admin_desa' ? currentUser.desa : filterDesa;
+            const desaName = filterDesa !== 'all' ? filterDesa : currentUser.desa;
             groupedData = [{ desa: desaName, perangkat: dataToExport }];
         }
-        
-        if (!exportConfig) {
-            alert("Pengaturan ekspor belum dimuat. Silakan atur di halaman Pengaturan.");
-            return;
-        }
-
-        if (format === 'pdf') {
-            generatePerangkatPDF(groupedData, exportConfig);
-        } else if (format === 'xlsx') {
-            generatePerangkatXLSX(groupedData, exportConfig);
-        }
+        generatePerangkatXLSX(groupedData, exportConfig);
     };
-    
-    // Logika upload dikembalikan ke versi sederhana
+
     const handleFileUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
-        if (!uploadConfig || Object.values(uploadConfig).every(v => v === '')) {
-            alert("Pengaturan format upload belum diatur. Silakan atur di halaman Pengaturan Aplikasi.");
-            e.target.value = null;
-            return;
-        }
-
+    
         setIsUploading(true);
         const reader = new FileReader();
-
-        reader.onload = async (evt) => {
+    
+        reader.onload = async (event) => {
             try {
-                const existingNiks = new Set(allPerangkat.map(p => String(p.nik || '').trim()).filter(Boolean));
-                const existingNameDobDesa = new Set(allPerangkat.map(p => {
-                    const nik = String(p.nik || '').trim();
-                    if (!nik) {
-                        const nama = String(p.nama || '').toLowerCase().trim();
-                        const tglLahir = String(p.tgl_lahir || '').trim();
-                        const desa = String(p.desa || '').trim();
-                        if (nama && tglLahir && desa) return `${nama}_${tglLahir}_${desa}`;
+                const data = new Uint8Array(event.target.result);
+                // Read file with options to handle dates and prevent formula objects
+                const workbook = XLSX.read(data, { type: 'array', cellDates: true, cellFormula: false });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+    
+                const header = ["desa", "nama", "jenis_kelamin_l", "jenis_kelamin_p", "jabatan", "tempat_lahir", "tgl_lahir", "pendidikan_sd", "pendidikan_sltp", "pendidikan_slta", "pendidikan_d1", "pendidikan_d2", "pendidikan_d3", "pendidikan_s1", "pendidikan_s2", "pendidikan_s3", "no_sk", "tgl_sk", "tgl_pelantikan", "akhir_jabatan", "no_hp", "nik"];
+                // Convert sheet to JSON, forcing all values to strings (raw: false) except for dates.
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header, range: 1, blankrows: false, raw: false });
+    
+                const dataRows = jsonData.map(row => {
+                    const newDoc = {
+                        desa: row.desa,
+                        nama: row.nama,
+                        jabatan: row.jabatan,
+                        tempat_lahir: row.tempat_lahir,
+                        tgl_lahir: row.tgl_lahir,
+                        no_sk: row.no_sk,
+                        tgl_sk: row.tgl_sk,
+                        tgl_pelantikan: row.tgl_pelantikan,
+                        akhir_jabatan: row.akhir_jabatan,
+                        no_hp: row.no_hp,
+                        nik: row.nik,
+                    };
+                    
+                    // Sanitize dates - convert formatted strings back to Date objects
+                    ['tgl_lahir', 'tgl_sk', 'tgl_pelantikan', 'akhir_jabatan'].forEach(field => {
+                        if (typeof newDoc[field] === 'string') {
+                            const date = new Date(newDoc[field]);
+                            if (!isNaN(date.getTime())) {
+                                newDoc[field] = date;
+                            }
+                        }
+                    });
+
+                    newDoc.jenis_kelamin = row.jenis_kelamin_l ? 'L' : (row.jenis_kelamin_p ? 'P' : null);
+    
+                    const pendidikanMapping = {
+                        pendidikan_sd: 'SD', pendidikan_sltp: 'SLTP', pendidikan_slta: 'SLTA',
+                        pendidikan_d1: 'D1', pendidikan_d2: 'D2', pendidikan_d3: 'D3',
+                        pendidikan_s1: 'S1', pendidikan_s2: 'S2', pendidikan_s3: 'S3',
+                    };
+
+                    for (const key in pendidikanMapping) {
+                        if (row[key]) {
+                            newDoc.pendidikan = pendidikanMapping[key];
+                            break;
+                        }
+                    }
+    
+                    if (newDoc.nama && newDoc.jabatan) {
+                        if(newDoc.tgl_lahir) newDoc.akhir_jabatan = calculateAkhirJabatan(newDoc.tgl_lahir);
+                        return newDoc;
                     }
                     return null;
-                }).filter(Boolean));
-
-                const fileContent = evt.target.result;
-                const wb = XLSX.read(fileContent, { type: 'binary', cellDates: true });
-                const wsname = wb.SheetNames[0];
-                const ws = wb.Sheets[wsname];
-                const data = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, raw: false });
-
-                const namaHeader = uploadConfig.nama;
-                if (!namaHeader) throw new Error("Format upload tidak valid: Header untuk 'nama' tidak diatur.");
-                
-                const headerRowIndex = data.findIndex(row => Array.isArray(row) && row.some(cell => String(cell || '').trim() === namaHeader));
-                if (headerRowIndex === -1) throw new Error(`Header '${namaHeader}' tidak ditemukan di file. Pastikan format upload sesuai dengan pengaturan.`);
-
-                const headers = data[headerRowIndex].map(h => String(h || '').trim());
-                const dataRows = data.slice(headerRowIndex + 1);
-
-                const reverseUploadConfig = {};
-                for (const key in uploadConfig) {
-                    reverseUploadConfig[uploadConfig[key]] = key;
-                }
-
+                }).filter(Boolean);
+    
+                if (dataRows.length === 0) throw new Error("Tidak ada data valid yang ditemukan.");
+    
                 const batch = writeBatch(db);
-                let newEntriesCount = 0;
-                const duplicatesByNik = [];
-                const duplicatesByData = [];
+                let updatedCount = 0;
+                let createdCount = 0;
+    
+                for (const item of dataRows) {
+                    if (currentUser.role === 'admin_desa' && item.desa !== currentUser.desa) continue;
 
-                dataRows.forEach(rowArray => {
-                    if (!Array.isArray(rowArray) || rowArray.length === 0 || !rowArray.some(cell => cell)) return;
-
-                    const item = {};
-                    headers.forEach((header, index) => {
-                        if (header && rowArray[index] !== undefined) item[header] = rowArray[index];
-                    });
-
-                    const newItem = {};
-                    for (const fileHeader in item) {
-                        const firestoreKey = reverseUploadConfig[fileHeader];
-                        if (firestoreKey) {
-                            let value = item[fileHeader];
-                            if (firestoreKey.toLowerCase().includes('tgl') && value instanceof Date) {
-                                const userTimezoneOffset = value.getTimezoneOffset() * 60000;
-                                value = new Date(value.getTime() - userTimezoneOffset).toISOString().split('T')[0];
-                            }
-                            newItem[firestoreKey] = value;
-                        }
+                    const vacantDoc = await findJabatanKosongAtauPurna(item.jabatan, item.desa);
+                    if (vacantDoc) {
+                        batch.update(doc(db, 'perangkat', vacantDoc.id), item);
+                        updatedCount++;
+                    } else {
+                        batch.set(doc(collection(db, 'perangkat')), item);
+                        createdCount++;
                     }
-
-                    if (uploadConfig.ttl && item[uploadConfig.ttl]) {
-                        const [tempat_lahir, tgl_lahir_str] = String(item[uploadConfig.ttl]).split(',').map(s => s.trim());
-                        newItem.tempat_lahir = tempat_lahir;
-                        if (tgl_lahir_str) {
-                             try {
-                               const parsedDate = new Date(tgl_lahir_str.replace(/(\d{2})[/-](\d{2})[/-](\d{4})/, '$3-$2-$1'));
-                               if (!isNaN(parsedDate)) newItem.tgl_lahir = parsedDate.toISOString().split('T')[0];
-                             } catch(e) {}
-                        }
-                    }
-                    
-                    Object.keys(newItem).forEach(key => {
-                        if (newItem[key] === undefined) {
-                            newItem[key] = null;
-                        }
-                    });
-
-                    if (currentUser.role === 'admin_desa') newItem.desa = currentUser.desa;
-                    
-                    if (!newItem.nama || !newItem.jabatan) return;
-
-                    const nik = String(newItem.nik || '').trim();
-                    const nama = String(newItem.nama || '').toLowerCase().trim();
-                    const tglLahir = String(newItem.tgl_lahir || '').trim();
-                    const desa = String(newItem.desa || '').trim();
-                    
-                    let isDuplicate = false;
-                    if (nik) {
-                        if (existingNiks.has(nik)) {
-                            duplicatesByNik.push(newItem.nama);
-                            isDuplicate = true;
-                        }
-                    } else if (nama && tglLahir && desa) {
-                        if (existingNameDobDesa.has(`${nama}_${tglLahir}_${desa}`)) {
-                            duplicatesByData.push(newItem.nama);
-                            isDuplicate = true;
-                        }
-                    }
-
-                    if (!isDuplicate) {
-                        const docRef = doc(collection(db, 'perangkat'));
-                        batch.set(docRef, newItem);
-                        if (nik) existingNiks.add(nik);
-                        if (!nik && nama && tglLahir && desa) existingNameDobDesa.add(`${nama}_${tglLahir}_${desa}`);
-                        newEntriesCount++;
-                    }
-                });
-
-                if (newEntriesCount > 0) await batch.commit();
-
-                let alertMessage = `${newEntriesCount} data baru berhasil diimpor.`;
-                if (duplicatesByNik.length > 0) alertMessage += `\n\n${duplicatesByNik.length} data dilewati karena NIK sudah ada:\n- ${duplicatesByNik.join('\n- ')}`;
-                if (duplicatesByData.length > 0) alertMessage += `\n\n${duplicatesByData.length} data dilewati karena Nama + Tgl Lahir + Desa sudah ada:\n- ${duplicatesByData.join('\n- ')}`;
-                alert(alertMessage);
-
+                }
+    
+                await batch.commit();
+                alert(`Impor berhasil!\n- ${updatedCount} jabatan diisi.\n- ${createdCount} data baru ditambahkan.`);
+    
             } catch (error) {
-                console.error("Error processing file: ", error);
                 alert(`Gagal memproses file: ${error.message}`);
             } finally {
                 setIsUploading(false);
-                e.target.value = null;
+                if (e.target) e.target.value = null;
             }
         };
-
-        reader.readAsBinaryString(file);
+        reader.readAsArrayBuffer(file);
     };
-    if (loading) return <Spinner size="lg"/>;
 
+    if (loading) return <Spinner size="lg"/>;
+    
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md transition-colors duration-300">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
@@ -515,36 +532,31 @@ const Perangkat = () => {
                         <FiFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                          <select value={filterDesa} onChange={(e) => setFilterDesa(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg appearance-none bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                             <option value="all">Semua Desa</option>
-                            {DESA_LIST.map(desa => <option key={desa} value={desa}>{desa}</option>)}
+                            {desaList.sort().map(desa => <option key={desa} value={desa}>{desa}</option>)}
                         </select>
                     </div>
                 )}
             </div>
             <div className="flex flex-wrap justify-end gap-2 mb-4">
                 <button
-                    onClick={handleDeleteFiltered}
+                    onClick={kosongkanDataMassal}
                     className="px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 flex items-center gap-2 disabled:bg-red-400 disabled:cursor-not-allowed"
                     disabled={isDeleting || filteredPerangkat.length === 0}
+                    title="Kosongkan data personel dari jabatan yang ditampilkan (data jabatan tetap ada)."
                 >
-                    <FiTrash2 /> {isDeleting ? 'Menghapus...' : `Hapus ${filteredPerangkat.length} Data`}
+                    <FiUserX /> {isDeleting ? 'Memproses...' : `Kosongkan ${filteredPerangkat.length} Jabatan`}
                 </button>
-                {currentUser.role === 'admin_kecamatan' && (
-                    <>
-                        <label className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 cursor-pointer flex items-center gap-2">
-                            <FiUpload/> {isUploading ? 'Mengupload...' : 'Impor Data'}
-                            <input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls, .csv, .json" disabled={isUploading}/>
-                        </label>
-                        <button onClick={() => handleExport('xlsx')} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2">
-                            <FiDownload/> Ekspor XLSX
-                        </button>
-                    </>
-                )}
-                <button onClick={() => handleExport('pdf')} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2"><FiDownload/> Ekspor PDF</button>
-                {currentUser.role === 'admin_desa' && (
-                    <button onClick={() => handleOpenModal(null, 'edit')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
-                        <FiPlus/> Tambah Data
-                    </button>
-                )}
+
+                <label className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 cursor-pointer flex items-center gap-2">
+                    <FiUpload/> {isUploading ? 'Mengimpor...' : 'Impor Data'}
+                    <input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls, .csv" disabled={isUploading}/>
+                </label>
+                <button onClick={handleExportXLSX} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2">
+                    <FiDownload/> Ekspor XLSX
+                </button>
+                <button onClick={() => handleOpenModal(null, 'add')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                    <FiPlus/> Tambah Data
+                </button>
             </div>
             
             <div className="overflow-x-auto">
@@ -554,89 +566,101 @@ const Perangkat = () => {
                             <th className="px-6 py-3">Nama Lengkap</th>
                             <th className="px-6 py-3">Jabatan</th>
                             {currentUser.role === 'admin_kecamatan' && <th className="px-6 py-3">Desa</th>}
-                            <th className="px-6 py-3">Status Data</th>
+                            <th className="px-6 py-3">Status</th>
                             <th className="px-6 py-3">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {filteredPerangkat.length > 0 ? filteredPerangkat.map((p) => (
-                            <tr key={p.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                        {filteredPerangkat.length > 0 ? filteredPerangkat.map((p) => {
+                            const isPurna = p.akhir_jabatan && new Date(p.akhir_jabatan) < new Date();
+                            const isKosong = !p.nama && !p.nik;
+                            
+                            return (
+                                <tr key={p.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
                                 <td className="px-6 py-4 font-medium flex items-center gap-3 text-gray-900 dark:text-white">
-                                    <img src={p.foto_url || `https://ui-avatars.com/api/?name=${p.nama}&background=E2E8F0&color=4A5568`} alt={p.nama} className="w-10 h-10 rounded-full object-cover"/>
+                                    {isKosong ? (
+                                         <div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 flex items-center justify-center rounded-full text-gray-500">
+                                            <FiBriefcase />
+                                         </div>
+                                    ) : (
+                                        <img src={p.foto_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.nama || 'X')}&background=E2E8F0&color=4A5568`} alt={p.nama || 'Jabatan Kosong'} className="w-10 h-10 rounded-full object-cover"/>
+                                    )}
                                     <div>
-                                        <p className="font-semibold">{p.nama}</p>
+                                        <p className="font-semibold">{p.nama || '(Jabatan Kosong)'}</p>
                                         <p className="text-xs text-gray-500 dark:text-gray-400">{p.nik || 'NIK belum diisi'}</p>
                                     </div>
                                 </td>
                                 <td className="px-6 py-4">{p.jabatan}</td>
                                 {currentUser.role === 'admin_kecamatan' && <td className="px-6 py-4">{p.desa}</td>}
                                 <td className="px-6 py-4">
-                                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${isDataLengkap(p) ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'}`}>
-                                        {isDataLengkap(p) ? 'Lengkap' : 'Belum Lengkap'}
-                                    </span>
+                                    {isPurna ? (
+                                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300">Purna Tugas</span>
+                                    ) : isKosong ? (
+                                         <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">Jabatan Kosong</span>
+                                    ) : (
+                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${isDataLengkap(p) ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'}`}>
+                                            {isDataLengkap(p) ? 'Lengkap' : 'Belum Lengkap'}
+                                        </span>
+                                    )}
                                 </td>
                                 <td className="px-6 py-4 flex space-x-3">
-                                    {currentUser.role === 'admin_kecamatan' && (
-                                        <>
-                                            <button onClick={() => handleOpenModal(p, 'view')} className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" title="Lihat Detail"><FiEye /></button>
-                                            <button onClick={() => handleOpenModal(p, 'edit')} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300" title="Edit"><FiEdit /></button>
-                                        </>
-                                    )}
-                                    {currentUser.role === 'admin_desa' && (
-                                        <button onClick={() => handleOpenModal(p, 'edit')} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300" title="Edit"><FiEdit /></button>
-                                    )}
-                                    <button onClick={() => handleDelete(p.id)} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Hapus"><FiTrash2 /></button>
+                                    { (currentUser.role === 'admin_kecamatan' || (currentUser.role === 'admin_desa' && !isKosong)) &&
+                                      <button onClick={() => handleOpenModal(p, 'view')} className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" title="Lihat Detail"><FiEye /></button>
+                                    }
+                                    <button onClick={() => handleOpenModal(p, 'edit')} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300" title={isKosong ? "Isi Jabatan" : "Edit"}><FiEdit /></button>
+                                    { !isKosong && 
+                                      <button onClick={() => kosongkanData(p.id)} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Kosongkan Jabatan"><FiUserX /></button>
+                                    }
                                 </td>
                             </tr>
-                        )) : (
+                            )
+                        }) : (
                             <tr>
-                                <td colSpan="5" className="text-center py-10 text-gray-500 dark:text-gray-400">Belum ada data perangkat.</td>
+                                <td colSpan="5" className="text-center py-10 text-gray-500 dark:text-gray-400">Belum ada data perangkat atau hasil filter kosong.</td>
                             </tr>
                         )}
                     </tbody>
                 </table>
             </div>
 
-            <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={modalMode === 'edit' ? (selectedPerangkat ? 'Edit Data Perangkat' : 'Tambah Data Perangkat') : 'Detail Data Perangkat'}>
-                <form onSubmit={handleFormSubmit} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {Object.entries({
-                            desa: 'Desa', nama: 'Nama Lengkap', nik: 'NIK', jenis_kelamin: 'Jenis Kelamin',
-                            tempat_lahir: 'Tempat Lahir', tgl_lahir: 'Tanggal Lahir',
-                            no_sk: 'Nomor SK', tgl_sk: 'Tanggal SK', tgl_pelantikan: 'Tanggal Pelantikan',
-                            no_hp: 'No. HP / WA', nip: 'NIP/NIPD',
-                        }).map(([key, label]) => (
-                            <div key={key}>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
-                                {modalMode === 'view' ? (
-                                    <p className="mt-1 p-2 bg-gray-100 dark:bg-gray-700 rounded-md min-h-[42px] text-gray-800 dark:text-gray-200">{formData[key] || '-'}</p>
-                                ) : (
-                                    key === 'desa' ? (
-                                        <select name={key} value={formData[key] || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2" required disabled={currentUser.role === 'admin_desa'}>
-                                            <option value="">Pilih Desa</option>
-                                            {DESA_LIST.map(desa => <option key={desa} value={desa}>{desa}</option>)}
-                                        </select>
-                                    ) : key === 'jenis_kelamin' ? (
-                                        <select name={key} value={formData[key] || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2">
-                                            <option value="">Pilih Jenis Kelamin</option>
-                                            <option value="L">Laki-laki</option>
-                                            <option value="P">Perempuan</option>
-                                        </select>
-                                    ) : (
-                                        <input type={key.includes('tgl') ? 'date' : 'text'} name={key} value={formData[key] || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2"/>
-                                    )
-                                )}
-                            </div>
-                        ))}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Pendidikan Terakhir</label>
-                            {modalMode === 'view' ? (
-                                <p className="mt-1 p-2 bg-gray-100 dark:bg-gray-700 rounded-md min-h-[42px] text-gray-800 dark:text-gray-200">{formData.pendidikan || '-'}</p>
-                            ) : (
+            <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={modalMode === 'view' ? 'Detail Data Perangkat' : (selectedPerangkat ? 'Edit Data Perangkat' : 'Tambah Data Perangkat')}>
+                 {modalMode === 'view' && selectedPerangkat ? (
+                    <PerangkatDetailView perangkat={selectedPerangkat} />
+                 ) : (
+                    <form onSubmit={handleFormSubmit} className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {Object.entries({
+                                desa: 'Desa', nama: 'Nama Lengkap', nik: 'NIK', jenis_kelamin: 'Jenis Kelamin',
+                                tempat_lahir: 'Tempat Lahir', tgl_lahir: 'Tanggal Lahir',
+                                no_sk: 'Nomor SK', tgl_sk: 'Tanggal SK', tgl_pelantikan: 'Tanggal Pelantikan',
+                                no_hp: 'No. HP / WA', nip: 'NIP/NIPD',
+                            }).map(([key, label]) => (
+                                <div key={key}>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
+                                    {
+                                        key === 'desa' ? (
+                                            <select name={key} value={formData[key] || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2" required disabled={currentUser.role === 'admin_desa'}>
+                                                <option value="">Pilih Desa</option>
+                                                {desaList.sort().map(desa => <option key={desa} value={desa}>{desa}</option>)}
+                                            </select>
+                                        ) : key === 'jenis_kelamin' ? (
+                                            <select name={key} value={formData[key] || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2">
+                                                <option value="">Pilih Jenis Kelamin</option>
+                                                <option value="L">Laki-laki</option>
+                                                <option value="P">Perempuan</option>
+                                            </select>
+                                        ) : (
+                                            <input type={key.includes('tgl') ? 'date' : 'text'} name={key} value={formData[key] || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2"/>
+                                        )
+                                    }
+                                </div>
+                            ))}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Pendidikan Terakhir</label>
                                 <>
                                     <select name="pendidikan" value={formData.pendidikan || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2">
                                         <option value="">Pilih Pendidikan</option>
-                                        {PENDIDIKAN_LIST.map(p => <option key={p} value={p}>{p}</option>)}
+                                        {pendidikanList.map(p => <option key={p} value={p}>{p}</option>)}
                                         <option value="Lainnya">Lainnya...</option>
                                     </select>
                                     {formData.pendidikan === 'Lainnya' && (
@@ -651,28 +675,24 @@ const Perangkat = () => {
                                         />
                                     )}
                                 </>
-                            )}
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Akhir Masa Jabatan</label>
-                            <input 
-                                type="date" 
-                                name="akhir_jabatan" 
-                                value={formData.akhir_jabatan || ''} 
-                                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm p-2 bg-gray-100 dark:bg-gray-600 cursor-not-allowed text-gray-500 dark:text-gray-400"
-                                readOnly
-                                disabled
-                            />
-                        </div>
-                        <div className="md:col-span-2">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Jabatan</label>
-                            {modalMode === 'view' ? (
-                                <p className="mt-1 p-2 bg-gray-100 dark:bg-gray-700 rounded-md min-h-[42px] text-gray-800 dark:text-gray-200">{selectedPerangkat?.jabatan || '-'}</p>
-                            ) : (
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Akhir Masa Jabatan</label>
+                                <input 
+                                    type="date" 
+                                    name="akhir_jabatan" 
+                                    value={formData.akhir_jabatan || ''} 
+                                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm p-2 bg-gray-100 dark:bg-gray-600 cursor-not-allowed text-gray-500 dark:text-gray-400"
+                                    readOnly
+                                    disabled
+                                />
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Jabatan</label>
                                 <>
-                                    <select name="jabatan" value={formData.jabatan || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2">
+                                    <select name="jabatan" value={formData.jabatan || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2" disabled={!!selectedPerangkat && !(!selectedPerangkat.nama && !selectedPerangkat.nik)}>
                                         <option value="">Pilih Jabatan</option>
-                                        {JABATAN_LIST.map(jabatan => <option key={jabatan} value={jabatan}>{jabatan}</option>)}
+                                        {jabatanList.map(jabatan => <option key={jabatan} value={jabatan}>{jabatan}</option>)}
                                         <option value="Lainnya">Jabatan Lainnya...</option>
                                     </select>
                                     {formData.jabatan === 'Lainnya' && (
@@ -684,44 +704,35 @@ const Perangkat = () => {
                                             placeholder="Masukkan nama jabatan"
                                             className="mt-2 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2"
                                             required
+                                            disabled={!!selectedPerangkat && !(!selectedPerangkat.nama && !selectedPerangkat.nik)}
                                         />
                                     )}
                                 </>
-                            )}
-                        </div>
-                        <div className="md:col-span-2">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Foto Profil</label>
-                            {modalMode === 'view' ? (
-                                formData.foto_url ? <img src={formData.foto_url} alt="Foto Profil" className="mt-2 h-24 w-24 object-cover rounded-md"/> : <p className="mt-1 text-gray-500 dark:text-gray-400">- Tidak ada foto -</p>
-                            ) : (
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Foto Profil</label>
                                 <>
                                     <input type="file" onChange={(e) => setFotoProfilFile(e.target.files[0])} accept="image/*" className="mt-1 block w-full text-sm text-gray-500 dark:text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-900"/>
                                     {formData.foto_url && <img src={formData.foto_url} alt="Foto Profil Saat Ini" className="mt-2 h-24 w-24 object-cover rounded-md"/>}
                                 </>
-                            )}
-                        </div>
-                        <div className="md:col-span-2">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Foto KTP</label>
-                            {modalMode === 'view' ? (
-                                formData.ktp_url ? <img src={formData.ktp_url} alt="Foto KTP" className="mt-2 h-24 w-auto object-contain rounded-md"/> : <p className="mt-1 text-gray-500 dark:text-gray-400">- Tidak ada foto -</p>
-                            ) : (
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Foto KTP</label>
                                 <>
                                     <input type="file" onChange={(e) => setFotoKtpFile(e.target.files[0])} accept="image/*" className="mt-1 block w-full text-sm text-gray-500 dark:text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-900"/>
                                     {formData.ktp_url && <img src={formData.ktp_url} alt="Foto KTP Saat Ini" className="mt-2 h-24 w-auto object-contain rounded-md"/>}
                                 </>
-                            )}
+                            </div>
                         </div>
-                    </div>
-                    <div className="flex justify-end pt-4 border-t mt-6 dark:border-gray-700">
-                        <button type="button" onClick={handleCloseModal} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md mr-2" disabled={isSubmitting}>Tutup</button>
-                        {modalMode === 'edit' && (
+                        <div className="flex justify-end pt-4 border-t mt-6 dark:border-gray-700">
+                            <button type="button" onClick={handleCloseModal} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md mr-2" disabled={isSubmitting}>Tutup</button>
                             <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md flex items-center" disabled={isSubmitting}>
                                 {isSubmitting && <Spinner size="sm" />}
                                 {isSubmitting ? 'Menyimpan...' : 'Simpan'}
                             </button>
-                        )}
-                    </div>
-                </form>
+                        </div>
+                    </form>
+                )}
             </Modal>
         </div>
     );

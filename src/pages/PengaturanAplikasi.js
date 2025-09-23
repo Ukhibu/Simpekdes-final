@@ -3,33 +3,6 @@ import { db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import Spinner from '../components/common/Spinner';
 
-// Disamakan dengan header dan mapping import di Perangkat.js
-const INTERNAL_FIELDS = {
-    desa: 'Desa',
-    nama: 'Nama Lengkap',
-    jabatan: 'Jabatan',
-    tempat_lahir: 'Tempat Lahir',
-    tgl_lahir: 'Tanggal Lahir',
-    no_sk: 'Nomor SK',
-    tgl_sk: 'Tanggal SK',
-    tgl_pelantikan: 'Tanggal Pelantikan',
-    akhir_jabatan: 'Akhir Masa Jabatan',
-    no_hp: 'No. HP / WA',
-    nik: 'NIK',
-    nip: 'NIP/NIPD',
-    jenis_kelamin_l: 'Laki-laki (Kolom Centang/1)',
-    jenis_kelamin_p: 'Perempuan (Kolom Centang/1)',
-    pendidikan_sd: 'Pendidikan SD',
-    pendidikan_sltp: 'Pendidikan SLTP',
-    pendidikan_slta: 'Pendidikan SLTA',
-    pendidikan_d1: 'Pendidikan D1',
-    pendidikan_d2: 'Pendidikan D2',
-    pendidikan_d3: 'Pendidikan D3',
-    pendidikan_s1: 'Pendidikan S1',
-    pendidikan_s2: 'Pendidikan S2',
-    pendidikan_s3: 'Pendidikan S3',
-};
-
 const PengaturanAplikasi = () => {
     const [activeTab, setActiveTab] = useState('branding');
     const [loading, setLoading] = useState(true);
@@ -37,7 +10,6 @@ const PengaturanAplikasi = () => {
 
     const [brandingConfig, setBrandingConfig] = useState({});
     const [exportConfig, setExportConfig] = useState({});
-    const [uploadConfig, setUploadConfig] = useState({});
     
     const [logoFile, setLogoFile] = useState(null);
 
@@ -47,17 +19,14 @@ const PengaturanAplikasi = () => {
             try {
                 const brandingRef = doc(db, 'settings', 'branding');
                 const exportRef = doc(db, 'settings', 'exportConfig');
-                const uploadRef = doc(db, 'settings', 'uploadConfig');
 
-                const [brandingSnap, exportSnap, uploadSnap] = await Promise.all([
+                const [brandingSnap, exportSnap] = await Promise.all([
                     getDoc(brandingRef),
-                    getDoc(exportRef),
-                    getDoc(uploadRef)
+                    getDoc(exportRef)
                 ]);
 
                 setBrandingConfig(brandingSnap.exists() ? brandingSnap.data() : { appName: 'SIMPEKDES', loginTitle: 'Sistem Informasi', loginSubtitle: 'Kecamatan Punggelan' });
                 setExportConfig(exportSnap.exists() ? exportSnap.data() : { namaPenandaTangan: 'NAMA CAMAT', jabatanPenandaTangan: 'Camat Punggelan' });
-                setUploadConfig(uploadSnap.exists() ? uploadSnap.data() : {});
 
             } catch (error) {
                 console.error("Gagal memuat konfigurasi:", error);
@@ -108,11 +77,6 @@ const PengaturanAplikasi = () => {
                 configData = exportConfig;
                 docRef = doc(db, 'settings', 'exportConfig');
                 await setDoc(docRef, configData, { merge: true });
-
-            } else if (configType === 'upload') {
-                configData = uploadConfig;
-                docRef = doc(db, 'settings', 'uploadConfig');
-                await setDoc(docRef, configData, { merge: true });
             }
 
             alert(`Pengaturan ${configType} berhasil disimpan!`);
@@ -137,9 +101,6 @@ const PengaturanAplikasi = () => {
                     </button>
                     <button onClick={() => setActiveTab('export')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'export' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'}`}>
                         Pengaturan Ekspor
-                    </button>
-                    <button onClick={() => setActiveTab('upload')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'upload' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'}`}>
-                        Format Upload
                     </button>
                 </nav>
             </div>
@@ -195,24 +156,6 @@ const PengaturanAplikasi = () => {
                         </div>
                         <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
                             <button onClick={() => handleSave('export')} disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded-md">{isSaving ? 'Menyimpan...' : 'Simpan Pengaturan Ekspor'}</button>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === 'upload' && (
-                    <div className="space-y-6">
-                        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Pemetaan Kolom Upload</h2>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Isi kolom kanan dengan nama header yang **persis** ada di file upload Anda (Excel, CSV, atau key di JSON).</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                            {Object.entries(INTERNAL_FIELDS).map(([key, label]) => (
-                                <div key={key}>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{label} <span className="text-gray-400">({key})</span></label>
-                                    <input type="text" value={uploadConfig[key] || ''} onChange={(e) => setUploadConfig({...uploadConfig, [key]: e.target.value})} className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"/>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
-                            <button onClick={() => handleSave('upload')} disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded-md">{isSaving ? 'Menyimpan...' : 'Simpan Format Upload'}</button>
                         </div>
                     </div>
                 )}

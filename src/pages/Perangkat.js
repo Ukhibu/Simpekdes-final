@@ -9,25 +9,30 @@ import * as XLSX from 'xlsx';
 import { generatePerangkatXLSX } from '../utils/generatePerangkatXLSX';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 
-// Fallback list in case data from Firestore is unavailable
+// --- PERBAIKAN: Daftar statis untuk memastikan dropdown selalu terisi ---
 const STATIC_DESA_LIST = [
     "Punggelan", "Petuguran", "Karangsari", "Jembangan", "Tanjungtirta", 
     "Sawangan", "Bondolharjo", "Danakerta", "Badakarya", "Tribuana", 
     "Sambong", "Klapa", "Kecepit", "Mlaya", "Sidarata", "Purwasana", "Tlaga"
 ];
+const JABATAN_LIST = [
+    "Kepala Desa", "Pj. Kepala Desa", "Sekretaris Desa", "Kasi Pemerintahan", "Kasi Kesejahteraan", "Kasi Pelayanan", "Kaur Tata Usaha dan Umum", "Kaur Keuangan", "Kaur Perencanaan", "Kepala Dusun", "Staf Desa"
+];
+const PENDIDIKAN_LIST = ["SD", "SLTP", "SLTA", "D1", "D2", "D3", "S1", "S2", "S3"];
 
-// Komponen Detail Perangkat untuk Modal (didefinisikan di luar komponen utama)
+
+// Komponen Detail Perangkat untuk Modal
 const PerangkatDetailView = ({ perangkat }) => {
     if (!perangkat) return null;
     const statusPurna = perangkat.akhir_jabatan && new Date(perangkat.akhir_jabatan) < new Date();
-    
+
     const DetailItem = ({ label, value }) => (
         <div>
             <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">{label}</p>
             <p className="text-gray-800 dark:text-gray-200">{value || '-'}</p>
         </div>
     );
-    
+
     const formatDate = (dateString) => {
         if (!dateString) return '';
         try {
@@ -42,16 +47,16 @@ const PerangkatDetailView = ({ perangkat }) => {
     return (
         <div className="space-y-6">
             <div className="text-center p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                <img 
-                    src={perangkat.foto_url || `https://ui-avatars.com/api/?name=${perangkat.nama}&background=0D8ABC&color=fff&size=128`} 
-                    alt={perangkat.nama} 
+                <img
+                    src={perangkat.foto_url || `https://ui-avatars.com/api/?name=${perangkat.nama}&background=0D8ABC&color=fff&size=128`}
+                    alt={perangkat.nama}
                     className="w-32 h-32 rounded-full object-cover mx-auto mb-4 border-4 border-white dark:border-gray-600 shadow-lg"
                 />
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white">{perangkat.nama}</h3>
                 <p className="text-gray-600 dark:text-gray-300">{perangkat.jabatan} - Desa {perangkat.desa}</p>
                  {statusPurna && <p className="mt-2 text-sm font-semibold text-red-500 dark:text-red-400">Telah Purna Tugas</p>}
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <DetailItem label="NIK" value={perangkat.nik} />
                 <DetailItem label="NIP/NIPD" value={perangkat.nip} />
@@ -89,11 +94,6 @@ const Perangkat = () => {
     const [selectedPerangkat, setSelectedPerangkat] = useState(null);
     const [formData, setFormData] = useState({});
     
-    // State for dynamic lists from settings
-    const [desaList, setDesaList] = useState(STATIC_DESA_LIST); // Initialize with static list
-    const [jabatanList, setJabatanList] = useState([]);
-    const [pendidikanList, setPendidikanList] = useState([]);
-
     const [fotoProfilFile, setFotoProfilFile] = useState(null);
     const [fotoKtpFile, setFotoKtpFile] = useState(null);
     
@@ -106,7 +106,6 @@ const Perangkat = () => {
     const [exportConfig, setExportConfig] = useState(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-    // New state for selection mode
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState(new Set());
     
@@ -114,25 +113,7 @@ const Perangkat = () => {
     const navigate = useNavigate();
     const location = useLocation();
 
-    // Fetch dynamic settings from Firestore
     useEffect(() => {
-        const fetchSettings = async () => {
-            try {
-                const settingsDoc = await getDoc(doc(db, 'settings', 'appConfig'));
-                if (settingsDoc.exists()) {
-                    const settings = settingsDoc.data();
-                    // If fetched list is valid, use it. Otherwise, the static list remains.
-                    if(settings.desaList && settings.desaList.length > 0) {
-                        setDesaList(settings.desaList);
-                    }
-                    setJabatanList(settings.jabatanList || []);
-                    setPendidikanList(settings.pendidikanList || []);
-                }
-            } catch (error) {
-                console.error("Error fetching settings, using fallback lists:", error);
-            }
-        };
-
         const fetchExportConfig = async () => {
             try {
                 const exportRef = doc(db, 'settings', 'exportConfig');
@@ -142,8 +123,6 @@ const Perangkat = () => {
                 console.error("Error fetching export config:", error);
             }
         };
-
-        fetchSettings();
         fetchExportConfig();
     }, []);
 
@@ -190,41 +169,73 @@ const Perangkat = () => {
         return requiredFields.every(field => perangkat[field] && String(perangkat[field]).trim() !== '');
     };
     
-    const calculateAkhirJabatan = (tglLahir) => {
-        if (!tglLahir || !(typeof tglLahir === 'string' || tglLahir instanceof Date)) return null;
-        try {
-            let birthDate = tglLahir instanceof Date ? tglLahir : new Date(tglLahir.replace(/-/g, '/'));
-            
-            if (isNaN(birthDate.getTime())) {
-                 let parts = tglLahir.split('-');
-                 if (parts.length === 3 && parts[2].length === 4) { // DD-MM-YYYY
-                    birthDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-                 } else {
-                    return null
-                 }
+    // Helper function to parse dates robustly and convert to YYYY-MM-DD
+    const excelDateToJSDate = (serial) => {
+        if (typeof serial === 'string') {
+            const date = new Date(serial);
+            if (!isNaN(date.getTime())) {
+                const userTimezoneOffset = date.getTimezoneOffset() * 60000;
+                return new Date(date.getTime() + userTimezoneOffset);
             }
-            
-            if (isNaN(birthDate.getTime())) return null;
+            return null;
+        }
+        if (typeof serial === 'number') {
+            const utc_days = Math.floor(serial - 25569);
+            const utc_value = utc_days * 86400;
+            const date_info = new Date(utc_value * 1000);
+            const fractional_day = serial - Math.floor(serial) + 0.0000001;
+            let total_seconds = Math.floor(86400 * fractional_day);
+            const seconds = total_seconds % 60;
+            total_seconds -= seconds;
+            const hours = Math.floor(total_seconds / (60 * 60));
+            const minutes = Math.floor(total_seconds / 60) % 60;
+            return new Date(date_info.getFullYear(), date_info.getMonth(), date_info.getDate(), hours, minutes, seconds);
+        }
+        return null;
+    };
+
+    const formatDateToYYYYMMDD = (date) => {
+        if (!date || isNaN(date.getTime())) return null;
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const parseAndFormatDate = (value) => {
+        if (!value) return null;
+        if (value instanceof Date) return formatDateToYYYYMMDD(value);
+        const parsed = excelDateToJSDate(value);
+        return parsed ? formatDateToYYYYMMDD(parsed) : null;
+    };
+
+
+    const calculateAkhirJabatan = (tglLahir) => {
+        const birthDate = parseAndFormatDate(tglLahir);
+        if (!birthDate) return null;
     
-            birthDate.setFullYear(birthDate.getFullYear() + 60);
-            const year = birthDate.getFullYear();
-            const month = String(birthDate.getMonth() + 1).padStart(2, '0');
-            const day = String(birthDate.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
+        try {
+            const date = new Date(birthDate);
+            date.setFullYear(date.getFullYear() + 60);
+            return formatDateToYYYYMMDD(date);
         } catch (error) {
             console.error("Invalid date for tglLahir:", tglLahir);
             return null;
         }
     };
 
+
     useEffect(() => {
         if (formData.tgl_lahir && (modalMode === 'edit' || modalMode === 'add')) {
-            const calculatedDate = calculateAkhirJabatan(formData.tgl_lahir);
-            if (calculatedDate !== formData.akhir_jabatan) {
-                setFormData(prevData => ({ ...prevData, akhir_jabatan: calculatedDate }));
+            const isKades = formData.jabatan && (formData.jabatan.toLowerCase().includes('kepala desa') || formData.jabatan.toLowerCase().includes('pj. kepala desa'));
+            if (!isKades) { // Hanya hitung otomatis jika bukan Kades
+                const calculatedDate = calculateAkhirJabatan(formData.tgl_lahir);
+                if (calculatedDate !== formData.akhir_jabatan) {
+                    setFormData(prevData => ({ ...prevData, akhir_jabatan: calculatedDate }));
+                }
             }
         }
-    }, [formData.tgl_lahir, modalMode]);
+    }, [formData.tgl_lahir, formData.jabatan, modalMode]);
 
 
     const filteredPerangkat = useMemo(() => {
@@ -250,14 +261,14 @@ const Perangkat = () => {
         
         let initialFormData = perangkat ? { ...perangkat } : { desa: initialDesa, jabatan: '', pendidikan: '' };
 
-        if (perangkat && perangkat.jabatan && !jabatanList.includes(perangkat.jabatan)) {
+        if (perangkat && perangkat.jabatan && !JABATAN_LIST.includes(perangkat.jabatan)) {
             initialFormData.jabatan_custom = perangkat.jabatan;
             initialFormData.jabatan = 'Lainnya';
         } else {
             initialFormData.jabatan_custom = '';
         }
 
-        if (perangkat && perangkat.pendidikan && !pendidikanList.includes(perangkat.pendidikan)) {
+        if (perangkat && perangkat.pendidikan && !PENDIDIKAN_LIST.includes(perangkat.pendidikan)) {
             initialFormData.pendidikan_custom = perangkat.pendidikan;
             initialFormData.pendidikan = 'Lainnya';
         } else {
@@ -331,9 +342,18 @@ const Perangkat = () => {
         }
         delete dataToSave.pendidikan_custom;
 
-        if (dataToSave.tgl_lahir) {
-            dataToSave.akhir_jabatan = calculateAkhirJabatan(dataToSave.tgl_lahir);
+        // Ensure dates are in YYYY-MM-DD format for consistency
+        dataToSave.tgl_lahir = parseAndFormatDate(dataToSave.tgl_lahir);
+        dataToSave.tgl_sk = parseAndFormatDate(dataToSave.tgl_sk);
+        dataToSave.tgl_pelantikan = parseAndFormatDate(dataToSave.tgl_pelantikan);
+
+        const isKades = dataToSave.jabatan && (dataToSave.jabatan.toLowerCase().includes('kepala desa') || dataToSave.jabatan.toLowerCase().includes('pj. kepala desa'));
+        if (!isKades && dataToSave.tgl_lahir) {
+             dataToSave.akhir_jabatan = calculateAkhirJabatan(dataToSave.tgl_lahir);
+        } else {
+             dataToSave.akhir_jabatan = parseAndFormatDate(dataToSave.akhir_jabatan);
         }
+
 
         try {
             const fotoProfilUrl = await uploadImageToCloudinary(fotoProfilFile);
@@ -417,92 +437,114 @@ const Perangkat = () => {
     const handleFileUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-    
+
         setIsUploading(true);
         const reader = new FileReader();
-    
+
         reader.onload = async (event) => {
             try {
                 const data = new Uint8Array(event.target.result);
-                // Read file with options to handle dates and prevent formula objects
-                const workbook = XLSX.read(data, { type: 'array', cellDates: true, cellFormula: false });
+                const workbook = XLSX.read(data, { type: 'array', cellDates: true });
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
-    
-                const header = ["desa", "nama", "jenis_kelamin_l", "jenis_kelamin_p", "jabatan", "tempat_lahir", "tgl_lahir", "pendidikan_sd", "pendidikan_sltp", "pendidikan_slta", "pendidikan_d1", "pendidikan_d2", "pendidikan_d3", "pendidikan_s1", "pendidikan_s2", "pendidikan_s3", "no_sk", "tgl_sk", "tgl_pelantikan", "akhir_jabatan", "no_hp", "nik"];
-                // Convert sheet to JSON, forcing all values to strings (raw: false) except for dates.
-                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header, range: 1, blankrows: false, raw: false });
-    
-                const dataRows = jsonData.map(row => {
-                    const newDoc = {
-                        desa: row.desa,
-                        nama: row.nama,
-                        jabatan: row.jabatan,
-                        tempat_lahir: row.tempat_lahir,
-                        tgl_lahir: row.tgl_lahir,
-                        no_sk: row.no_sk,
-                        tgl_sk: row.tgl_sk,
-                        tgl_pelantikan: row.tgl_pelantikan,
-                        akhir_jabatan: row.akhir_jabatan,
-                        no_hp: row.no_hp,
-                        nik: row.nik,
-                    };
-                    
-                    // Sanitize dates - convert formatted strings back to Date objects
-                    ['tgl_lahir', 'tgl_sk', 'tgl_pelantikan', 'akhir_jabatan'].forEach(field => {
-                        if (typeof newDoc[field] === 'string') {
-                           const date = new Date(Date.parse(newDoc[field].replace(/(\d{2})-(\d{2})-(\d{4})/, '$2/$1/$3')));
-                           if (!isNaN(date.getTime())) {
-                               newDoc[field] = date;
-                           }
-                        }
-                    });
+                const jsonDataObjects = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: null });
 
-                    newDoc.jenis_kelamin = row.jenis_kelamin_l ? 'L' : (row.jenis_kelamin_p ? 'P' : null);
-    
-                    const pendidikanMapping = {
-                        pendidikan_sd: 'SD', pendidikan_sltp: 'SLTP', pendidikan_slta: 'SLTA',
-                        pendidikan_d1: 'D1', pendidikan_d2: 'D2', pendidikan_d3: 'D3',
-                        pendidikan_s1: 'S1', pendidikan_s2: 'S2', pendidikan_s3: 'S3',
-                    };
-
-                    for (const key in pendidikanMapping) {
-                        if (row[key]) {
-                            newDoc.pendidikan = pendidikanMapping[key];
-                            break;
-                        }
-                    }
-    
-                    if (newDoc.nama && newDoc.jabatan) {
-                        if(newDoc.tgl_lahir) newDoc.akhir_jabatan = calculateAkhirJabatan(newDoc.tgl_lahir);
-                        return newDoc;
-                    }
-                    return null;
-                }).filter(Boolean);
-    
-                if (dataRows.length === 0) throw new Error("Tidak ada data valid yang ditemukan.");
-    
+                if (jsonDataObjects.length === 0) throw new Error("File Excel tidak valid atau kosong.");
+                
                 const batch = writeBatch(db);
                 let updatedCount = 0;
                 let createdCount = 0;
-    
-                for (const item of dataRows) {
-                    if (currentUser.role === 'admin_desa' && item.desa !== currentUser.desa) continue;
+                let skippedCount = 0;
+                let duplicates = [];
 
-                    const vacantDoc = await findJabatanKosongAtauPurna(item.jabatan, item.desa);
-                    if (vacantDoc) {
-                        batch.update(doc(db, 'perangkat', vacantDoc.id), item);
-                        updatedCount++;
+                const allExistingPerangkat = await getDocs(collection(db, 'perangkat')).then(snap =>
+                    snap.docs.map(d => ({id: d.id, ...d.data()}))
+                );
+
+                for (const row of jsonDataObjects) {
+                    const newDoc = {};
+
+                    // Mapping data based on header, case-insensitive
+                    newDoc.desa = row['DESA'] ? String(row['DESA']).trim() : null;
+                    newDoc.nama = row['N A M A'] ? String(row['N A M A']).trim() : null;
+                    newDoc.jabatan = row['JABATAN'] ? String(row['JABATAN']).trim() : null;
+                    newDoc.tempat_lahir = row['TEMPAT LAHIR'] || null;
+                    newDoc.nik = row['N I K'] ? String(row['N I K']).replace(/\s/g, '') : null;
+                    newDoc.nip = row['NIP/NIPD'] || null;
+                    newDoc.no_sk = row['NO SK'] || null;
+                    newDoc.no_hp = row['No. HP / WA'] || null;
+
+                    // Date parsing
+                    newDoc.tgl_lahir = parseAndFormatDate(row['TANGGAL LAHIR']);
+                    newDoc.tgl_sk = parseAndFormatDate(row['TANGGAL SK']);
+                    newDoc.tgl_pelantikan = parseAndFormatDate(row['TANGGAL PELANTIKAN']);
+
+                    // Jenis Kelamin
+                    newDoc.jenis_kelamin = row['L'] == 1 ? 'L' : (row['P'] == 1 ? 'P' : null);
+
+                    // --- PERBAIKAN: Logika pemetaan pendidikan ---
+                    const pendidikanMap = { 'SD': 'SD', 'SLTP': 'SLTP', 'SLTA': 'SLTA', 'D1': 'D1', 'D2': 'D2', 'D3': 'D3', 'S1': 'S1', 'S2': 'S2', 'S3': 'S3' };
+                    newDoc.pendidikan = null;
+                    for (const key in pendidikanMap) {
+                      if (row[key] == 1) { // Memeriksa jika nilai kolom adalah 1
+                        newDoc.pendidikan = pendidikanMap[key];
+                        break; // Hentikan loop setelah menemukan pendidikan pertama
+                      }
+                    }
+                    
+                    if (!newDoc.nama || !newDoc.jabatan || !newDoc.desa) {
+                        skippedCount++;
+                        continue;
+                    }
+                    
+                    if (currentUser.role === 'admin_desa' && newDoc.desa.toUpperCase() !== currentUser.desa.toUpperCase()) {
+                        skippedCount++;
+                        continue;
+                    }
+                    
+                    const isKades = newDoc.jabatan.toLowerCase().includes('kepala desa') || newDoc.jabatan.toLowerCase().includes('pj. kepala desa');
+                    if (isKades && row['AKHIR MASA JABATAN']) {
+                        newDoc.akhir_jabatan = parseAndFormatDate(row['AKHIR MASA JABATAN']);
+                    } else if (newDoc.tgl_lahir) {
+                        newDoc.akhir_jabatan = calculateAkhirJabatan(newDoc.tgl_lahir);
                     } else {
-                        batch.set(doc(collection(db, 'perangkat')), item);
-                        createdCount++;
+                        newDoc.akhir_jabatan = null;
+                    }
+                    
+                    const existingPerangkatByNik = newDoc.nik ? allExistingPerangkat.find(p => p.nik === newDoc.nik) : null;
+                    const existingPerangkatByName = allExistingPerangkat.find(p => p.nama && p.desa && p.nama.toLowerCase() === newDoc.nama.toLowerCase() && p.desa.toLowerCase() === newDoc.desa.toLowerCase());
+
+                    if (existingPerangkatByNik) {
+                        const docRef = doc(db, 'perangkat', existingPerangkatByNik.id);
+                        batch.update(docRef, newDoc);
+                        updatedCount++;
+                    } else if (existingPerangkatByName) {
+                        duplicates.push(`${newDoc.nama} (Desa ${newDoc.desa})`);
+                        skippedCount++;
+                    } else {
+                        const vacantDoc = await findJabatanKosongAtauPurna(newDoc.jabatan, newDoc.desa);
+                        if (vacantDoc) {
+                            const docRef = doc(db, 'perangkat', vacantDoc.id);
+                            batch.update(docRef, newDoc);
+                            updatedCount++;
+                        } else {
+                            const newDocRef = doc(collection(db, 'perangkat'));
+                            batch.set(newDocRef, newDoc);
+                            createdCount++;
+                        }
                     }
                 }
-    
+
                 await batch.commit();
-                alert(`Impor berhasil!\n- ${updatedCount} jabatan diisi.\n- ${createdCount} data baru ditambahkan.`);
-    
+                let alertMessage = `Impor selesai!\n- ${createdCount} data baru ditambahkan.\n- ${updatedCount} data diperbarui.\n- ${skippedCount} baris dilewati (data tidak lengkap/tidak sesuai desa/duplikat nama).`;
+                if (duplicates.length > 0) {
+                    alertMessage += `\n\nData duplikat yang dilewati:\n- ${duplicates.join('\n- ')}`;
+                }
+                alert(alertMessage);
+
+
             } catch (error) {
+                console.error("Error processing file:", error);
                 alert(`Gagal memproses file: ${error.message}`);
             } finally {
                 setIsUploading(false);
@@ -512,9 +554,10 @@ const Perangkat = () => {
         reader.readAsArrayBuffer(file);
     };
 
+
     const toggleSelectionMode = () => {
         setIsSelectionMode(!isSelectionMode);
-        setSelectedIds(new Set()); // Reset selection when toggling mode
+        setSelectedIds(new Set());
     };
 
     const handleSelect = (id) => {
@@ -557,7 +600,7 @@ const Perangkat = () => {
                             };
                             batch.update(docRef, dataToUpdate);
                         }
-                    } else { // permanen
+                    } else {
                         batch.delete(docRef);
                     }
                 }
@@ -587,7 +630,7 @@ const Perangkat = () => {
                         <FiFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                          <select value={filterDesa} onChange={(e) => setFilterDesa(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg appearance-none bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                             <option value="all">Semua Desa</option>
-                            {desaList.sort().map(desa => <option key={desa} value={desa}>{desa}</option>)}
+                            {STATIC_DESA_LIST.sort().map(desa => <option key={desa} value={desa}>{desa}</option>)}
                         </select>
                     </div>
                 )}
@@ -713,7 +756,7 @@ const Perangkat = () => {
                                         key === 'desa' ? (
                                             <select name={key} value={formData[key] || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2" required disabled={currentUser.role === 'admin_desa'}>
                                                 <option value="">Pilih Desa</option>
-                                                {desaList.sort().map(desa => <option key={desa} value={desa}>{desa}</option>)}
+                                                {STATIC_DESA_LIST.sort().map(desa => <option key={desa} value={desa}>{desa}</option>)}
                                             </select>
                                         ) : key === 'jenis_kelamin' ? (
                                             <select name={key} value={formData[key] || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2">
@@ -732,7 +775,7 @@ const Perangkat = () => {
                                 <>
                                     <select name="pendidikan" value={formData.pendidikan || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2">
                                         <option value="">Pilih Pendidikan</option>
-                                        {pendidikanList.map(p => <option key={p} value={p}>{p}</option>)}
+                                        {PENDIDIKAN_LIST.map(p => <option key={p} value={p}>{p}</option>)}
                                         <option value="Lainnya">Lainnya...</option>
                                     </select>
                                     {formData.pendidikan === 'Lainnya' && (
@@ -750,21 +793,27 @@ const Perangkat = () => {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Akhir Masa Jabatan</label>
-                                <input 
-                                    type="date" 
-                                    name="akhir_jabatan" 
-                                    value={formData.akhir_jabatan || ''} 
-                                    className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm p-2 bg-gray-100 dark:bg-gray-600 cursor-not-allowed text-gray-500 dark:text-gray-400"
-                                    readOnly
-                                    disabled
-                                />
+                                {(() => {
+                                    const isKades = formData.jabatan && (formData.jabatan.toLowerCase().includes('kepala desa') || formData.jabatan.toLowerCase().includes('pj. kepala desa'));
+                                    return (
+                                        <input 
+                                            type="date" 
+                                            name="akhir_jabatan" 
+                                            value={formData.akhir_jabatan || ''} 
+                                            onChange={handleFormChange}
+                                            className={`mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm p-2 text-gray-900 dark:text-white ${!isKades ? 'bg-gray-200 dark:bg-gray-700 cursor-not-allowed' : 'bg-white dark:bg-gray-700'}`}
+                                            disabled={!isKades}
+                                            title={!isKades ? "Dihitung otomatis berdasarkan tanggal lahir (usia 60 tahun)" : "Silakan masukkan tanggal akhir jabatan"}
+                                        />
+                                    );
+                                })()}
                             </div>
                             <div className="md:col-span-2">
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Jabatan</label>
                                 <>
                                     <select name="jabatan" value={formData.jabatan || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2" disabled={!!selectedPerangkat && !(!selectedPerangkat.nama && !selectedPerangkat.nik)}>
                                         <option value="">Pilih Jabatan</option>
-                                        {jabatanList.map(jabatan => <option key={jabatan} value={jabatan}>{jabatan}</option>)}
+                                        {JABATAN_LIST.map(jabatan => <option key={jabatan} value={jabatan}>{jabatan}</option>)}
                                         <option value="Lainnya">Jabatan Lainnya...</option>
                                     </select>
                                     {formData.jabatan === 'Lainnya' && (

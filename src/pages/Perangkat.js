@@ -1,13 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
-import { collection, query, onSnapshot, addDoc, doc, updateDoc, writeBatch, getDocs, where, getDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, doc, updateDoc, writeBatch, getDocs, where, getDoc, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/common/Modal';
 import Spinner from '../components/common/Spinner';
-import { FiEdit, FiTrash2, FiSearch, FiFilter, FiUpload, FiDownload, FiPlus, FiEye, FiUserX, FiBriefcase } from 'react-icons/fi';
+import { FiEdit, FiSearch, FiFilter, FiUpload, FiDownload, FiPlus, FiEye, FiUserX, FiTrash2, FiBriefcase, FiCheckSquare, FiXSquare } from 'react-icons/fi';
 import * as XLSX from 'xlsx';
 import { generatePerangkatXLSX } from '../utils/generatePerangkatXLSX';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+
+// Fallback list in case data from Firestore is unavailable
+const STATIC_DESA_LIST = [
+    "Punggelan", "Petuguran", "Karangsari", "Jembangan", "Tanjungtirta", 
+    "Sawangan", "Bondolharjo", "Danakerta", "Badakarya", "Tribuana", 
+    "Sambong", "Klapa", "Kecepit", "Mlaya", "Sidarata", "Purwasana", "Tlaga"
+];
 
 // Komponen Detail Perangkat untuk Modal (didefinisikan di luar komponen utama)
 const PerangkatDetailView = ({ perangkat }) => {
@@ -83,7 +90,7 @@ const Perangkat = () => {
     const [formData, setFormData] = useState({});
     
     // State for dynamic lists from settings
-    const [desaList, setDesaList] = useState([]);
+    const [desaList, setDesaList] = useState(STATIC_DESA_LIST); // Initialize with static list
     const [jabatanList, setJabatanList] = useState([]);
     const [pendidikanList, setPendidikanList] = useState([]);
 
@@ -97,6 +104,11 @@ const Perangkat = () => {
     const [isDeleting, setIsDeleting] = useState(false);
     const [modalMode, setModalMode] = useState('edit');
     const [exportConfig, setExportConfig] = useState(null);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+    // New state for selection mode
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedIds, setSelectedIds] = useState(new Set());
     
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
@@ -109,12 +121,15 @@ const Perangkat = () => {
                 const settingsDoc = await getDoc(doc(db, 'settings', 'appConfig'));
                 if (settingsDoc.exists()) {
                     const settings = settingsDoc.data();
-                    setDesaList(settings.desaList || []);
+                    // If fetched list is valid, use it. Otherwise, the static list remains.
+                    if(settings.desaList && settings.desaList.length > 0) {
+                        setDesaList(settings.desaList);
+                    }
                     setJabatanList(settings.jabatanList || []);
                     setPendidikanList(settings.pendidikanList || []);
                 }
             } catch (error) {
-                console.error("Error fetching settings:", error);
+                console.error("Error fetching settings, using fallback lists:", error);
             }
         };
 
@@ -352,56 +367,35 @@ const Perangkat = () => {
         }
     };
     
-    const kosongkanData = async (id) => {
-        if (window.confirm("Yakin ingin mengosongkan data personel?")) {
-            try {
-                const perangkatRef = doc(db, 'perangkat', id);
-                const perangkatSnap = await getDoc(perangkatRef);
-                if (perangkatSnap.exists()) {
-                    const { jabatan, desa } = perangkatSnap.data();
-                    const dataToUpdate = {
-                        nama: null, nik: null, jenis_kelamin: null, tempat_lahir: null, tgl_lahir: null,
-                        pendidikan: null, no_sk: null, tgl_sk: null, tgl_pelantikan: null,
-                        akhir_jabatan: null, no_hp: null, nip: null, foto_url: null, ktp_url: null,
-                        jabatan, desa, status: 'Jabatan Kosong'
-                    };
-                    await updateDoc(perangkatRef, dataToUpdate);
-                    alert('Data personel telah dikosongkan.');
-                }
-            } catch (error) {
-                console.error("Error clearing data:", error);
-                alert("Gagal mengosongkan data.");
+    const handleDelete = async (mode) => {
+        if (!selectedPerangkat) return;
+        setShowDeleteConfirm(false);
+        setIsDeleting(true);
+
+        try {
+            if (mode === 'kosongkan') {
+                const perangkatRef = doc(db, 'perangkat', selectedPerangkat.id);
+                const { jabatan, desa } = selectedPerangkat;
+                const dataToUpdate = {
+                    nama: null, nik: null, jenis_kelamin: null, tempat_lahir: null, tgl_lahir: null,
+                    pendidikan: null, no_sk: null, tgl_sk: null, tgl_pelantikan: null,
+                    akhir_jabatan: null, no_hp: null, nip: null, foto_url: null, ktp_url: null,
+                    jabatan, desa, status: 'Jabatan Kosong'
+                };
+                await updateDoc(perangkatRef, dataToUpdate);
+                alert('Data personel telah dikosongkan.');
+            } else if (mode === 'permanen') {
+                await deleteDoc(doc(db, 'perangkat', selectedPerangkat.id));
+                alert('Data berhasil dihapus permanen.');
             }
+        } catch (error) {
+            alert("Terjadi kesalahan saat memproses data.");
+        } finally {
+            setIsDeleting(false);
+            setSelectedPerangkat(null);
         }
     };
     
-    const kosongkanDataMassal = async () => {
-        if (filteredPerangkat.length === 0) return alert("Tidak ada data untuk dikosongkan.");
-
-        if (window.confirm(`Yakin ingin mengosongkan ${filteredPerangkat.length} data personel yang ditampilkan?`)) {
-            setIsDeleting(true);
-            try {
-                const batch = writeBatch(db);
-                filteredPerangkat.forEach(p => {
-                    const docRef = doc(db, 'perangkat', p.id);
-                    const dataToUpdate = {
-                        nama: null, nik: null, jenis_kelamin: null, tempat_lahir: null, tgl_lahir: null,
-                        pendidikan: null, no_sk: null, tgl_sk: null, tgl_pelantikan: null,
-                        akhir_jabatan: null, no_hp: null, nip: null, foto_url: null, ktp_url: null,
-                        status: 'Jabatan Kosong'
-                    };
-                    batch.update(docRef, dataToUpdate);
-                });
-                await batch.commit();
-                alert(`${filteredPerangkat.length} data berhasil dikosongkan.`);
-            } catch (error) {
-                alert("Terjadi kesalahan saat mengosongkan data.");
-            } finally {
-                setIsDeleting(false);
-            }
-        }
-    };
-
     const handleExportXLSX = () => {
         const dataToExport = filteredPerangkat;
         if (dataToExport.length === 0) return alert("Tidak ada data untuk diekspor.");
@@ -457,10 +451,10 @@ const Perangkat = () => {
                     // Sanitize dates - convert formatted strings back to Date objects
                     ['tgl_lahir', 'tgl_sk', 'tgl_pelantikan', 'akhir_jabatan'].forEach(field => {
                         if (typeof newDoc[field] === 'string') {
-                            const date = new Date(newDoc[field]);
-                            if (!isNaN(date.getTime())) {
-                                newDoc[field] = date;
-                            }
+                           const date = new Date(Date.parse(newDoc[field].replace(/(\d{2})-(\d{2})-(\d{4})/, '$2/$1/$3')));
+                           if (!isNaN(date.getTime())) {
+                               newDoc[field] = date;
+                           }
                         }
                     });
 
@@ -518,6 +512,67 @@ const Perangkat = () => {
         reader.readAsArrayBuffer(file);
     };
 
+    const toggleSelectionMode = () => {
+        setIsSelectionMode(!isSelectionMode);
+        setSelectedIds(new Set()); // Reset selection when toggling mode
+    };
+
+    const handleSelect = (id) => {
+        const newSelection = new Set(selectedIds);
+        if (newSelection.has(id)) {
+            newSelection.delete(id);
+        } else {
+            newSelection.add(id);
+        }
+        setSelectedIds(newSelection);
+    };
+
+    const handleSelectAll = (e) => {
+        if (e.target.checked) {
+            const allFilteredIds = new Set(filteredPerangkat.map(p => p.id));
+            setSelectedIds(allFilteredIds);
+        } else {
+            setSelectedIds(new Set());
+        }
+    };
+    
+    const handleBulkDelete = async (mode) => {
+        if (selectedIds.size === 0) return alert("Pilih data yang akan diproses.");
+
+        const modeText = mode === 'kosongkan' ? 'mengosongkan jabatan' : 'menghapus permanen';
+        if (window.confirm(`Anda yakin ingin ${modeText} untuk ${selectedIds.size} data yang dipilih?`)) {
+            setIsDeleting(true);
+            try {
+                const batch = writeBatch(db);
+                for (const id of selectedIds) {
+                    const docRef = doc(db, 'perangkat', id);
+                    if (mode === 'kosongkan') {
+                        const perangkat = allPerangkat.find(p => p.id === id);
+                        if(perangkat){
+                            const dataToUpdate = {
+                                nama: null, nik: null, jenis_kelamin: null, tempat_lahir: null, tgl_lahir: null,
+                                pendidikan: null, no_sk: null, tgl_sk: null, tgl_pelantikan: null,
+                                akhir_jabatan: null, no_hp: null, nip: null, foto_url: null, ktp_url: null,
+                                status: 'Jabatan Kosong'
+                            };
+                            batch.update(docRef, dataToUpdate);
+                        }
+                    } else { // permanen
+                        batch.delete(docRef);
+                    }
+                }
+                await batch.commit();
+                alert(`${selectedIds.size} data berhasil diproses.`);
+            } catch (error) {
+                alert("Terjadi kesalahan saat memproses data.");
+            } finally {
+                setIsDeleting(false);
+                toggleSelectionMode();
+            }
+        }
+    };
+
+
     if (loading) return <Spinner size="lg"/>;
     
     return (
@@ -537,32 +592,48 @@ const Perangkat = () => {
                     </div>
                 )}
             </div>
+            
             <div className="flex flex-wrap justify-end gap-2 mb-4">
-                <button
-                    onClick={kosongkanDataMassal}
-                    className="px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 flex items-center gap-2 disabled:bg-red-400 disabled:cursor-not-allowed"
-                    disabled={isDeleting || filteredPerangkat.length === 0}
-                    title="Kosongkan data personel dari jabatan yang ditampilkan (data jabatan tetap ada)."
-                >
-                    <FiUserX /> {isDeleting ? 'Memproses...' : `Kosongkan ${filteredPerangkat.length} Jabatan`}
-                </button>
-
-                <label className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 cursor-pointer flex items-center gap-2">
-                    <FiUpload/> {isUploading ? 'Mengimpor...' : 'Impor Data'}
-                    <input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls, .csv" disabled={isUploading}/>
-                </label>
-                <button onClick={handleExportXLSX} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2">
-                    <FiDownload/> Ekspor XLSX
-                </button>
-                <button onClick={() => handleOpenModal(null, 'add')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
-                    <FiPlus/> Tambah Data
-                </button>
+                {isSelectionMode ? (
+                    <>
+                        <button onClick={() => handleBulkDelete('kosongkan')} className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 flex items-center gap-2" disabled={isDeleting || selectedIds.size === 0}>
+                           <FiUserX /> Kosongkan ({selectedIds.size})
+                        </button>
+                        <button onClick={() => handleBulkDelete('permanen')} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2" disabled={isDeleting || selectedIds.size === 0}>
+                           <FiTrash2 /> Hapus ({selectedIds.size})
+                        </button>
+                        <button onClick={toggleSelectionMode} className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 flex items-center gap-2">
+                            <FiXSquare/> Batal
+                        </button>
+                    </>
+                ) : (
+                    <>
+                        <button onClick={toggleSelectionMode} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2">
+                           <FiCheckSquare/> Pilih Data
+                        </button>
+                        <label className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 cursor-pointer flex items-center gap-2">
+                            <FiUpload/> {isUploading ? 'Mengimpor...' : 'Impor Data'}
+                            <input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls, .csv" disabled={isUploading}/>
+                        </label>
+                        <button onClick={handleExportXLSX} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2">
+                            <FiDownload/> Ekspor XLSX
+                        </button>
+                        <button onClick={() => handleOpenModal(null, 'add')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                            <FiPlus/> Tambah Data
+                        </button>
+                    </>
+                )}
             </div>
             
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
                     <thead className="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">
                         <tr>
+                            {isSelectionMode && (
+                                <th className="p-4">
+                                    <input type="checkbox" onChange={handleSelectAll} checked={filteredPerangkat.length > 0 && selectedIds.size === filteredPerangkat.length} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"/>
+                                </th>
+                            )}
                             <th className="px-6 py-3">Nama Lengkap</th>
                             <th className="px-6 py-3">Jabatan</th>
                             {currentUser.role === 'admin_kecamatan' && <th className="px-6 py-3">Desa</th>}
@@ -577,6 +648,11 @@ const Perangkat = () => {
                             
                             return (
                                 <tr key={p.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                                {isSelectionMode && (
+                                    <td className="p-4">
+                                        <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => handleSelect(p.id)} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"/>
+                                    </td>
+                                )}
                                 <td className="px-6 py-4 font-medium flex items-center gap-3 text-gray-900 dark:text-white">
                                     {isKosong ? (
                                          <div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 flex items-center justify-center rounded-full text-gray-500">
@@ -604,19 +680,15 @@ const Perangkat = () => {
                                     )}
                                 </td>
                                 <td className="px-6 py-4 flex space-x-3">
-                                    { (currentUser.role === 'admin_kecamatan' || (currentUser.role === 'admin_desa' && !isKosong)) &&
-                                      <button onClick={() => handleOpenModal(p, 'view')} className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" title="Lihat Detail"><FiEye /></button>
-                                    }
-                                    <button onClick={() => handleOpenModal(p, 'edit')} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300" title={isKosong ? "Isi Jabatan" : "Edit"}><FiEdit /></button>
-                                    { !isKosong && 
-                                      <button onClick={() => kosongkanData(p.id)} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Kosongkan Jabatan"><FiUserX /></button>
-                                    }
+                                    <button onClick={() => handleOpenModal(p, 'view')} className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" title="Lihat Detail"><FiEye /></button>
+                                    <button onClick={() => handleOpenModal(p, 'edit')} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300" title="Edit"><FiEdit /></button>
+                                    <button onClick={() => { setSelectedPerangkat(p); setShowDeleteConfirm(true); }} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Hapus"><FiTrash2 /></button>
                                 </td>
                             </tr>
                             )
                         }) : (
                             <tr>
-                                <td colSpan="5" className="text-center py-10 text-gray-500 dark:text-gray-400">Belum ada data perangkat atau hasil filter kosong.</td>
+                                <td colSpan={isSelectionMode ? 6 : 5} className="text-center py-10 text-gray-500 dark:text-gray-400">Belum ada data perangkat atau hasil filter kosong.</td>
                             </tr>
                         )}
                     </tbody>
@@ -733,6 +805,18 @@ const Perangkat = () => {
                         </div>
                     </form>
                 )}
+            </Modal>
+            
+            <Modal isOpen={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="Konfirmasi Hapus">
+                <p>Pilih tipe penghapusan untuk data "{selectedPerangkat?.nama}":</p>
+                <div className="flex justify-end gap-4 mt-6">
+                    <button onClick={() => handleDelete('kosongkan')} className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 flex items-center gap-2" disabled={isDeleting}>
+                        <FiUserX /> {isDeleting ? 'Memproses...' : 'Kosongkan Jabatan'}
+                    </button>
+                    <button onClick={() => handleDelete('permanen')} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2" disabled={isDeleting}>
+                        <FiTrash2 /> {isDeleting ? 'Memproses...' : 'Hapus Permanen'}
+                    </button>
+                </div>
             </Modal>
         </div>
     );

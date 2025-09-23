@@ -3,22 +3,31 @@ import { db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import Spinner from '../components/common/Spinner';
 
+// Disamakan dengan header dan mapping import di Perangkat.js
 const INTERNAL_FIELDS = {
     desa: 'Desa',
     nama: 'Nama Lengkap',
     jabatan: 'Jabatan',
-    nik: 'NIK',
-    jenis_kelamin: 'Jenis Kelamin',
-    tempat_lahir: 'Tempat Lahir (jika terpisah)',
-    tgl_lahir: 'Tanggal Lahir (jika terpisah)',
-    ttl: 'Tempat & Tgl Lahir (jika digabung, cth: "Jakarta, 01-01-2000")',
-    pendidikan: 'Pendidikan',
+    tempat_lahir: 'Tempat Lahir',
+    tgl_lahir: 'Tanggal Lahir',
     no_sk: 'Nomor SK',
     tgl_sk: 'Tanggal SK',
     tgl_pelantikan: 'Tanggal Pelantikan',
     akhir_jabatan: 'Akhir Masa Jabatan',
     no_hp: 'No. HP / WA',
+    nik: 'NIK',
     nip: 'NIP/NIPD',
+    jenis_kelamin_l: 'Laki-laki (Kolom Centang/1)',
+    jenis_kelamin_p: 'Perempuan (Kolom Centang/1)',
+    pendidikan_sd: 'Pendidikan SD',
+    pendidikan_sltp: 'Pendidikan SLTP',
+    pendidikan_slta: 'Pendidikan SLTA',
+    pendidikan_d1: 'Pendidikan D1',
+    pendidikan_d2: 'Pendidikan D2',
+    pendidikan_d3: 'Pendidikan D3',
+    pendidikan_s1: 'Pendidikan S1',
+    pendidikan_s2: 'Pendidikan S2',
+    pendidikan_s3: 'Pendidikan S3',
 };
 
 const PengaturanAplikasi = () => {

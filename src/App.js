@@ -16,8 +16,8 @@ import RekapitulasiAparatur from './pages/RekapitulasiAparatur';
 import BeritaAcaraBPDPage from './pages/BeritaAcaraBPDPage';
 import KeuanganDesa from './pages/KeuanganDesa';
 import AsetDesa from './pages/AsetDesa';
-// Impor halaman setelan BPD baru
 import PengaturanBPD from './pages/PengaturanBPD';
+import LaporanPage from './pages/LaporanPage';
 import { BrandingProvider } from './context/BrandingContext';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, RadialLinearScale, Title, Tooltip, Legend } from 'chart.js';
 import Spinner from './components/common/Spinner';
@@ -53,11 +53,11 @@ function App() {
               <Route path="rekapitulasi-aparatur" element={<RekapitulasiAparatur />} />
               <Route path="manajemen-admin" element={<ManajemenAdmin />} />
               <Route path="pengaturan" element={<PengaturanAplikasi />} />
+              <Route path="laporan" element={<LaporanPage />} />
               
               <Route path="bpd" element={<BPDDashboard />} />
               <Route path="bpd/data" element={<BPDPage />} />
               <Route path="bpd/berita-acara" element={<BeritaAcaraBPDPage />} />
-              {/* Rute baru untuk Setelan BPD */}
               <Route path="bpd/pengaturan" element={<PengaturanBPD />} />
 
               <Route path="efile" element={<EFileDashboard />} />

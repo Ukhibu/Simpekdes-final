@@ -3,13 +3,14 @@ import { db } from '../firebase';
 import { collection, query, onSnapshot, addDoc, doc, updateDoc, writeBatch, getDocs, where, getDoc, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/common/Modal';
-import Spinner from '../components/common/Spinner';
+import Button from '../components/common/Button'; // Menggunakan komponen Button baru
+import SkeletonLoader from '../components/common/SkeletonLoader'; // Menggunakan Skeleton Loader baru
 import { FiEdit, FiSearch, FiFilter, FiUpload, FiDownload, FiPlus, FiEye, FiUserX, FiTrash2, FiBriefcase, FiCheckSquare, FiXSquare } from 'react-icons/fi';
 import * as XLSX from 'xlsx';
 import { generatePerangkatXLSX } from '../utils/generatePerangkatXLSX';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 
-// --- PERBAIKAN: Daftar statis untuk memastikan dropdown selalu terisi ---
+// --- Daftar statis untuk memastikan dropdown selalu terisi ---
 const STATIC_DESA_LIST = [
     "Punggelan", "Petuguran", "Karangsari", "Jembangan", "Tanjungtirta", 
     "Sawangan", "Bondolharjo", "Danakerta", "Badakarya", "Tribuana", 
@@ -169,7 +170,6 @@ const Perangkat = () => {
         return requiredFields.every(field => perangkat[field] && String(perangkat[field]).trim() !== '');
     };
     
-    // Helper function to parse dates robustly and convert to YYYY-MM-DD
     const excelDateToJSDate = (serial) => {
         if (typeof serial === 'string') {
             const date = new Date(serial);
@@ -342,7 +342,6 @@ const Perangkat = () => {
         }
         delete dataToSave.pendidikan_custom;
 
-        // Ensure dates are in YYYY-MM-DD format for consistency
         dataToSave.tgl_lahir = parseAndFormatDate(dataToSave.tgl_lahir);
         dataToSave.tgl_sk = parseAndFormatDate(dataToSave.tgl_sk);
         dataToSave.tgl_pelantikan = parseAndFormatDate(dataToSave.tgl_pelantikan);
@@ -353,7 +352,6 @@ const Perangkat = () => {
         } else {
              dataToSave.akhir_jabatan = parseAndFormatDate(dataToSave.akhir_jabatan);
         }
-
 
         try {
             const fotoProfilUrl = await uploadImageToCloudinary(fotoProfilFile);
@@ -463,8 +461,6 @@ const Perangkat = () => {
 
                 for (const row of jsonDataObjects) {
                     const newDoc = {};
-
-                    // Mapping data based on header, case-insensitive
                     newDoc.desa = row['DESA'] ? String(row['DESA']).trim() : null;
                     newDoc.nama = row['N A M A'] ? String(row['N A M A']).trim() : null;
                     newDoc.jabatan = row['JABATAN'] ? String(row['JABATAN']).trim() : null;
@@ -473,22 +469,17 @@ const Perangkat = () => {
                     newDoc.nip = row['NIP/NIPD'] || null;
                     newDoc.no_sk = row['NO SK'] || null;
                     newDoc.no_hp = row['No. HP / WA'] || null;
-
-                    // Date parsing
                     newDoc.tgl_lahir = parseAndFormatDate(row['TANGGAL LAHIR']);
                     newDoc.tgl_sk = parseAndFormatDate(row['TANGGAL SK']);
                     newDoc.tgl_pelantikan = parseAndFormatDate(row['TANGGAL PELANTIKAN']);
-
-                    // Jenis Kelamin
                     newDoc.jenis_kelamin = row['L'] == 1 ? 'L' : (row['P'] == 1 ? 'P' : null);
 
-                    // --- PERBAIKAN: Logika pemetaan pendidikan ---
                     const pendidikanMap = { 'SD': 'SD', 'SLTP': 'SLTP', 'SLTA': 'SLTA', 'D1': 'D1', 'D2': 'D2', 'D3': 'D3', 'S1': 'S1', 'S2': 'S2', 'S3': 'S3' };
                     newDoc.pendidikan = null;
                     for (const key in pendidikanMap) {
-                      if (row[key] == 1) { // Memeriksa jika nilai kolom adalah 1
+                      if (row[key] == 1) { 
                         newDoc.pendidikan = pendidikanMap[key];
-                        break; // Hentikan loop setelah menemukan pendidikan pertama
+                        break; 
                       }
                     }
                     
@@ -615,8 +606,7 @@ const Perangkat = () => {
         }
     };
 
-
-    if (loading) return <Spinner size="lg"/>;
+    if (loading) return <SkeletonLoader columns={currentUser.role === 'admin_kecamatan' ? 5 : 4} />;
     
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md transition-colors duration-300">
@@ -636,52 +626,53 @@ const Perangkat = () => {
                 )}
             </div>
             
-            <div className="flex flex-wrap justify-end gap-2 mb-4">
+           <div className="flex flex-wrap justify-end gap-2 mb-4">
                 {isSelectionMode ? (
                     <>
-                        <button onClick={() => handleBulkDelete('kosongkan')} className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 flex items-center gap-2" disabled={isDeleting || selectedIds.size === 0}>
+                        <Button onClick={() => handleBulkDelete('kosongkan')} variant="warning" disabled={isDeleting || selectedIds.size === 0} isLoading={isDeleting}>
                            <FiUserX /> Kosongkan ({selectedIds.size})
-                        </button>
-                        <button onClick={() => handleBulkDelete('permanen')} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2" disabled={isDeleting || selectedIds.size === 0}>
+                        </Button>
+                        <Button onClick={() => handleBulkDelete('permanen')} variant="danger" disabled={isDeleting || selectedIds.size === 0} isLoading={isDeleting}>
                            <FiTrash2 /> Hapus ({selectedIds.size})
-                        </button>
-                        <button onClick={toggleSelectionMode} className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 flex items-center gap-2">
+                        </Button>
+                        <Button onClick={toggleSelectionMode} variant="secondary">
                             <FiXSquare/> Batal
-                        </button>
+                        </Button>
                     </>
                 ) : (
                     <>
-                        <button onClick={toggleSelectionMode} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2">
+                        <Button onClick={toggleSelectionMode} variant="danger">
                            <FiCheckSquare/> Pilih Data
-                        </button>
-                        <label className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 cursor-pointer flex items-center gap-2">
-                            <FiUpload/> {isUploading ? 'Mengimpor...' : 'Impor Data'}
+                        </Button>
+                        <label className="btn btn-warning">
+                            <FiUpload className="mr-2"/> 
                             <input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls, .csv" disabled={isUploading}/>
+                            {isUploading ? 'Mengimpor...' : 'Impor Data'}
                         </label>
-                        <button onClick={handleExportXLSX} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2">
-                            <FiDownload/> Ekspor XLSX
-                        </button>
-                        <button onClick={() => handleOpenModal(null, 'add')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
-                            <FiPlus/> Tambah Data
-                        </button>
+                        <Button onClick={handleExportXLSX} variant="success">
+                            <FiDownload className="mr-2"/> Ekspor XLSX
+                        </Button>
+                        <Button onClick={() => handleOpenModal(null, 'add')} variant="primary">
+                            <FiPlus className="mr-2"/> Tambah Data
+                        </Button>
                     </>
                 )}
             </div>
             
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                    <thead className="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">
+            <div className="table-container-modern">
+                <table className="table-modern">
+                    <thead>
                         <tr>
                             {isSelectionMode && (
                                 <th className="p-4">
                                     <input type="checkbox" onChange={handleSelectAll} checked={filteredPerangkat.length > 0 && selectedIds.size === filteredPerangkat.length} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"/>
                                 </th>
                             )}
-                            <th className="px-6 py-3">Nama Lengkap</th>
-                            <th className="px-6 py-3">Jabatan</th>
-                            {currentUser.role === 'admin_kecamatan' && <th className="px-6 py-3">Desa</th>}
-                            <th className="px-6 py-3">Status</th>
-                            <th className="px-6 py-3">Aksi</th>
+                            <th>Nama Lengkap</th>
+                            <th>Jabatan</th>
+                            {currentUser.role === 'admin_kecamatan' && <th>Desa</th>}
+                            <th>Status</th>
+                            <th>Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -690,16 +681,16 @@ const Perangkat = () => {
                             const isKosong = !p.nama && !p.nik;
                             
                             return (
-                                <tr key={p.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                                <tr key={p.id}>
                                 {isSelectionMode && (
                                     <td className="p-4">
                                         <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => handleSelect(p.id)} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"/>
                                     </td>
                                 )}
-                                <td className="px-6 py-4 font-medium flex items-center gap-3 text-gray-900 dark:text-white">
+                                <td className="font-medium flex items-center gap-3 text-gray-900 dark:text-white">
                                     {isKosong ? (
                                          <div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 flex items-center justify-center rounded-full text-gray-500">
-                                            <FiBriefcase />
+                                             <FiBriefcase />
                                          </div>
                                     ) : (
                                         <img src={p.foto_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.nama || 'X')}&background=E2E8F0&color=4A5568`} alt={p.nama || 'Jabatan Kosong'} className="w-10 h-10 rounded-full object-cover"/>
@@ -709,9 +700,9 @@ const Perangkat = () => {
                                         <p className="text-xs text-gray-500 dark:text-gray-400">{p.nik || 'NIK belum diisi'}</p>
                                     </div>
                                 </td>
-                                <td className="px-6 py-4">{p.jabatan}</td>
-                                {currentUser.role === 'admin_kecamatan' && <td className="px-6 py-4">{p.desa}</td>}
-                                <td className="px-6 py-4">
+                                <td>{p.jabatan}</td>
+                                {currentUser.role === 'admin_kecamatan' && <td>{p.desa}</td>}
+                                <td>
                                     {isPurna ? (
                                         <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300">Purna Tugas</span>
                                     ) : isKosong ? (
@@ -722,20 +713,20 @@ const Perangkat = () => {
                                         </span>
                                     )}
                                 </td>
-                                <td className="px-6 py-4 flex space-x-3">
+                                <td className="flex space-x-3">
                                     <button onClick={() => handleOpenModal(p, 'view')} className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" title="Lihat Detail"><FiEye /></button>
                                     <button onClick={() => handleOpenModal(p, 'edit')} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300" title="Edit"><FiEdit /></button>
                                     <button onClick={() => { setSelectedPerangkat(p); setShowDeleteConfirm(true); }} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Hapus"><FiTrash2 /></button>
                                 </td>
-                            </tr>
-                            )
-                        }) : (
-                            <tr>
-                                <td colSpan={isSelectionMode ? 6 : 5} className="text-center py-10 text-gray-500 dark:text-gray-400">Belum ada data perangkat atau hasil filter kosong.</td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
+                                </tr>
+                                )
+                            }) : (
+                                <tr>
+                                    <td colSpan={isSelectionMode ? 6 : 5} className="text-center py-10 text-gray-500 dark:text-gray-400">Belum ada data perangkat atau hasil filter kosong.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
             </div>
 
             <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={modalMode === 'view' ? 'Detail Data Perangkat' : (selectedPerangkat ? 'Edit Data Perangkat' : 'Tambah Data Perangkat')}>
@@ -754,18 +745,18 @@ const Perangkat = () => {
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
                                     {
                                         key === 'desa' ? (
-                                            <select name={key} value={formData[key] || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2" required disabled={currentUser.role === 'admin_desa'}>
+                                            <select name={key} value={formData[key] || ''} onChange={handleFormChange} className="form-input-modern" required disabled={currentUser.role === 'admin_desa'}>
                                                 <option value="">Pilih Desa</option>
                                                 {STATIC_DESA_LIST.sort().map(desa => <option key={desa} value={desa}>{desa}</option>)}
                                             </select>
                                         ) : key === 'jenis_kelamin' ? (
-                                            <select name={key} value={formData[key] || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2">
+                                            <select name={key} value={formData[key] || ''} onChange={handleFormChange} className="form-input-modern">
                                                 <option value="">Pilih Jenis Kelamin</option>
                                                 <option value="L">Laki-laki</option>
                                                 <option value="P">Perempuan</option>
                                             </select>
                                         ) : (
-                                            <input type={key.includes('tgl') ? 'date' : 'text'} name={key} value={formData[key] || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2"/>
+                                            <input type={key.includes('tgl') ? 'date' : 'text'} name={key} value={formData[key] || ''} onChange={handleFormChange} className="form-input-modern"/>
                                         )
                                     }
                                 </div>
@@ -773,7 +764,7 @@ const Perangkat = () => {
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Pendidikan Terakhir</label>
                                 <>
-                                    <select name="pendidikan" value={formData.pendidikan || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2">
+                                    <select name="pendidikan" value={formData.pendidikan || ''} onChange={handleFormChange} className="form-input-modern">
                                         <option value="">Pilih Pendidikan</option>
                                         {PENDIDIKAN_LIST.map(p => <option key={p} value={p}>{p}</option>)}
                                         <option value="Lainnya">Lainnya...</option>
@@ -785,7 +776,7 @@ const Perangkat = () => {
                                             value={formData.pendidikan_custom || ''}
                                             onChange={handleFormChange}
                                             placeholder="Masukkan pendidikan"
-                                            className="mt-2 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2"
+                                            className="mt-2 form-input-modern"
                                             required
                                         />
                                     )}
@@ -801,7 +792,7 @@ const Perangkat = () => {
                                             name="akhir_jabatan" 
                                             value={formData.akhir_jabatan || ''} 
                                             onChange={handleFormChange}
-                                            className={`mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm p-2 text-gray-900 dark:text-white ${!isKades ? 'bg-gray-200 dark:bg-gray-700 cursor-not-allowed' : 'bg-white dark:bg-gray-700'}`}
+                                            className={`form-input-modern ${!isKades ? 'bg-gray-200 dark:bg-gray-700 cursor-not-allowed' : 'bg-white dark:bg-gray-700'}`}
                                             disabled={!isKades}
                                             title={!isKades ? "Dihitung otomatis berdasarkan tanggal lahir (usia 60 tahun)" : "Silakan masukkan tanggal akhir jabatan"}
                                         />
@@ -811,7 +802,7 @@ const Perangkat = () => {
                             <div className="md:col-span-2">
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Jabatan</label>
                                 <>
-                                    <select name="jabatan" value={formData.jabatan || ''} onChange={handleFormChange} className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2" disabled={!!selectedPerangkat && !(!selectedPerangkat.nama && !selectedPerangkat.nik)}>
+                                    <select name="jabatan" value={formData.jabatan || ''} onChange={handleFormChange} className="form-input-modern" disabled={!!selectedPerangkat && !(!selectedPerangkat.nama && !selectedPerangkat.nik)}>
                                         <option value="">Pilih Jabatan</option>
                                         {JABATAN_LIST.map(jabatan => <option key={jabatan} value={jabatan}>{jabatan}</option>)}
                                         <option value="Lainnya">Jabatan Lainnya...</option>
@@ -823,7 +814,7 @@ const Perangkat = () => {
                                             value={formData.jabatan_custom || ''}
                                             onChange={handleFormChange}
                                             placeholder="Masukkan nama jabatan"
-                                            className="mt-2 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm p-2"
+                                            className="mt-2 form-input-modern"
                                             required
                                             disabled={!!selectedPerangkat && !(!selectedPerangkat.nama && !selectedPerangkat.nik)}
                                         />
@@ -846,25 +837,24 @@ const Perangkat = () => {
                             </div>
                         </div>
                         <div className="flex justify-end pt-4 border-t mt-6 dark:border-gray-700">
-                            <button type="button" onClick={handleCloseModal} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md mr-2" disabled={isSubmitting}>Tutup</button>
-                            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md flex items-center" disabled={isSubmitting}>
-                                {isSubmitting && <Spinner size="sm" />}
-                                {isSubmitting ? 'Menyimpan...' : 'Simpan'}
-                            </button>
+                             <Button type="button" variant="secondary" onClick={handleCloseModal} disabled={isSubmitting}>Tutup</Button>
+                             <Button type="submit" variant="primary" isLoading={isSubmitting} className="ml-2">
+                                 {selectedPerangkat ? 'Simpan Perubahan' : 'Simpan'}
+                             </Button>
                         </div>
                     </form>
-                )}
+                 )}
             </Modal>
             
             <Modal isOpen={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="Konfirmasi Hapus">
                 <p>Pilih tipe penghapusan untuk data "{selectedPerangkat?.nama}":</p>
                 <div className="flex justify-end gap-4 mt-6">
-                    <button onClick={() => handleDelete('kosongkan')} className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 flex items-center gap-2" disabled={isDeleting}>
-                        <FiUserX /> {isDeleting ? 'Memproses...' : 'Kosongkan Jabatan'}
-                    </button>
-                    <button onClick={() => handleDelete('permanen')} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2" disabled={isDeleting}>
-                        <FiTrash2 /> {isDeleting ? 'Memproses...' : 'Hapus Permanen'}
-                    </button>
+                     <Button onClick={() => handleDelete('kosongkan')} variant="warning" isLoading={isDeleting}>
+                        <FiUserX /> Kosongkan Jabatan
+                    </Button>
+                     <Button onClick={() => handleDelete('permanen')} variant="danger" isLoading={isDeleting}>
+                        <FiTrash2 /> Hapus Permanen
+                    </Button>
                 </div>
             </Modal>
         </div>
@@ -872,4 +862,5 @@ const Perangkat = () => {
 };
 
 export default Perangkat;
+
 

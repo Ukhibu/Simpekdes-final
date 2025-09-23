@@ -1,83 +1,91 @@
 rules_version = '2';
 
 service cloud.firestore {
-match /databases/{database}/documents {
+  match /databases/{database}/documents {
 
-// --- Helper Functions (Fungsi Bantuan) ---
-function userDocExists() {
-  return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    // --- Helper Functions (Fungsi Bantuan) ---
+    function userDocExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function getUserRole() {
+      return userDocExists() ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role : '';
+    }
+
+    function getUserDesa() {
+      return userDocExists() ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.desa : '';
+    }
+    
+    // --- Aturan untuk Notifikasi ---
+    match /notifications/{notificationId} {
+      allow create: if request.auth != null;
+      allow read, update: if request.auth != null && request.auth.uid == resource.data.recipientId;
+    }
+
+    // --- Aturan untuk Koleksi Pengguna (users) ---
+    match /users/{userId} {
+      allow read: if request.auth != null && (request.auth.uid == userId || getUserRole() == 'admin_kecamatan');
+      allow write: if request.auth != null && getUserRole() == 'admin_kecamatan';
+    }
+
+    // --- Aturan untuk Data Perangkat Desa ---
+    match /perangkat/{docId} {
+      allow read: if request.auth != null &&
+                    (getUserRole() == 'admin_kecamatan' || 
+                    (getUserRole() == 'admin_desa' && resource.data.desa == getUserDesa()));
+      allow write: if request.auth != null &&
+                     (getUserRole() == 'admin_kecamatan' ||
+                     (getUserRole() == 'admin_desa' && request.resource.data.desa == getUserDesa()));
+    }
+
+    // --- Aturan untuk Data BPD ---
+    match /bpd/{docId} {
+      allow read: if request.auth != null &&
+                    (getUserRole() == 'admin_kecamatan' || 
+                    (getUserRole() == 'admin_desa' && resource.data.desa == getUserDesa()));
+      allow write: if request.auth != null &&
+                     (getUserRole() == 'admin_kecamatan' ||
+                     (getUserRole() == 'admin_desa' && request.resource.data.desa == getUserDesa()));
+    }
+
+    // --- Aturan untuk Data E-File ---
+    match /efile/{docId} {
+      allow read: if request.auth != null &&
+                    (getUserRole() == 'admin_kecamatan' || 
+                    (getUserRole() == 'admin_desa' && resource.data.desa == getUserDesa()));
+      
+      // Izin untuk membuat dan memperbarui dokumen
+      allow create, update: if request.auth != null &&
+                     (getUserRole() == 'admin_kecamatan' ||
+                     (getUserRole() == 'admin_desa' && request.resource.data.desa == getUserDesa()));
+
+      // PERBAIKAN: Izin untuk menghapus dokumen
+      // Admin kecamatan bisa menghapus apa saja.
+      // Admin desa hanya bisa menghapus jika dokumen itu milik desanya DAN statusnya belum terverifikasi.
+      allow delete: if request.auth != null &&
+                      (getUserRole() == 'admin_kecamatan' ||
+                      (getUserRole() == 'admin_desa' && resource.data.desa == getUserDesa() && resource.data.status != 'terverifikasi'));
+    }
+
+    // --- ATURAN BARU untuk Modul Keuangan ---
+    match /keuangan/{docId} {
+       allow read, write: if request.auth != null &&
+                    (getUserRole() == 'admin_kecamatan' || 
+                    (getUserRole() == 'admin_desa' && resource.data.desa == getUserDesa()));
+    }
+
+    // --- ATURAN BARU untuk Modul Aset ---
+    match /aset/{docId} {
+       allow read, write: if request.auth != null &&
+                    (getUserRole() == 'admin_kecamatan' || 
+                    (getUserRole() == 'admin_desa' && resource.data.desa == getUserDesa()));
+    }
+
+    // --- Aturan untuk Pengaturan Aplikasi ---
+    match /settings/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && getUserRole() == 'admin_kecamatan';
+    }
+  }
 }
 
-function getUserRole() {
-  return userDocExists() ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role : '';
-}
-
-function getUserDesa() {
-  return userDocExists() ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.desa : '';
-}
-
-// --- Aturan untuk Koleksi Pengguna (users) ---
-match /users/{userId} {
-  allow read: if request.auth != null && (request.auth.uid == userId || getUserRole() == 'admin_kecamatan');
-  allow write: if request.auth != null && getUserRole() == 'admin_kecamatan';
-}
-
-// --- Aturan untuk Data Perangkat Desa ---
-match /perangkat/{docId} {
-  allow read: if request.auth != null &&
-                (getUserRole() == 'admin_kecamatan' || 
-                (getUserRole() == 'admin_desa' && resource.data.desa == getUserDesa()));
-  allow write: if request.auth != null &&
-                 (getUserRole() == 'admin_kecamatan' ||
-                 (getUserRole() == 'admin_desa' && request.resource.data.desa == getUserDesa()));
-}
-
-// --- Aturan untuk Data BPD ---
-match /bpd/{docId} {
-  allow read: if request.auth != null &&
-                (getUserRole() == 'admin_kecamatan' || 
-                (getUserRole() == 'admin_desa' && resource.data.desa == getUserDesa()));
-  allow write: if request.auth != null &&
-                 (getUserRole() == 'admin_kecamatan' ||
-                 (getUserRole() == 'admin_desa' && request.resource.data.desa == getUserDesa()));
-}
-
-// --- Aturan untuk Data E-File ---
-match /efile/{docId} {
-  allow read: if request.auth != null &&
-                (getUserRole() == 'admin_kecamatan' || 
-                (getUserRole() == 'admin_desa' && resource.data.desa == getUserDesa()));
-  allow write: if request.auth != null &&
-                 (getUserRole() == 'admin_kecamatan' ||
-                 (getUserRole() == 'admin_desa' && request.resource.data.desa == getUserDesa()));
-}
-
-// --- ATURAN BARU untuk Modul Keuangan ---
-match /keuangan/{docId} {
-   allow read: if request.auth != null &&
-                (getUserRole() == 'admin_kecamatan' || 
-                (getUserRole() == 'admin_desa' && resource.data.desa == getUserDesa()));
-  allow write: if request.auth != null &&
-                 (getUserRole() == 'admin_kecamatan' ||
-                 (getUserRole() == 'admin_desa' && request.resource.data.desa == getUserDesa()));
-}
-
-// --- ATURAN BARU untuk Modul Aset ---
-match /aset/{docId} {
-   allow read: if request.auth != null &&
-                (getUserRole() == 'admin_kecamatan' || 
-                (getUserRole() == 'admin_desa' && resource.data.desa == getUserDesa()));
-  allow write: if request.auth != null &&
-                 (getUserRole() == 'admin_kecamatan' ||
-                 (getUserRole() == 'admin_desa' && request.resource.data.desa == getUserDesa()));
-}
-
-
-// --- Aturan untuk Pengaturan Aplikasi ---
-match /settings/{docId} {
-  allow read: if request.auth != null;
-  allow write: if request.auth != null && getUserRole() == 'admin_kecamatan';
-}
-
-}
-}

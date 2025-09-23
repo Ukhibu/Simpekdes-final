@@ -89,9 +89,10 @@ export const generateBpdXLSX = async (groupedData, periodeFilter) => {
 
     // --- Isi Data ---
     let overallIndex = 1;
+    // --- PERBAIKAN: Mengubah perataan horizontal menjadi 'left' ---
     const dataCellStyle = {
         font: { name: 'Arial', size: 10 },
-        alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
+        alignment: { horizontal: 'left', vertical: 'middle', wrapText: true },
         border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
     };
 
@@ -119,8 +120,14 @@ export const generateBpdXLSX = async (groupedData, periodeFilter) => {
                     bpd.jabatan || ''
                 ]);
 
-                row.eachCell({ includeEmpty: true }, cell => {
-                    cell.style = dataCellStyle;
+                row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                    // Kolom nomor tetap di tengah
+                    if (colNumber === 1) {
+                        cell.style = { ...dataCellStyle, alignment: { ...dataCellStyle.alignment, horizontal: 'center' } };
+                    } else {
+                        // Semua data selain header dan kolom nomor rata kiri
+                        cell.style = { ...dataCellStyle, alignment: { ...dataCellStyle.alignment, horizontal: 'left' } };
+                    }
                 });
             });
         }

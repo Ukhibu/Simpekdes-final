@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
-import { collection, query, where, onSnapshot, addDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, doc, deleteDoc, updateDoc, getDocs } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/common/Modal';
 import Spinner from '../components/common/Spinner';
@@ -25,6 +25,27 @@ const Notification = ({ message, type, onClose }) => {
     };
 
     return <div className={`${baseClasses} ${typeClasses[type]}`}>{message}</div>;
+};
+
+// --- Fungsi untuk membuat notifikasi ---
+const createNotificationForAdmins = async (perangkat) => {
+    const adminQuery = query(collection(db, "users"), where("role", "==", "admin_kecamatan"));
+    try {
+        const adminSnapshot = await getDocs(adminQuery);
+        adminSnapshot.forEach(async (adminDoc) => {
+            const admin = adminDoc.data();
+            await addDoc(collection(db, "notifications"), {
+                recipientId: adminDoc.id,
+                message: `SK baru untuk <b>${perangkat.nama}</b> dari Desa <b>${perangkat.desa}</b> telah diunggah dan menunggu verifikasi.`,
+                link: '/app/efile/manage',
+                read: false,
+                createdAt: new Date(),
+            });
+        });
+        console.log("Notifikasi berhasil dibuat untuk semua admin kecamatan.");
+    } catch (error) {
+        console.error("Gagal membuat notifikasi:", error);
+    }
 };
 
 const EFilePage = () => {
@@ -157,6 +178,11 @@ const EFilePage = () => {
                 status: 'menunggu_verifikasi',
                 uploadedAt: new Date(),
             });
+            
+            // --- PERBAIKAN: Panggil fungsi notifikasi setelah upload berhasil ---
+            if (currentUser.role === 'admin_desa') {
+                await createNotificationForAdmins(perangkat);
+            }
 
             showNotification('Dokumen SK berhasil diunggah dan menunggu verifikasi.', 'success');
             setSelectedPerangkat('');
@@ -368,3 +394,4 @@ const EFilePage = () => {
 };
 
 export default EFilePage;
+

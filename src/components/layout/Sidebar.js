@@ -32,6 +32,9 @@ const Sidebar = ({ currentModule, isOpen, setIsOpen }) => {
                     <NavLink to="/app/rekapitulasi-aparatur" className={navLinkClasses}>
                         <FiBarChart2 className="w-5 h-5 mr-3" /><span>Rekap Aparatur</span>
                     </NavLink>
+                    <NavLink to="/app/laporan" className={navLinkClasses}>
+                        <FiBarChart2 className="w-5 h-5 mr-3" /><span>Pusat Laporan</span>
+                    </NavLink>
                     <NavLink to="/app/manajemen-admin" className={navLinkClasses}>
                         <FiUserPlus className="w-5 h-5 mr-3" /><span>Manajemen Admin</span>
                     </NavLink>

@@ -1,26 +1,44 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import LoginPage from './pages/LoginPage';
-import DashboardContent from './pages/DashboardContent';
-import Perangkat from './pages/Perangkat';
-import ManajemenAdmin from './pages/ManajemenAdmin';
-import PengaturanAplikasi from './pages/PengaturanAplikasi';
-import HubPage from './pages/HubPage';
-import AppLayout from './components/layout/AppLayout';
-import BPDPage from './pages/BPDPage';
-import EFilePage from './pages/EFilePage';
-import BPDDashboard from './pages/BPDDashboard';
-import EFileDashboard from './pages/EFileDashboard';
-import RekapitulasiAparatur from './pages/RekapitulasiAparatur';
-import BeritaAcaraBPDPage from './pages/BeritaAcaraBPDPage';
-import KeuanganDesa from './pages/KeuanganDesa';
-import AsetDesa from './pages/AsetDesa';
-import PengaturanBPD from './pages/PengaturanBPD';
-import LaporanPage from './pages/LaporanPage';
 import { BrandingProvider } from './context/BrandingContext';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, RadialLinearScale, Title, Tooltip, Legend } from 'chart.js';
+
+import AppLayout from './components/layout/AppLayout';
 import Spinner from './components/common/Spinner';
+
+// Halaman Utama & Otentikasi
+import LoginPage from './pages/LoginPage';
+import HubPage from './pages/HubPage';
+
+// Halaman Modul Inti
+import DashboardContent from './pages/DashboardContent';
+import Perangkat from './pages/Perangkat';
+import RekapitulasiAparatur from './pages/RekapitulasiAparatur';
+import LaporanPage from './pages/LaporanPage';
+import ManajemenAdmin from './pages/ManajemenAdmin';
+import PengaturanAplikasi from './pages/PengaturanAplikasi';
+import EFileDashboard from './pages/EFileDashboard';
+import EFilePage from './pages/EFilePage';
+import KeuanganDesa from './pages/KeuanganDesa';
+import AsetDesa from './pages/AsetDesa';
+
+// Halaman Modul Organisasi Desa
+import OrganisasiDesaHub from './pages/OrganisasiDesaHub';
+import BPDDashboard from './pages/BPDDashboard';
+import BPDPage from './pages/BPDPage';
+import BeritaAcaraBPDPage from './pages/BeritaAcaraBPDPage';
+import PengaturanBPD from './pages/PengaturanBPD';
+import LPMDashboard from './pages/LPMDashboard';
+import LPMPage from './pages/LPMPage';
+import PKKDashboard from './pages/PKKDashboard';
+import PKKPage from './pages/PKKPage';
+import PKKProgramPage from './pages/PKKProgramPage';
+import KarangTarunaDashboard from './pages/KarangTarunaDashboard';
+import KarangTarunaPage from './pages/KarangTarunaPage';
+import KarangTarunaKegiatanPage from './pages/KarangTarunaKegiatanPage';
+import RtRwDashboard from './pages/RtRwDashboard';
+import RtRwPage from './pages/RtRwPage';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, RadialLinearScale, Title, Tooltip, Legend);
 
@@ -47,7 +65,12 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/" element={<PrivateRoute><HubPage /></PrivateRoute>} />
             
+            {/* Rute Hub Organisasi Desa (Tampilan Penuh tanpa Sidebar) */}
+            <Route path="/app/organisasi-desa" element={<PrivateRoute><OrganisasiDesaHub /></PrivateRoute>} />
+
+            {/* Rute dengan Layout Sidebar */}
             <Route path="/app" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
+              {/* Modul Perangkat Desa */}
               <Route index element={<DashboardContent />} /> 
               <Route path="perangkat" element={<Perangkat />} />
               <Route path="rekapitulasi-aparatur" element={<RekapitulasiAparatur />} />
@@ -55,14 +78,35 @@ function App() {
               <Route path="pengaturan" element={<PengaturanAplikasi />} />
               <Route path="laporan" element={<LaporanPage />} />
               
+              {/* Sub-Modul BPD */}
               <Route path="bpd" element={<BPDDashboard />} />
               <Route path="bpd/data" element={<BPDPage />} />
               <Route path="bpd/berita-acara" element={<BeritaAcaraBPDPage />} />
               <Route path="bpd/pengaturan" element={<PengaturanBPD />} />
 
+              {/* Sub-Modul LPM */}
+              <Route path="lpm" element={<LPMDashboard />} />
+              <Route path="lpm/data" element={<LPMPage />} />
+
+              {/* Sub-Modul PKK */}
+              <Route path="pkk" element={<PKKDashboard />} />
+              <Route path="pkk/data" element={<PKKPage />} />
+              <Route path="pkk/program" element={<PKKProgramPage />} />
+
+              {/* Sub-Modul Karang Taruna */}
+              <Route path="karang-taruna" element={<KarangTarunaDashboard />} />
+              <Route path="karang-taruna/data" element={<KarangTarunaPage />} />
+              <Route path="karang-taruna/kegiatan" element={<KarangTarunaKegiatanPage />} />
+              
+              {/* Sub-Modul RT/RW */}
+              <Route path="rt-rw" element={<RtRwDashboard />} />
+              <Route path="rt-rw/data" element={<RtRwPage />} />
+
+              {/* Modul E-File */}
               <Route path="efile" element={<EFileDashboard />} />
               <Route path="efile/manage" element={<EFilePage />} />
 
+              {/* Modul Keuangan & Aset */}
               <Route path="keuangan" element={<KeuanganDesa />} />
               <Route path="aset" element={<AsetDesa />} />
             </Route>

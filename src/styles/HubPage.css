@@ -1,51 +1,49 @@
-/* --- Hub Page Container --- */
+/* src/styles/HubPage.css */
+
+/* --- Kontainer Utama --- */
 .hub-container {
     position: relative;
     min-height: 100vh;
     overflow: hidden;
-    background-color: #000000; /* Latar belakang hitam pekat */
     color: white;
     display: flex;
     flex-direction: column;
+    background-color: #0d1117; /* Fallback color */
 }
 
-/* --- SVG Background Baru --- */
-.interactive-background-svg {
-    position: absolute;
+/* --- Kontainer untuk Lapisan Latar Belakang --- */
+.hub-background-layers {
+    position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
     z-index: 0;
-    touch-action: none;
-    cursor: pointer;
 }
 
-.interactive-background-svg use {
-    opacity: 1;
-    fill: #ffffff;
+.background-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    /* PERBAIKAN: Mengurangi blur dan menyesuaikan brightness agar gambar lebih jelas */
+    filter: brightness(0.6) blur(2px); 
+    transform: scale(1.05); /* Sedikit zoom untuk menghilangkan tepi blur */
+    z-index: 1; /* Di belakang partikel */
 }
 
-/* --- Efek Cahaya untuk Naga --- */
-.dragon-stretched {
-    filter: drop-shadow(0 0 8px #00ffff) drop-shadow(0 0 16px #00ffff);
-    opacity: 1;
+#particles-js-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2; /* Di atas gambar, di bawah konten */
 }
 
-.dragon-collapsed {
-    filter: drop-shadow(0 0 8px #ff00ff) drop-shadow(0 0 16px #ff00ff);
-    opacity: 1;
-}
-
-.dragon-head-glow {
-    filter: drop-shadow(0 0 10px #ffff00) drop-shadow(0 0 20px #ffff00);
-    opacity: 1;
-}
-
-.dragon-fins-glow {
-    filter: drop-shadow(0 0 8px #00ff00) drop-shadow(0 0 16px #00ff00);
-    opacity: 1;
-}
 
 /* --- Header --- */
 .hub-header {
@@ -54,18 +52,16 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    position: relative;
     z-index: 10;
-    /* Efek kaca agar kontras dengan background naga */
-    background: rgba(0, 0, 0, 0.2);
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
 }
 
 .user-greeting {
     display: flex;
     flex-direction: column;
     font-size: 0.9rem;
-    color: #a0aec0;
+    color: #a0aec0; /* gray-400 */
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
 .user-greeting .font-bold {
@@ -77,78 +73,65 @@
     display: flex;
     align-items: center;
     padding: 0.5rem 1rem;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.2);
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 8px;
     color: #e2e8f0;
     transition: all 0.3s ease;
+    backdrop-filter: blur(5px);
 }
 
 .logout-button:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.1);
     border-color: rgba(255, 255, 255, 0.4);
 }
 
-/* --- Main Content --- */
+/* --- Konten Utama --- */
 .hub-main-content {
     flex-grow: 1;
     display: flex;
     flex-direction: column;
-    justify-content: flex-start; 
+    justify-content: center; 
     align-items: center;
     position: relative;
-    padding-top: 10vh;
+    z-index: 3; /* Paling depan */
     padding-bottom: 5rem;
 }
 
-/* --- Title Styling --- */
+/* --- Judul --- */
 .hub-title-container {
     text-align: center;
-    margin-bottom: 4rem; 
-    transition: opacity 0.4s ease-out, transform 0.4s ease-out;
-    z-index: 5; /* Pastikan judul di atas background */
-}
-
-.hub-title-container.fade-in {
-    opacity: 1;
-    transform: translateY(0);
+    transition: opacity 0.5s ease, transform 0.5s ease;
 }
 
 .hub-title-container.fade-out {
     opacity: 0;
-    transform: translateY(-20px);
+    transform: scale(0.95);
     pointer-events: none;
 }
 
+.hub-title-container.fade-in {
+    opacity: 1;
+    transform: scale(1);
+}
+
 .main-title {
-    font-size: 2.8rem;
+    font-size: clamp(2.5rem, 6vw, 4rem);
     font-weight: 800;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
     color: #ffffff;
-    text-shadow: 0 0 8px rgba(255, 255, 255, 0.3), 0 0 25px rgba(76, 175, 80, 0.4);
-    padding: 0.5rem 1rem;
-    border: 2px solid rgba(255, 255, 255, 0.1);
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 10px;
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.3), 0 0 20px rgba(0, 150, 255, 0.4);
 }
 
 .subtitle {
-    font-size: 1.1rem;
-    font-weight: 500;
-    color: #a0aec0;
-    margin-top: 0.75rem;
+    font-size: clamp(1rem, 2.5vw, 1.25rem);
+    font-weight: 300;
+    color: #cbd5e1; /* slate-300 */
+    margin-top: 0.5rem;
 }
 
-.subtitle-small {
-    font-size: 0.9rem;
-    font-weight: 500;
-    color: #718096;
-}
-
-/* --- Central Circle & Menu Items --- */
+/* --- Menu Lingkaran --- */
 .hub-main-circle-container {
     position: relative;
     display: flex;
@@ -156,7 +139,6 @@
     align-items: center;
     width: 200px;
     height: 200px;
-    z-index: 5;
 }
 
 .hub-main-circle {
@@ -171,12 +153,13 @@
     cursor: pointer;
     transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
     box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+    z-index: 10;
 }
 
 .hub-main-circle:hover {
     transform: scale(1.05);
-    box-shadow: 0 0 30px rgba(76, 175, 80, 0.4);
-    border-color: rgba(76, 175, 80, 0.3);
+    box-shadow: 0 0 30px rgba(56, 189, 248, 0.4);
+    border-color: rgba(56, 189, 248, 0.3);
 }
 
 .hub-main-circle img {
@@ -190,8 +173,9 @@
     position: absolute;
     width: 110px;
     height: 110px;
-    background: #1a202c;
-    border: 2px solid #2d3748;
+    background: rgba(29, 36, 46, 0.7);
+    backdrop-filter: blur(8px);
+    border: 2px solid #334155; /* slate-700 */
     border-radius: 50%;
     display: flex;
     flex-direction: column;
@@ -201,7 +185,8 @@
     text-decoration: none;
     opacity: 0;
     transform: scale(0.5);
-    transition: all 0.4s ease-out;
+    /* PERBAIKAN: Animasi lebih halus */
+    transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     pointer-events: none;
 }
 
@@ -217,28 +202,26 @@
 .hub-main-circle-container.menu-visible-expanded .menu-item-4 { transition-delay: 0.15s; }
 .hub-main-circle-container.menu-visible-expanded .menu-item-5 { transition-delay: 0.2s; }
 
-
-/* Positioning for each menu item (EXPANDED for 5 items) */
+/* Posisi item menu (5 item) */
 .hub-main-circle-container.menu-visible-expanded .menu-item-1 { transform: rotate(-144deg) translateY(-160px) rotate(144deg) scale(1); }
 .hub-main-circle-container.menu-visible-expanded .menu-item-2 { transform: rotate(-72deg) translateY(-160px) rotate(72deg) scale(1); }
 .hub-main-circle-container.menu-visible-expanded .menu-item-3 { transform: translateY(-160px) scale(1); }
 .hub-main-circle-container.menu-visible-expanded .menu-item-4 { transform: rotate(72deg) translateY(-160px) rotate(-72deg) scale(1); }
 .hub-main-circle-container.menu-visible-expanded .menu-item-5 { transform: rotate(144deg) translateY(-160px) rotate(-144deg) scale(1); }
 
-
 .menu-item:hover {
     background: #2d3748;
-    border-color: #4a5568;
+    border-color: #38bdf8; /* sky-400 */
     color: #ffffff;
-    transform: scale(1.1);
+    transform: scale(1.1); /* Efek hover tetap ada, tapi posisi di-override di bawah */
 }
 
-/* Re-apply position transform on hover for expanded menu */
-.hub-main-circle-container.menu-visible-expanded .menu-item-1:hover { transform: rotate(-144deg) translateY(-160px) rotate(144deg) scale(1.1); }
-.hub-main-circle-container.menu-visible-expanded .menu-item-2:hover { transform: rotate(-72deg) translateY(-160px) rotate(72deg) scale(1.1); }
-.hub-main-circle-container.menu-visible-expanded .menu-item-3:hover { transform: translateY(-160px) scale(1.1); }
-.hub-main-circle-container.menu-visible-expanded .menu-item-4:hover { transform: rotate(72deg) translateY(-160px) rotate(-72deg) scale(1.1); }
-.hub-main-circle-container.menu-visible-expanded .menu-item-5:hover { transform: rotate(144deg) translateY(-160px) rotate(-144deg) scale(1.1); }
+/* Override transform saat hover di menu yang sudah terbuka */
+.hub-main-circle-container.menu-visible-expanded .menu-item-1:hover { transform: rotate(-144deg) translateY(-165px) rotate(144deg) scale(1.1); }
+.hub-main-circle-container.menu-visible-expanded .menu-item-2:hover { transform: rotate(-72deg) translateY(-165px) rotate(72deg) scale(1.1); }
+.hub-main-circle-container.menu-visible-expanded .menu-item-3:hover { transform: translateY(-165px) scale(1.1); }
+.hub-main-circle-container.menu-visible-expanded .menu-item-4:hover { transform: rotate(72deg) translateY(-165px) rotate(-72deg) scale(1.1); }
+.hub-main-circle-container.menu-visible-expanded .menu-item-5:hover { transform: rotate(144deg) translateY(-165px) rotate(-144deg) scale(1.1); }
 
 
 .menu-item-label {
@@ -246,3 +229,4 @@
     margin-top: 5px;
     font-weight: 500;
 }
+

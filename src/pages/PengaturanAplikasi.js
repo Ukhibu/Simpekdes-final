@@ -3,6 +3,31 @@ import { db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import Spinner from '../components/common/Spinner';
 
+// PERBAIKAN: Fungsi helper untuk unggah gambar (bisa dipindahkan ke utils)
+const uploadImageToCloudinary = async (file) => {
+    if (!file) return null;
+    const data = new FormData();
+    data.append('file', file);
+    data.append('upload_preset', process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET);
+
+    try {
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME}/image/upload`, {
+            method: 'POST',
+            body: data
+        });
+        const result = await res.json();
+        if (result.secure_url) {
+            return result.secure_url;
+        } else {
+            throw new Error(result.error.message || 'Upload ke Cloudinary gagal.');
+        }
+    } catch (error) {
+        console.error("Cloudinary upload error:", error);
+        throw error;
+    }
+};
+
+
 const PengaturanAplikasi = () => {
     const [activeTab, setActiveTab] = useState('branding');
     const [loading, setLoading] = useState(true);
@@ -12,6 +37,8 @@ const PengaturanAplikasi = () => {
     const [exportConfig, setExportConfig] = useState({});
     
     const [logoFile, setLogoFile] = useState(null);
+    // PERBAIKAN: State baru untuk file background
+    const [backgroundFile, setBackgroundFile] = useState(null);
 
     useEffect(() => {
         const fetchConfigs = async () => {
@@ -38,9 +65,10 @@ const PengaturanAplikasi = () => {
         fetchConfigs();
     }, []);
 
-    const handleFileChange = (e) => {
+    const handleFileChange = (e, type) => {
         if (e.target.files[0]) {
-            setLogoFile(e.target.files[0]);
+            if (type === 'logo') setLogoFile(e.target.files[0]);
+            if (type === 'background') setBackgroundFile(e.target.files[0]);
         }
     };
 
@@ -52,26 +80,20 @@ const PengaturanAplikasi = () => {
         try {
             if (configType === 'branding') {
                 configData = { ...brandingConfig };
-                if (logoFile) {
-                    const cloudinaryFormData = new FormData();
-                    cloudinaryFormData.append('file', logoFile);
-                    cloudinaryFormData.append('upload_preset', process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET);
+                
+                // PERBAIKAN: Logika upload yang lebih bersih
+                const logoUrl = await uploadImageToCloudinary(logoFile);
+                if (logoUrl) configData.loginLogoUrl = logoUrl;
 
-                    const response = await fetch(`https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME}/image/upload`, {
-                        method: 'POST',
-                        body: cloudinaryFormData,
-                    });
-                    const data = await response.json();
-                    if (data.secure_url) {
-                        configData.loginLogoUrl = data.secure_url;
-                    } else {
-                        throw new Error('Upload logo ke Cloudinary gagal.');
-                    }
-                }
+                const backgroundUrl = await uploadImageToCloudinary(backgroundFile);
+                if (backgroundUrl) configData.hubBackgroundUrl = backgroundUrl;
+                
                 docRef = doc(db, 'settings', 'branding');
                 await setDoc(docRef, configData, { merge: true });
-                setBrandingConfig(configData);
+                
+                setBrandingConfig(configData); // Update state lokal
                 setLogoFile(null);
+                setBackgroundFile(null);
 
             } else if (configType === 'export') {
                 configData = exportConfig;
@@ -79,7 +101,7 @@ const PengaturanAplikasi = () => {
                 await setDoc(docRef, configData, { merge: true });
             }
 
-            alert(`Pengaturan ${configType} berhasil disimpan!`);
+            alert(`Pengaturan ${configType} berhasil disimpan! Perubahan mungkin memerlukan refresh halaman.`);
         } catch (error) {
             console.error("Error saving settings:", error);
             alert(`Gagal menyimpan pengaturan: ${error.message}`);
@@ -110,13 +132,6 @@ const PengaturanAplikasi = () => {
                     <div className="space-y-6">
                         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Pengaturan Tampilan & Branding</h2>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Logo Aplikasi (di Halaman Login)</label>
-                            <div className="mt-2 flex items-center space-x-4">
-                                <img src={brandingConfig.loginLogoUrl || 'https://placehold.co/80x80?text=Logo'} alt="Current Logo" className="w-20 h-20 rounded-md bg-gray-100 dark:bg-gray-700 object-contain" />
-                                <input type="file" onChange={handleFileChange} accept="image/*" className="text-sm text-gray-500 dark:text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-900"/>
-                            </div>
-                        </div>
-                        <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nama Aplikasi</label>
                             <input type="text" value={brandingConfig.appName || ''} onChange={(e) => setBrandingConfig({...brandingConfig, appName: e.target.value})} className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"/>
                         </div>
@@ -128,6 +143,22 @@ const PengaturanAplikasi = () => {
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Sub-judul di Halaman Login</label>
                             <input type="text" value={brandingConfig.loginSubtitle || ''} onChange={(e) => setBrandingConfig({...brandingConfig, loginSubtitle: e.target.value})} className="mt-1 block w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"/>
                         </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Logo Aplikasi (di Halaman Login)</label>
+                            <div className="mt-2 flex items-center space-x-4">
+                                <img src={brandingConfig.loginLogoUrl || 'https://placehold.co/80x80?text=Logo'} alt="Current Logo" className="w-20 h-20 rounded-md bg-gray-100 dark:bg-gray-700 object-contain" />
+                                <input type="file" onChange={(e) => handleFileChange(e, 'logo')} accept="image/*" className="text-sm text-gray-500 dark:text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-900"/>
+                            </div>
+                        </div>
+                        {/* PERBAIKAN: Input baru untuk gambar latar belakang */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Gambar Latar Belakang (di Halaman Hub Utama)</label>
+                            <div className="mt-2 flex items-center space-x-4">
+                                <img src={brandingConfig.hubBackgroundUrl || 'https://placehold.co/120x80?text=Background'} alt="Current Background" className="w-32 h-20 rounded-md bg-gray-100 dark:bg-gray-700 object-cover" />
+                                <input type="file" onChange={(e) => handleFileChange(e, 'background')} accept="image/*" className="text-sm text-gray-500 dark:text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-900"/>
+                            </div>
+                        </div>
+
                         <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
                             <button onClick={() => handleSave('branding')} disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded-md">{isSaving ? 'Menyimpan...' : 'Simpan Pengaturan Branding'}</button>
                         </div>

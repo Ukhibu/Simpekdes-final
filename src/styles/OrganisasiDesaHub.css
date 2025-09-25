@@ -1,0 +1,163 @@
+/* src/styles/OrganisasiDesaHub.css */
+
+/* --- Kontainer Utama --- */
+.org-hub-container {
+    min-height: 100vh;
+    width: 100%;
+    background-color: #0d1117; /* Latar belakang gelap */
+    color: #ffffff;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* Mencegah scrollbar */
+}
+
+/* --- Canvas Partikel --- */
+#particle-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
+/* --- Wrapper Konten --- */
+.hub-content-wrapper {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    padding: 1.5rem;
+}
+
+/* --- Header --- */
+.org-hub-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(29, 36, 46, 0.5); /* Semi-transparan */
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 0.75rem 1.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.org-hub-branding {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.org-hub-logo {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+}
+
+.org-hub-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.org-hub-subtitle {
+    font-size: 0.875rem;
+    color: #9ca3af; /* gray-400 */
+}
+
+.org-hub-back-button {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    color: #e5e7eb; /* gray-200 */
+    font-size: 0.875rem;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.org-hub-back-button:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* --- Konten Utama (Grid Menu) --- */
+.org-hub-main {
+    flex-grow: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.menu-grid {
+    display: grid;
+    /* PERBAIKAN: Tata letak grid yang responsif */
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 2rem;
+    width: 100%;
+    max-width: 900px;
+    padding: 2rem;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.menu-item-circle {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    aspect-ratio: 1 / 1; /* Membuat item menjadi lingkaran sempurna */
+    background-color: rgba(30, 41, 59, 0.7);
+    border: 2px solid #334155; /* slate-700 */
+    border-radius: 50%;
+    text-decoration: none;
+    color: #cbd5e1; /* slate-300 */
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeIn 0.5s ease-out forwards;
+}
+
+.menu-item-circle:hover {
+    transform: translateY(-8px) scale(1.05);
+    background-color: rgba(51, 65, 85, 0.9);
+    border-color: #0ea5e9; /* sky-500 */
+    color: #ffffff;
+    box-shadow: 0 0 25px rgba(14, 165, 233, 0.5);
+}
+
+.menu-item-icon {
+    margin-bottom: 0.5rem;
+    transition: transform 0.3s ease;
+}
+
+.menu-item-circle:hover .menu-item-icon {
+    transform: scale(1.1);
+}
+
+.menu-item-label {
+    font-size: 1rem;
+    font-weight: 500;
+    text-align: center;
+}
+
+/* --- Footer --- */
+.org-hub-footer {
+    padding-bottom: 1rem;
+    text-align: center;
+}
+
+.instruction-text {
+    font-size: 0.875rem;
+    color: #64748b; /* slate-500 */
+    margin-bottom: 1rem;
+}
+

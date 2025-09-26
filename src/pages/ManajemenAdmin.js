@@ -3,8 +3,9 @@ import { db, auth } from '../firebase'; // auth utama untuk reset password
 import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { sendPasswordResetEmail, createUserWithEmailAndPassword, getAuth } from 'firebase/auth';
 import { initializeApp } from 'firebase/app';
-
+import { useNotification } from '../context/NotificationContext';
 import Modal from '../components/common/Modal';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 import Spinner from '../components/common/Spinner';
 import { FiTrash2, FiKey, FiEye, FiEyeOff, FiPlus } from 'react-icons/fi';
 
@@ -19,9 +20,11 @@ const ManajemenAdmin = () => {
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [formData, setFormData] = useState({});
-    const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
+    const { showNotification } = useNotification();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+    const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+    const [adminToDelete, setAdminToDelete] = useState(null);
 
     useEffect(() => {
         const q = query(collection(db, "users"), where("role", "==", "admin_desa"));
@@ -32,11 +35,6 @@ const ManajemenAdmin = () => {
         });
         return () => unsubscribe();
     }, []);
-
-    const showNotification = (message, type = 'success') => {
-        setNotification({ show: true, message, type });
-        setTimeout(() => setNotification({ show: false, message: '', type: 'success' }), 5000);
-    };
 
     const handleOpenModal = () => {
         setFormData({ nama: '', email: '', password: '', desa: DESA_LIST[0] });
@@ -86,11 +84,24 @@ const ManajemenAdmin = () => {
             setIsSubmitting(false);
         }
     };
+    
+    const confirmDelete = (admin) => {
+        setAdminToDelete(admin);
+        setIsDeleteConfirmOpen(true);
+    };
 
-    const handleDelete = async (id, nama) => {
-        if (window.confirm(`Peringatan: Ini akan menghapus data admin '${nama}' dari tabel, tetapi tidak akan menghapus loginnya dari sistem. Lanjutkan?`)) {
-            await deleteDoc(doc(db, 'users', id));
-            showNotification('Data admin telah dihapus dari database.');
+    const handleDelete = async () => {
+        if (!adminToDelete) return;
+        setIsSubmitting(true);
+        try {
+            await deleteDoc(doc(db, 'users', adminToDelete.id));
+            showNotification(`Data admin untuk ${adminToDelete.nama} telah dihapus.`, 'success');
+        } catch(error) {
+            showNotification(`Gagal menghapus data: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
+            setIsDeleteConfirmOpen(false);
+            setAdminToDelete(null);
         }
     };
 
@@ -109,11 +120,6 @@ const ManajemenAdmin = () => {
 
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md transition-colors duration-300">
-            {notification.show && (
-                <div className={`p-4 mb-4 rounded-md ${notification.type === 'success' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'}`}>
-                    {notification.message}
-                </div>
-            )}
             <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Daftar Admin Desa</h2>
                 <button onClick={handleOpenModal} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
@@ -139,7 +145,7 @@ const ManajemenAdmin = () => {
                                 <td className="px-6 py-4">{admin.desa}</td>
                                 <td className="px-6 py-4 flex space-x-3">
                                     <button onClick={() => handleResetPassword(admin.email)} className="text-yellow-600 hover:text-yellow-800 dark:text-yellow-400 dark:hover:text-yellow-300" title="Reset Password"><FiKey /></button>
-                                    <button onClick={() => handleDelete(admin.id, admin.nama)} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Hapus"><FiTrash2 /></button>
+                                    <button onClick={() => confirmDelete(admin)} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Hapus"><FiTrash2 /></button>
                                 </td>
                             </tr>
                         ))}
@@ -180,8 +186,18 @@ const ManajemenAdmin = () => {
                     </div>
                 </form>
             </Modal>
+
+            <ConfirmationModal
+                isOpen={isDeleteConfirmOpen}
+                onClose={() => setIsDeleteConfirmOpen(false)}
+                onConfirm={handleDelete}
+                isLoading={isSubmitting}
+                title="Konfirmasi Hapus Admin"
+                message={`Peringatan: Ini akan menghapus data admin "${adminToDelete?.nama}" dari tabel, tetapi tidak akan menghapus loginnya dari sistem. Lanjutkan?`}
+            />
         </div>
     );
 };
 
 export default ManajemenAdmin;
+

@@ -2,9 +2,11 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import { collection, query, where, onSnapshot, addDoc, doc, deleteDoc, updateDoc, getDocs } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext'; // Diimpor
 import Modal from '../components/common/Modal';
+import ConfirmationModal from '../components/common/ConfirmationModal'; // Diimpor
 import Spinner from '../components/common/Spinner';
-import { FiUpload, FiSearch, FiFilter, FiEye, FiDownload, FiTrash2, FiDatabase, FiCheckSquare, FiUser } from 'react-icons/fi';
+import { FiUpload, FiSearch, FiFilter, FiEye, FiDownload, FiTrash2, FiDatabase, FiCheckSquare } from 'react-icons/fi';
 
 const DESA_LIST = [
     "Punggelan", "Petuguran", "Karangsari", "Jembangan", "Tanjungtirta",
@@ -12,34 +14,18 @@ const DESA_LIST = [
     "Sambong", "Klapa", "Kecepit", "Mlaya", "Sidarata", "Purwasana", "Tlaga"
 ];
 
-const Notification = ({ message, type, onClose }) => {
-    useEffect(() => {
-        const timer = setTimeout(onClose, 5000);
-        return () => clearTimeout(timer);
-    }, [onClose]);
-
-    const baseClasses = "p-4 mb-4 rounded-md text-sm";
-    const typeClasses = {
-        success: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-        error: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-    };
-
-    return <div className={`${baseClasses} ${typeClasses[type]}`}>{message}</div>;
-};
-
 // --- Fungsi untuk membuat notifikasi ---
 const createNotificationForAdmins = async (perangkat) => {
     const adminQuery = query(collection(db, "users"), where("role", "==", "admin_kecamatan"));
     try {
         const adminSnapshot = await getDocs(adminQuery);
         adminSnapshot.forEach(async (adminDoc) => {
-            const admin = adminDoc.data();
             await addDoc(collection(db, "notifications"), {
-                recipientId: adminDoc.id,
-                message: `SK baru untuk <b>${perangkat.nama}</b> dari Desa <b>${perangkat.desa}</b> telah diunggah dan menunggu verifikasi.`,
+                userId: adminDoc.id,
+                message: `SK baru untuk ${perangkat.nama} dari Desa ${perangkat.desa} telah diunggah dan menunggu verifikasi.`,
                 link: '/app/efile/manage',
-                read: false,
-                createdAt: new Date(),
+                readStatus: false,
+                timestamp: new Date(),
             });
         });
         console.log("Notifikasi berhasil dibuat untuk semua admin kecamatan.");
@@ -50,6 +36,7 @@ const createNotificationForAdmins = async (perangkat) => {
 
 const EFilePage = () => {
     const { currentUser } = useAuth();
+    const { showNotification } = useNotification(); // Menggunakan hook notifikasi global
     const [activeTab, setActiveTab] = useState('manajemen');
     const [allPerangkat, setAllPerangkat] = useState([]);
     const [selectedDesaForUpload, setSelectedDesaForUpload] = useState(currentUser?.role === 'admin_desa' ? currentUser.desa : '');
@@ -62,7 +49,12 @@ const EFilePage = () => {
     const [filterDesa, setFilterDesa] = useState(currentUser?.role === 'admin_kecamatan' ? 'all' : currentUser.desa);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [previewUrl, setPreviewUrl] = useState('');
-    const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
+
+    // State untuk modal konfirmasi
+    const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+    const [skDocToDelete, setSkDocToDelete] = useState(null);
+    const [isSubmittingDelete, setIsSubmittingDelete] = useState(false);
+
 
     // Fetch all perangkat data for lookups (foto, jabatan)
     useEffect(() => {
@@ -90,11 +82,7 @@ const EFilePage = () => {
             showNotification('Gagal memuat data SK.', 'error');
         });
         return () => unsubscribe();
-    }, [currentUser]);
-
-    const showNotification = (message, type = 'success') => {
-        setNotification({ show: true, message, type });
-    };
+    }, [currentUser, showNotification]);
     
     // Create a memoized list of perangkat for the upload dropdown, filtered by selected desa
     const perangkatListForUpload = useMemo(() => {
@@ -179,7 +167,6 @@ const EFilePage = () => {
                 uploadedAt: new Date(),
             });
             
-            // --- PERBAIKAN: Panggil fungsi notifikasi setelah upload berhasil ---
             if (currentUser.role === 'admin_desa') {
                 await createNotificationForAdmins(perangkat);
             }
@@ -200,16 +187,25 @@ const EFilePage = () => {
         }
     };
     
-    const handleDelete = async (skDoc) => {
-        if (window.confirm(`Apakah Anda yakin ingin menghapus catatan SK "${skDoc.fileName}"? Ini tidak akan menghapus file fisik.`)) {
-            try {
-                await deleteDoc(doc(db, 'efile', skDoc.id));
-                showNotification('Catatan dokumen SK berhasil dihapus.', 'success');
-            } catch (error) {
-                console.error("Error deleting document:", error);
-                const errorMessage = error.message || "Terjadi galat yang tidak diketahui.";
-                showNotification(`Gagal menghapus catatan: ${errorMessage}`, 'error');
-            }
+    const confirmDelete = (skDoc) => {
+        setSkDocToDelete(skDoc);
+        setIsDeleteConfirmOpen(true);
+    };
+
+    const executeDelete = async () => {
+        if (!skDocToDelete) return;
+        setIsSubmittingDelete(true);
+        try {
+            await deleteDoc(doc(db, 'efile', skDocToDelete.id));
+            showNotification('Catatan dokumen SK berhasil dihapus.', 'success');
+        } catch (error) {
+            console.error("Error deleting document:", error);
+            const errorMessage = error.message || "Terjadi galat yang tidak diketahui.";
+            showNotification(`Gagal menghapus catatan: ${errorMessage}`, 'error');
+        } finally {
+            setIsSubmittingDelete(false);
+            setIsDeleteConfirmOpen(false);
+            setSkDocToDelete(null);
         }
     };
 
@@ -254,14 +250,6 @@ const EFilePage = () => {
 
     return (
         <div className="space-y-6">
-            {notification.show && (
-                <Notification 
-                    message={notification.message} 
-                    type={notification.type} 
-                    onClose={() => setNotification({ ...notification, show: false })} 
-                />
-            )}
-            
             <div className="border-b border-gray-200 dark:border-gray-700">
                 <nav className="-mb-px flex space-x-8" aria-label="Tabs">
                     <button onClick={() => setActiveTab('manajemen')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'manajemen' ? 'border-blue-500 text-blue-600 dark:border-blue-400 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}>
@@ -365,7 +353,7 @@ const EFilePage = () => {
                                                         <FiCheckSquare />
                                                     </button>
                                                  )}
-                                                 <button onClick={() => handleDelete(sk)} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Hapus"><FiTrash2 /></button>
+                                                 <button onClick={() => confirmDelete(sk)} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Hapus"><FiTrash2 /></button>
                                              </td>
                                          </tr>
                                      )) : (
@@ -389,6 +377,15 @@ const EFilePage = () => {
                     )}
                 </div>
             </Modal>
+
+            <ConfirmationModal
+                isOpen={isDeleteConfirmOpen}
+                onClose={() => setIsDeleteConfirmOpen(false)}
+                onConfirm={executeDelete}
+                isLoading={isSubmittingDelete}
+                title="Konfirmasi Hapus Catatan SK"
+                message={`Apakah Anda yakin ingin menghapus catatan SK untuk "${skDocToDelete?.fileName}"? Ini tidak akan menghapus file fisik.`}
+            />
         </div>
     );
 };

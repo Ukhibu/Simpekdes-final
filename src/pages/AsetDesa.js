@@ -2,7 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, where } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext';
 import Modal from '../components/common/Modal';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 import Spinner from '../components/common/Spinner';
 import InputField from '../components/common/InputField';
 import { FiArchive, FiPlus, FiSearch, FiFilter, FiEdit, FiTrash2 } from 'react-icons/fi';
@@ -19,6 +21,9 @@ const AsetDesa = () => {
     const [selectedAset, setSelectedAset] = useState(null);
     const [formData, setFormData] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const { showNotification } = useNotification();
+    const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+    const [assetToDelete, setAssetToDelete] = useState(null);
     
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
@@ -85,24 +90,37 @@ const AsetDesa = () => {
             if (selectedAset) {
                 const docRef = doc(db, 'aset', selectedAset.id);
                 await updateDoc(docRef, dataToSave);
-                alert('Aset berhasil diperbarui!');
+                showNotification('Aset berhasil diperbarui!', 'success');
             } else {
                 await addDoc(collection(db, 'aset'), dataToSave);
-                alert('Aset berhasil ditambahkan!');
+                showNotification('Aset berhasil ditambahkan!', 'success');
             }
             handleCloseModal();
         } catch (error) {
             console.error("Error saving asset: ", error);
-            alert("Gagal menyimpan aset.");
+            showNotification(`Gagal menyimpan aset: ${error.message}`, 'error');
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    const handleDelete = async (id) => {
-        if(window.confirm("Yakin ingin menghapus aset ini?")) {
-            await deleteDoc(doc(db, 'aset', id));
-            alert('Aset berhasil dihapus.');
+    const confirmDelete = (aset) => {
+        setAssetToDelete(aset);
+        setIsDeleteConfirmOpen(true);
+    };
+
+    const executeDelete = async () => {
+        if (!assetToDelete) return;
+        setIsSubmitting(true);
+        try {
+            await deleteDoc(doc(db, 'aset', assetToDelete.id));
+            showNotification('Aset berhasil dihapus.', 'success');
+        } catch (error) {
+            showNotification(`Gagal menghapus aset: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
+            setIsDeleteConfirmOpen(false);
+            setAssetToDelete(null);
         }
     };
 
@@ -160,7 +178,7 @@ const AsetDesa = () => {
                                     {currentUser.role === 'admin_desa' && (
                                         <td className="px-6 py-4 flex items-center space-x-2">
                                             <button onClick={() => handleOpenModal(aset)} className="text-blue-500 hover:text-blue-700"><FiEdit /></button>
-                                            <button onClick={() => handleDelete(aset.id)} className="text-red-500 hover:text-red-700"><FiTrash2 /></button>
+                                            <button onClick={() => confirmDelete(aset)} className="text-red-500 hover:text-red-700"><FiTrash2 /></button>
                                         </td>
                                     )}
                                 </tr>
@@ -197,6 +215,15 @@ const AsetDesa = () => {
                     </div>
                 </form>
             </Modal>
+            
+            <ConfirmationModal
+                isOpen={isDeleteConfirmOpen}
+                onClose={() => setIsDeleteConfirmOpen(false)}
+                onConfirm={executeDelete}
+                isLoading={isSubmitting}
+                title="Konfirmasi Hapus Aset"
+                message={`Apakah Anda yakin ingin menghapus aset "${assetToDelete?.namaAset}"? Tindakan ini tidak dapat dibatalkan.`}
+            />
         </div>
     );
 };

@@ -1,0 +1,15 @@
+/* Styling untuk Tooltip Grafik Recharts */
+.custom-tooltip {
+    background-color: rgba(30, 41, 59, 0.9); /* slate-800 dengan transparansi */
+    border: 1px solid #475569; /* slate-600 */
+    padding: 10px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    color: #f1f5f9; /* slate-100 */
+}
+
+.custom-tooltip .label {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 500;
+}

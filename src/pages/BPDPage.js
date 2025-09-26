@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
-import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, where, writeBatch, getDoc } from 'firebase/firestore';
+import { collection, query, where, writeBatch, getDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import Modal from '../components/common/Modal';
 import Spinner from '../components/common/Spinner';
 import { FiEdit, FiTrash2, FiSearch, FiFilter, FiPlus, FiUpload, FiDownload } from 'react-icons/fi';
 import * as XLSX from 'xlsx';
 import { generateBpdXLSX } from '../utils/generateBpdXLSX';
 import InputField from '../components/common/InputField';
+import { useFirestoreCollection } from '../hooks/useFirestoreCollection';
+import { useNotification } from '../context/NotificationContext';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 
 const DESA_LIST = [ "Punggelan", "Petuguran", "Karangsari", "Jembangan", "Tanjungtirta", "Sawangan", "Bondolharjo", "Danakerta", "Badakarya", "Tribuana", "Sambong", "Klapa", "Kecepit", "Mlaya", "Sidarata", "Purwasana", "Tlaga" ];
 const JABATAN_BPD_LIST = ["Ketua", "Wakil Ketua", "Sekretaris", "Anggota"];
@@ -18,8 +21,9 @@ const JENIS_KELAMIN_LIST = ["Laki-laki", "Perempuan"];
 
 const BPDPage = () => {
     const { currentUser } = useAuth();
-    const [allBpd, setAllBpd] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const { showNotification } = useNotification();
+    const { data: allBpd, loading, addItem, updateItem, deleteItem } = useFirestoreCollection('bpd');
+
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedBpd, setSelectedBpd] = useState(null);
     const [formData, setFormData] = useState({});
@@ -30,8 +34,10 @@ const BPDPage = () => {
     const [isUploading, setIsUploading] = useState(false);
     const [uploadConfig, setUploadConfig] = useState(null);
     
+    const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+    const [bpdToDelete, setBpdToDelete] = useState(null);
+
     const [searchParams, setSearchParams] = useSearchParams();
-    const navigate = useNavigate();
 
     useEffect(() => {
         const fetchUploadConfig = async () => {
@@ -44,21 +50,7 @@ const BPDPage = () => {
             }
         };
         fetchUploadConfig();
-
-        if (!currentUser) return;
-        setLoading(true);
-        const bpdCollection = collection(db, 'bpd');
-        const q = currentUser.role === 'admin_kecamatan' 
-            ? query(bpdCollection)
-            : query(bpdCollection, where("desa", "==", currentUser.desa));
-        
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const list = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setAllBpd(list);
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, [currentUser]);
+    }, []);
 
     useEffect(() => {
         const editId = searchParams.get('edit');
@@ -92,31 +84,40 @@ const BPDPage = () => {
     const handleFormSubmit = async (e) => {
         e.preventDefault();
         if (!formData.desa) {
-            alert("Desa wajib diisi!");
+            showNotification("Desa wajib diisi!", 'error');
             return;
         }
         setIsSubmitting(true);
         try {
             if (selectedBpd) {
-                const docRef = doc(db, 'bpd', selectedBpd.id);
-                await updateDoc(docRef, formData);
-                alert('Data berhasil diperbarui!');
+                await updateItem(selectedBpd.id, formData);
             } else {
-                await addDoc(collection(db, 'bpd'), formData);
-                alert('Data berhasil ditambahkan!');
+                await addItem(formData);
             }
             handleCloseModal();
         } catch (error) {
-            console.error("Error saving document: ", error);
-            alert("Gagal menyimpan data.");
+            // Error notification is handled by the hook
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    const handleDelete = async (id) => {
-        if (window.confirm("Yakin ingin menghapus data BPD ini?")) {
-            await deleteDoc(doc(db, 'bpd', id));
+    const confirmDelete = (bpd) => {
+        setBpdToDelete(bpd);
+        setIsDeleteConfirmOpen(true);
+    };
+
+    const executeDelete = async () => {
+        if (!bpdToDelete) return;
+        setIsSubmitting(true);
+        try {
+            await deleteItem(bpdToDelete.id);
+        } catch (error) {
+            // Error notification is handled by the hook
+        } finally {
+            setIsSubmitting(false);
+            setIsDeleteConfirmOpen(false);
+            setBpdToDelete(null);
         }
     };
 
@@ -125,7 +126,7 @@ const BPDPage = () => {
         if (!file) return;
 
         if (!uploadConfig || Object.values(uploadConfig).every(v => !v)) {
-            alert("Pengaturan format upload belum diatur. Silakan atur di halaman Setelan BPD.");
+            showNotification("Pengaturan format upload belum diatur. Silakan atur di halaman Setelan BPD.", "warning");
             e.target.value = null;
             return;
         }
@@ -135,7 +136,6 @@ const BPDPage = () => {
 
         reader.onload = async (event) => {
             try {
-                // **PERBAIKAN**: Pengecekan duplikasi sekarang menggunakan Nama dan No. SK Bupati
                 const existingDataCheck = new Set(allBpd.map(b => `${String(b.nama || '').toLowerCase().trim()}_${String(b.no_sk_bupati || '').toString().trim()}`));
                 const data = new Uint8Array(event.target.result);
                 const workbook = XLSX.read(data, { type: 'array', cellDates: true });
@@ -177,7 +177,6 @@ const BPDPage = () => {
                     const nama = String(newDoc.nama || '').toLowerCase().trim();
                     const noSkBupati = String(newDoc.no_sk_bupati || '').toString().trim();
 
-                    // **PERBAIKAN**: Validasi menggunakan Nama dan No. SK
                     if (!nama || !noSkBupati) return;
 
                     const uniqueKey = `${nama}_${noSkBupati}`;
@@ -194,15 +193,15 @@ const BPDPage = () => {
 
                 if (newEntriesCount > 0) await batch.commit();
 
-                let alertMessage = `${newEntriesCount} data BPD baru berhasil diimpor.`;
+                let notificationMessage = `${newEntriesCount} data BPD baru berhasil diimpor.`;
                 if (duplicates.length > 0) {
-                    alertMessage += `\n\n${duplicates.length} data tidak diimpor karena duplikat (Nama & No. SK Bupati sudah ada):\n- ${duplicates.join('\n- ')}`;
+                    notificationMessage += `\n\n${duplicates.length} data tidak diimpor karena duplikat:\n- ${duplicates.join('\n- ')}`;
                 }
-                alert(alertMessage);
+                showNotification(notificationMessage, 'info', 10000);
 
             } catch (error) {
                 console.error("Error processing file:", error);
-                alert(`Gagal memproses file: ${error.message}`);
+                showNotification(`Gagal memproses file: ${error.message}`, 'error');
             } finally {
                 setIsUploading(false);
                 e.target.value = null;
@@ -212,23 +211,25 @@ const BPDPage = () => {
     };
 
     const filteredBpd = useMemo(() => {
+        // PERBAIKAN: Tambahkan pemeriksaan untuk currentUser sebelum mengakses propertinya
+        if (!currentUser) return [];
         return allBpd.filter(b => {
             const filterByDesaCond = currentUser.role === 'admin_kecamatan' && filterDesa !== 'all' ? b.desa === filterDesa : true;
             const searchLower = searchTerm.toLowerCase();
             const filterBySearchCond = !searchTerm ||
                 (b.nama && b.nama.toLowerCase().includes(searchLower)) ||
-                (b.jabatan && b.jabatan.toLowerCase().includes(searchLower)); // Diubah dari NIK ke jabatan
+                (b.jabatan && b.jabatan.toLowerCase().includes(searchLower));
             const filterByPeriodeCond = !periodeFilter || (b.periode && b.periode.includes(periodeFilter));
             return filterByDesaCond && filterBySearchCond && filterByPeriodeCond;
         });
-    }, [allBpd, searchTerm, filterDesa, currentUser.role, periodeFilter]);
+    }, [allBpd, searchTerm, filterDesa, currentUser, periodeFilter]); // PERBAIKAN: Ubah dependensi ke objek currentUser
     
     const handleExportXLSX = () => {
         const dataToExport = filteredBpd.length > 0 ? filteredBpd : allBpd;
          if (dataToExport.length === 0) {
-            alert("Tidak ada data untuk diekspor.");
+            showNotification("Tidak ada data untuk diekspor.", "warning");
             return;
-        }
+         }
         const groupedData = dataToExport.reduce((acc, p) => {
             const desa = p.desa || 'Lainnya';
             (acc[desa] = acc[desa] || []).push(p);
@@ -236,7 +237,6 @@ const BPDPage = () => {
         }, {});
         generateBpdXLSX(groupedData, periodeFilter);
     };
-
 
     if (loading) return <Spinner size="lg" />;
 
@@ -253,7 +253,7 @@ const BPDPage = () => {
                 )}
             </div>
             <div className="flex flex-wrap justify-end gap-2 mb-4">
-                 <label className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 cursor-pointer flex items-center gap-2">
+                <label className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 cursor-pointer flex items-center gap-2">
                     <FiUpload/> {isUploading ? 'Mengimpor...' : 'Impor Data'}
                     <input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading}/>
                 </label>
@@ -284,7 +284,7 @@ const BPDPage = () => {
                                 <td className="px-6 py-4">{p.periode}</td>
                                 <td className="px-6 py-4 flex space-x-3">
                                     <button onClick={() => handleOpenModal(p)} className="text-blue-600 hover:text-blue-800"><FiEdit /></button>
-                                    <button onClick={() => handleDelete(p.id)} className="text-red-600 hover:text-red-800"><FiTrash2 /></button>
+                                    <button onClick={() => confirmDelete(p)} className="text-red-600 hover:text-red-800"><FiTrash2 /></button>
                                 </td>
                             </tr>
                         ))}
@@ -313,7 +313,6 @@ const BPDPage = () => {
                         <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Data Pribadi</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
                              <InputField label="Nama Lengkap" name="nama" value={formData.nama || ''} onChange={handleFormChange} required />
-                             {/* NIK dihapus dari sini */}
                              <InputField label="Jenis Kelamin" name="jenis_kelamin" value={formData.jenis_kelamin || ''} onChange={handleFormChange} type="select">
                                 <option value="">Pilih Jenis Kelamin</option>
                                 {JENIS_KELAMIN_LIST.map(jk => <option key={jk} value={jk}>{jk}</option>)}
@@ -354,6 +353,15 @@ const BPDPage = () => {
                     </div>
                 </form>
             </Modal>
+            
+            <ConfirmationModal
+                isOpen={isDeleteConfirmOpen}
+                onClose={() => setIsDeleteConfirmOpen(false)}
+                onConfirm={executeDelete}
+                isLoading={isSubmitting}
+                title="Konfirmasi Hapus Anggota BPD"
+                message={`Apakah Anda yakin ingin menghapus data anggota BPD "${bpdToDelete?.nama}"? Tindakan ini tidak dapat dibatalkan.`}
+            />
         </div>
     );
 };

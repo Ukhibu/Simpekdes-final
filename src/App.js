@@ -6,13 +6,14 @@ import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement,
 
 import AppLayout from './components/layout/AppLayout';
 import Spinner from './components/common/Spinner';
+import NotificationContainer from './components/common/NotificationContainer';
 
 // Halaman Utama & Otentikasi
 import LoginPage from './pages/LoginPage';
 import HubPage from './pages/HubPage';
 
 // Halaman Modul Inti
-import DashboardContent from './pages/DashboardContent';
+import DashboardPage from './pages/DashboardPage'; // Mengganti DashboardContent dengan DashboardPage
 import Perangkat from './pages/Perangkat';
 import RekapitulasiAparatur from './pages/RekapitulasiAparatur';
 import LaporanPage from './pages/LaporanPage';
@@ -58,64 +59,67 @@ function PrivateRoute({ children }) {
 
 function App() {
   return (
-    <Router>
-      <AuthProvider>
-        <BrandingProvider>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/" element={<PrivateRoute><HubPage /></PrivateRoute>} />
-            
-            {/* Rute Hub Organisasi Desa (Tampilan Penuh tanpa Sidebar) */}
-            <Route path="/app/organisasi-desa" element={<PrivateRoute><OrganisasiDesaHub /></PrivateRoute>} />
-
-            {/* Rute dengan Layout Sidebar */}
-            <Route path="/app" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
-              {/* Modul Perangkat Desa */}
-              <Route index element={<DashboardContent />} /> 
-              <Route path="perangkat" element={<Perangkat />} />
-              <Route path="rekapitulasi-aparatur" element={<RekapitulasiAparatur />} />
-              <Route path="manajemen-admin" element={<ManajemenAdmin />} />
-              <Route path="pengaturan" element={<PengaturanAplikasi />} />
-              <Route path="laporan" element={<LaporanPage />} />
+    <>
+      <NotificationContainer />
+      <Router>
+        <AuthProvider>
+          <BrandingProvider>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/" element={<PrivateRoute><HubPage /></PrivateRoute>} />
               
-              {/* Sub-Modul BPD */}
-              <Route path="bpd" element={<BPDDashboard />} />
-              <Route path="bpd/data" element={<BPDPage />} />
-              <Route path="bpd/berita-acara" element={<BeritaAcaraBPDPage />} />
-              <Route path="bpd/pengaturan" element={<PengaturanBPD />} />
+              {/* Rute Hub Organisasi Desa (Tampilan Penuh tanpa Sidebar) */}
+              <Route path="/app/organisasi-desa" element={<PrivateRoute><OrganisasiDesaHub /></PrivateRoute>} />
 
-              {/* Sub-Modul LPM */}
-              <Route path="lpm" element={<LPMDashboard />} />
-              <Route path="lpm/data" element={<LPMPage />} />
+              {/* Rute dengan Layout Sidebar */}
+              <Route path="/app" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
+                {/* Modul Perangkat Desa */}
+                <Route index element={<DashboardPage />} /> {/* Menggunakan DashboardPage sebagai halaman utama */}
+                <Route path="perangkat" element={<Perangkat />} />
+                <Route path="rekapitulasi-aparatur" element={<RekapitulasiAparatur />} />
+                <Route path="manajemen-admin" element={<ManajemenAdmin />} />
+                <Route path="pengaturan" element={<PengaturanAplikasi />} />
+                <Route path="laporan" element={<LaporanPage />} />
+                
+                {/* Sub-Modul BPD */}
+                <Route path="bpd" element={<BPDDashboard />} />
+                <Route path="bpd/data" element={<BPDPage />} />
+                <Route path="bpd/berita-acara" element={<BeritaAcaraBPDPage />} />
+                <Route path="bpd/pengaturan" element={<PengaturanBPD />} />
 
-              {/* Sub-Modul PKK */}
-              <Route path="pkk" element={<PKKDashboard />} />
-              <Route path="pkk/data" element={<PKKPage />} />
-              <Route path="pkk/program" element={<PKKProgramPage />} />
+                {/* Sub-Modul LPM */}
+                <Route path="lpm" element={<LPMDashboard />} />
+                <Route path="lpm/data" element={<LPMPage />} />
 
-              {/* Sub-Modul Karang Taruna */}
-              <Route path="karang-taruna" element={<KarangTarunaDashboard />} />
-              <Route path="karang-taruna/data" element={<KarangTarunaPage />} />
-              <Route path="karang-taruna/kegiatan" element={<KarangTarunaKegiatanPage />} />
+                {/* Sub-Modul PKK */}
+                <Route path="pkk" element={<PKKDashboard />} />
+                <Route path="pkk/data" element={<PKKPage />} />
+                <Route path="pkk/program" element={<PKKProgramPage />} />
+
+                {/* Sub-Modul Karang Taruna */}
+                <Route path="karang-taruna" element={<KarangTarunaDashboard />} />
+                <Route path="karang-taruna/data" element={<KarangTarunaPage />} />
+                <Route path="karang-taruna/kegiatan" element={<KarangTarunaKegiatanPage />} />
+                
+                {/* Sub-Modul RT/RW */}
+                <Route path="rt-rw" element={<RtRwDashboard />} />
+                <Route path="rt-rw/data" element={<RtRwPage />} />
+
+                {/* Modul E-File */}
+                <Route path="efile" element={<EFileDashboard />} />
+                <Route path="efile/manage" element={<EFilePage />} />
+
+                {/* Modul Keuangan & Aset */}
+                <Route path="keuangan" element={<KeuanganDesa />} />
+                <Route path="aset" element={<AsetDesa />} />
+              </Route>
               
-              {/* Sub-Modul RT/RW */}
-              <Route path="rt-rw" element={<RtRwDashboard />} />
-              <Route path="rt-rw/data" element={<RtRwPage />} />
-
-              {/* Modul E-File */}
-              <Route path="efile" element={<EFileDashboard />} />
-              <Route path="efile/manage" element={<EFilePage />} />
-
-              {/* Modul Keuangan & Aset */}
-              <Route path="keuangan" element={<KeuanganDesa />} />
-              <Route path="aset" element={<AsetDesa />} />
-            </Route>
-            
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrandingProvider>
-      </AuthProvider>
-    </Router>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </BrandingProvider>
+        </AuthProvider>
+      </Router>
+    </>
   );
 }
 

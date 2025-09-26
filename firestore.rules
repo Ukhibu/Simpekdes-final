@@ -2,100 +2,76 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // --- Helper Functions (Fungsi Bantuan) ---
-    function isUserAuthenticated() {
+  
+    // Fungsi bantuan untuk validasi
+    function isSignedIn() {
       return request.auth != null;
     }
 
-    function getUserRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    function isUserRole(role) {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
     }
-
+    
     function getUserDesa() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.desa;
-    }
-
-    function isKecamatanAdmin() {
-      return isUserAuthenticated() && getUserRole() == 'admin_kecamatan';
-    }
-
-    function isDesaAdmin() {
-      return isUserAuthenticated() && getUserRole() == 'admin_desa';
-    }
-
-    // Fungsi untuk memeriksa apakah admin desa mengakses data desanya sendiri
-    function isAccessingOwnDesa(desa) {
-      return isDesaAdmin() && getUserDesa() == desa;
+    	return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.desa;
     }
     
-    // Fungsi gabungan untuk aturan read/write umum
-    function canAccessDesaData(desa) {
-      return isKecamatanAdmin() || isAccessingOwnDesa(desa);
+    function isDataOwner(desa) {
+    	return getUserDesa() == desa;
     }
     
-    // --- Aturan untuk Koleksi Utama ---
+    function validatePerangkatData(data) {
+        return data.nama is string && data.nama.size() > 0 &&
+               data.desa is string && data.desa.size() > 0 &&
+               data.jabatan is string && data.jabatan.size() > 0 &&
+               (!('nik' in data) || data.nik is string && data.nik.size() <= 16);
+    }
+
+    // Aturan untuk koleksi 'users'
     match /users/{userId} {
-      allow read: if isUserAuthenticated() && (request.auth.uid == userId || isKecamatanAdmin());
-      allow write: if isKecamatanAdmin();
+      allow read, update: if request.auth.uid == userId || isUserRole('admin_kecamatan');
+      allow create: if isSignedIn();
     }
     
-    match /settings/{docId} {
-      allow read: if isUserAuthenticated();
-      allow write: if isKecamatanAdmin();
-    }
-    
-    match /notifications/{notificationId} {
-      allow create: if isUserAuthenticated();
-      allow read, update: if isUserAuthenticated() && request.auth.uid == resource.data.userId;
-    }
-
-    // --- Aturan untuk Modul Data ---
+    // Aturan untuk koleksi 'perangkat'
     match /perangkat/{docId} {
-      allow read, write: if canAccessDesaData(resource.data.desa);
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && 
+                      (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isDataOwner(request.resource.data.desa))) &&
+                      validatePerangkatData(request.resource.data);
+                      
+      allow update: if isSignedIn() && 
+                      (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isDataOwner(resource.data.desa))) &&
+                      validatePerangkatData(request.resource.data);
+                      
+      allow delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isDataOwner(resource.data.desa)));
     }
     
-    match /efile/{docId} {
-      allow read, create, update: if canAccessDesaData(resource.data.desa);
-      allow delete: if isKecamatanAdmin() || (isAccessingOwnDesa(resource.data.desa) && resource.data.status != 'terverifikasi');
-    }
-    
-    match /keuangan/{docId} {
-       allow read, write: if canAccessDesaData(resource.data.desa);
-    }
-
-    match /aset/{docId} {
-       allow read, write: if canAccessDesaData(resource.data.desa);
-    }
-
-    // --- Aturan untuk Modul Organisasi Desa ---
+    // Aturan untuk koleksi 'bpd'
     match /bpd/{docId} {
-      allow read, write: if canAccessDesaData(resource.data.desa);
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isDataOwner(request.resource.data.desa)));
+      allow delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isDataOwner(resource.data.desa)));
+    }
+
+    // Aturan umum untuk organisasi desa lainnya (PKK, LPM, dll.)
+    match /{collectionName}/{docId} {
+      // Izinkan baca untuk semua yang login
+      allow read: if isSignedIn();
+      
+      // Izinkan tulis (buat, ubah, hapus) jika admin kecamatan, atau jika admin desa yang memiliki data
+      allow write: if isSignedIn() &&
+                     (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isDataOwner(request.resource.data.desa)));
+                     
+      // Kecuali untuk koleksi yang sudah diatur di atas
+      // Ini mencegah aturan umum menimpa aturan yang lebih spesifik
+      // Namun, karena 'write' mencakup create, update, delete, ini sudah cukup
+      // untuk pkk, lpm, karang_taruna, rt_rw
     }
     
-    match /lpm/{docId} {
-      allow read, write: if canAccessDesaData(resource.data.desa);
-    }
-    
-    match /pkk/{docId} {
-      allow read, write: if canAccessDesaData(resource.data.desa);
-    }
-    
-    match /pkk_program/{docId} {
-      allow read, write: if canAccessDesaData(resource.data.desa);
-    }
-    
-    match /karang_taruna/{docId} {
-      allow read, write: if canAccessDesaData(resource.data.desa);
-    }
-    
-    match /karang_taruna_kegiatan/{docId} {
-      allow read, write: if canAccessDesaData(resource.data.desa);
-    }
-    
-    match /rt_rw/{docId} {
-      allow read, write: if canAccessDesaData(resource.data.desa);
+     match /settings/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isUserRole('admin_kecamatan');
     }
   }
 }
-

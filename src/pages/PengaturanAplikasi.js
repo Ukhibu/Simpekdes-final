@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { useNotification } from '../context/NotificationContext';
 import Spinner from '../components/common/Spinner';
 
-// PERBAIKAN: Fungsi helper untuk unggah gambar (bisa dipindahkan ke utils)
+// Fungsi helper untuk unggah gambar (bisa dipindahkan ke utils)
 const uploadImageToCloudinary = async (file) => {
     if (!file) return null;
     const data = new FormData();
@@ -32,12 +33,12 @@ const PengaturanAplikasi = () => {
     const [activeTab, setActiveTab] = useState('branding');
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+    const { showNotification } = useNotification();
 
     const [brandingConfig, setBrandingConfig] = useState({});
     const [exportConfig, setExportConfig] = useState({});
     
     const [logoFile, setLogoFile] = useState(null);
-    // PERBAIKAN: State baru untuk file background
     const [backgroundFile, setBackgroundFile] = useState(null);
 
     useEffect(() => {
@@ -57,13 +58,13 @@ const PengaturanAplikasi = () => {
 
             } catch (error) {
                 console.error("Gagal memuat konfigurasi:", error);
-                alert("Gagal memuat konfigurasi dari database.");
+                showNotification("Gagal memuat konfigurasi dari database.", 'error');
             } finally {
                 setLoading(false);
             }
         };
         fetchConfigs();
-    }, []);
+    }, [showNotification]);
 
     const handleFileChange = (e, type) => {
         if (e.target.files[0]) {
@@ -81,7 +82,6 @@ const PengaturanAplikasi = () => {
             if (configType === 'branding') {
                 configData = { ...brandingConfig };
                 
-                // PERBAIKAN: Logika upload yang lebih bersih
                 const logoUrl = await uploadImageToCloudinary(logoFile);
                 if (logoUrl) configData.loginLogoUrl = logoUrl;
 
@@ -91,7 +91,7 @@ const PengaturanAplikasi = () => {
                 docRef = doc(db, 'settings', 'branding');
                 await setDoc(docRef, configData, { merge: true });
                 
-                setBrandingConfig(configData); // Update state lokal
+                setBrandingConfig(configData);
                 setLogoFile(null);
                 setBackgroundFile(null);
 
@@ -101,10 +101,10 @@ const PengaturanAplikasi = () => {
                 await setDoc(docRef, configData, { merge: true });
             }
 
-            alert(`Pengaturan ${configType} berhasil disimpan! Perubahan mungkin memerlukan refresh halaman.`);
+            showNotification(`Pengaturan ${configType} berhasil disimpan! Perubahan mungkin memerlukan refresh halaman.`, 'success');
         } catch (error) {
             console.error("Error saving settings:", error);
-            alert(`Gagal menyimpan pengaturan: ${error.message}`);
+            showNotification(`Gagal menyimpan pengaturan: ${error.message}`, 'error');
         } finally {
             setIsSaving(false);
         }
@@ -150,7 +150,6 @@ const PengaturanAplikasi = () => {
                                 <input type="file" onChange={(e) => handleFileChange(e, 'logo')} accept="image/*" className="text-sm text-gray-500 dark:text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-900"/>
                             </div>
                         </div>
-                        {/* PERBAIKAN: Input baru untuk gambar latar belakang */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Gambar Latar Belakang (di Halaman Hub Utama)</label>
                             <div className="mt-2 flex items-center space-x-4">
@@ -196,3 +195,4 @@ const PengaturanAplikasi = () => {
 };
 
 export default PengaturanAplikasi;
+

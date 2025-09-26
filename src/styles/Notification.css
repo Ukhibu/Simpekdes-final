@@ -1,0 +1,83 @@
+.notification-container {
+    position: fixed;
+    top: 1.5rem;
+    right: 1.5rem;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 350px;
+    max-width: 90vw;
+}
+
+.notification.toast {
+    display: flex;
+    align-items: flex-start;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    border: 1px solid transparent;
+    animation: toast-in-right 0.5s ease-in-out;
+    color: white;
+}
+
+.notification-icon {
+    flex-shrink: 0;
+    margin-right: 0.75rem;
+    font-size: 1.25rem;
+    line-height: 1;
+    margin-top: 2px;
+}
+
+.notification-content {
+    flex-grow: 1;
+}
+
+.notification-message {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+}
+
+.notification-close {
+    margin-left: 1rem;
+    background: transparent;
+    border: none;
+    color: inherit;
+    opacity: 0.7;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.notification-close:hover {
+    opacity: 1;
+}
+
+/* Tipe Notifikasi */
+.notification.success {
+    background-color: #10B981; /* green-500 */
+    border-color: #059669; /* green-600 */
+}
+.notification.error {
+    background-color: #EF4444; /* red-500 */
+    border-color: #DC2626; /* red-600 */
+}
+.notification.warning {
+    background-color: #F59E0B; /* amber-500 */
+    border-color: #D97706; /* amber-600 */
+}
+.notification.info {
+    background-color: #3B82F6; /* blue-500 */
+    border-color: #2563EB; /* blue-600 */
+}
+
+@keyframes toast-in-right {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}

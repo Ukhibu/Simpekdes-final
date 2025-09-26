@@ -1,26 +1,22 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
-import { collection, query, onSnapshot, addDoc, doc, updateDoc, writeBatch, getDocs, where, getDoc, deleteDoc } from 'firebase/firestore';
+import { doc, writeBatch, getDocs, getDoc, collection, query, where, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext';
+import { useFirestoreCollection } from '../hooks/useFirestoreCollection'; // Impor hook baru
 import Modal from '../components/common/Modal';
-import Button from '../components/common/Button'; // Menggunakan komponen Button baru
-import SkeletonLoader from '../components/common/SkeletonLoader'; // Menggunakan Skeleton Loader baru
+import ConfirmationModal from '../components/common/ConfirmationModal';
+import Button from '../components/common/Button';
+import SkeletonLoader from '../components/common/SkeletonLoader';
 import { FiEdit, FiSearch, FiFilter, FiUpload, FiDownload, FiPlus, FiEye, FiUserX, FiTrash2, FiBriefcase, FiCheckSquare, FiXSquare } from 'react-icons/fi';
 import * as XLSX from 'xlsx';
 import { generatePerangkatXLSX } from '../utils/generatePerangkatXLSX';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 
-// --- Daftar statis untuk memastikan dropdown selalu terisi ---
-const STATIC_DESA_LIST = [
-    "Punggelan", "Petuguran", "Karangsari", "Jembangan", "Tanjungtirta", 
-    "Sawangan", "Bondolharjo", "Danakerta", "Badakarya", "Tribuana", 
-    "Sambong", "Klapa", "Kecepit", "Mlaya", "Sidarata", "Purwasana", "Tlaga"
-];
-const JABATAN_LIST = [
-    "Kepala Desa", "Pj. Kepala Desa", "Sekretaris Desa", "Kasi Pemerintahan", "Kasi Kesejahteraan", "Kasi Pelayanan", "Kaur Tata Usaha dan Umum", "Kaur Keuangan", "Kaur Perencanaan", "Kepala Dusun", "Staf Desa"
-];
+// --- Daftar statis untuk dropdown ---
+const STATIC_DESA_LIST = [ "Punggelan", "Petuguran", "Karangsari", "Jembangan", "Tanjungtirta", "Sawangan", "Bondolharjo", "Danakerta", "Badakarya", "Tribuana", "Sambong", "Klapa", "Kecepit", "Mlaya", "Sidarata", "Purwasana", "Tlaga" ];
+const JABATAN_LIST = [ "Kepala Desa", "Pj. Kepala Desa", "Sekretaris Desa", "Kasi Pemerintahan", "Kasi Kesejahteraan", "Kasi Pelayanan", "Kaur Tata Usaha dan Umum", "Kaur Keuangan", "Kaur Perencanaan", "Kepala Dusun", "Staf Desa" ];
 const PENDIDIKAN_LIST = ["SD", "SLTP", "SLTA", "D1", "D2", "D3", "S1", "S2", "S3"];
-
 
 // Komponen Detail Perangkat untuk Modal
 const PerangkatDetailView = ({ perangkat }) => {
@@ -80,7 +76,7 @@ const PerangkatDetailView = ({ perangkat }) => {
             <div>
                  <h4 className="font-semibold text-gray-700 dark:text-gray-300 border-b pb-2 mb-2">Dokumen KTP</h4>
                  {perangkat.ktp_url ? (
-                    <img src={perangkat.ktp_url} alt="Foto KTP" className="mt-2 w-full max-w-sm mx-auto object-contain rounded-md"/>
+                     <img src={perangkat.ktp_url} alt="Foto KTP" className="mt-2 w-full max-w-sm mx-auto object-contain rounded-md"/>
                  ) : <p className="mt-1 text-gray-500 dark:text-gray-400">Tidak ada foto KTP.</p>}
             </div>
         </div>
@@ -89,8 +85,9 @@ const PerangkatDetailView = ({ perangkat }) => {
 
 const Perangkat = () => {
     const { currentUser } = useAuth();
-    const [allPerangkat, setAllPerangkat] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const { showNotification } = useNotification();
+    const { data: allPerangkat, loading, addItem, updateItem } = useFirestoreCollection('perangkat');
+    
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedPerangkat, setSelectedPerangkat] = useState(null);
     const [formData, setFormData] = useState({});
@@ -110,6 +107,9 @@ const Perangkat = () => {
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState(new Set());
     
+    const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
+    const [bulkDeleteMode, setBulkDeleteMode] = useState(null);
+    
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const location = useLocation();
@@ -127,28 +127,6 @@ const Perangkat = () => {
         fetchExportConfig();
     }, []);
 
-
-    useEffect(() => {
-        if (!currentUser || (currentUser.role === 'admin_desa' && !currentUser.desa)) {
-            setLoading(false);
-            return;
-        }
-        setLoading(true);
-        const perangkatCollection = collection(db, 'perangkat');
-        const q = currentUser.role === 'admin_kecamatan' 
-            ? query(perangkatCollection)
-            : query(perangkatCollection, where("desa", "==", currentUser.desa));
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const list = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setAllPerangkat(list);
-            setLoading(false);
-        }, (error) => {
-            console.error("Error fetching data:", error);
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, [currentUser]);
-
     useEffect(() => {
         const editId = searchParams.get('edit');
         if (editId && allPerangkat.length > 0) {
@@ -162,11 +140,7 @@ const Perangkat = () => {
     
     const isDataLengkap = (perangkat) => {
         if (!perangkat.nama && !perangkat.nik) return false;
-        const requiredFields = [
-            'nama', 'jabatan', 'nik', 'tempat_lahir', 'tgl_lahir', 
-            'pendidikan', 'no_sk', 'tgl_sk', 'tgl_pelantikan', 
-            'foto_url', 'ktp_url'
-        ];
+        const requiredFields = [ 'nama', 'jabatan', 'nik', 'tempat_lahir', 'tgl_lahir', 'pendidikan', 'no_sk', 'tgl_sk', 'tgl_pelantikan', 'foto_url', 'ktp_url' ];
         return requiredFields.every(field => perangkat[field] && String(perangkat[field]).trim() !== '');
     };
     
@@ -209,11 +183,9 @@ const Perangkat = () => {
         return parsed ? formatDateToYYYYMMDD(parsed) : null;
     };
 
-
     const calculateAkhirJabatan = (tglLahir) => {
         const birthDate = parseAndFormatDate(tglLahir);
         if (!birthDate) return null;
-    
         try {
             const date = new Date(birthDate);
             date.setFullYear(date.getFullYear() + 60);
@@ -224,11 +196,10 @@ const Perangkat = () => {
         }
     };
 
-
     useEffect(() => {
         if (formData.tgl_lahir && (modalMode === 'edit' || modalMode === 'add')) {
             const isKades = formData.jabatan && (formData.jabatan.toLowerCase().includes('kepala desa') || formData.jabatan.toLowerCase().includes('pj. kepala desa'));
-            if (!isKades) { // Hanya hitung otomatis jika bukan Kades
+            if (!isKades) {
                 const calculatedDate = calculateAkhirJabatan(formData.tgl_lahir);
                 if (calculatedDate !== formData.akhir_jabatan) {
                     setFormData(prevData => ({ ...prevData, akhir_jabatan: calculatedDate }));
@@ -236,7 +207,6 @@ const Perangkat = () => {
             }
         }
     }, [formData.tgl_lahir, formData.jabatan, modalMode]);
-
 
     const filteredPerangkat = useMemo(() => {
         return allPerangkat
@@ -258,23 +228,19 @@ const Perangkat = () => {
         setModalMode(mode);
         setSelectedPerangkat(perangkat);
         const initialDesa = currentUser.role === 'admin_desa' ? currentUser.desa : (perangkat ? perangkat.desa : '');
-        
         let initialFormData = perangkat ? { ...perangkat } : { desa: initialDesa, jabatan: '', pendidikan: '' };
-
         if (perangkat && perangkat.jabatan && !JABATAN_LIST.includes(perangkat.jabatan)) {
             initialFormData.jabatan_custom = perangkat.jabatan;
             initialFormData.jabatan = 'Lainnya';
         } else {
             initialFormData.jabatan_custom = '';
         }
-
         if (perangkat && perangkat.pendidikan && !PENDIDIKAN_LIST.includes(perangkat.pendidikan)) {
             initialFormData.pendidikan_custom = perangkat.pendidikan;
             initialFormData.pendidikan = 'Lainnya';
         } else {
             initialFormData.pendidikan_custom = '';
         }
-
         setFormData(initialFormData);
         setFotoProfilFile(null);
         setFotoKtpFile(null);
@@ -304,7 +270,7 @@ const Perangkat = () => {
         const result = await res.json();
         return result.secure_url;
     };
-    
+
     const findJabatanKosongAtauPurna = async (jabatan, desa) => {
         const q = query(collection(db, 'perangkat'), where("desa", "==", desa), where("jabatan", "==", jabatan));
         const querySnapshot = await getDocs(q);
@@ -313,7 +279,6 @@ const Perangkat = () => {
             const data = doc.data();
             const isPurna = data.akhir_jabatan && new Date(data.akhir_jabatan) < new Date();
             const isKosong = !data.nama && !data.nik;
-
             if (isPurna || isKosong) {
                 docToUpdate = { id: doc.id, data: data };
             }
@@ -327,25 +292,18 @@ const Perangkat = () => {
 
         let dataToSave = { ...formData };
         if (!dataToSave.desa) {
-            alert("Desa wajib diisi!");
+            showNotification("Desa wajib diisi!", 'error');
             setIsSubmitting(false);
             return;
         }
 
-        if (dataToSave.jabatan === 'Lainnya') {
-            dataToSave.jabatan = dataToSave.jabatan_custom || '';
-        }
+        if (dataToSave.jabatan === 'Lainnya') dataToSave.jabatan = dataToSave.jabatan_custom || '';
         delete dataToSave.jabatan_custom;
-        
-        if (dataToSave.pendidikan === 'Lainnya') {
-            dataToSave.pendidikan = dataToSave.pendidikan_custom || '';
-        }
+        if (dataToSave.pendidikan === 'Lainnya') dataToSave.pendidikan = dataToSave.pendidikan_custom || '';
         delete dataToSave.pendidikan_custom;
-
         dataToSave.tgl_lahir = parseAndFormatDate(dataToSave.tgl_lahir);
         dataToSave.tgl_sk = parseAndFormatDate(dataToSave.tgl_sk);
         dataToSave.tgl_pelantikan = parseAndFormatDate(dataToSave.tgl_pelantikan);
-
         const isKades = dataToSave.jabatan && (dataToSave.jabatan.toLowerCase().includes('kepala desa') || dataToSave.jabatan.toLowerCase().includes('pj. kepala desa'));
         if (!isKades && dataToSave.tgl_lahir) {
              dataToSave.akhir_jabatan = calculateAkhirJabatan(dataToSave.tgl_lahir);
@@ -356,30 +314,23 @@ const Perangkat = () => {
         try {
             const fotoProfilUrl = await uploadImageToCloudinary(fotoProfilFile);
             const fotoKtpUrl = await uploadImageToCloudinary(fotoKtpFile);
-
             if (fotoProfilUrl) dataToSave.foto_url = fotoProfilUrl;
             if (fotoKtpUrl) dataToSave.ktp_url = fotoKtpUrl;
             
             if (selectedPerangkat) {
-                const docRef = doc(db, 'perangkat', selectedPerangkat.id);
-                await updateDoc(docRef, dataToSave);
-                alert('Data berhasil diperbarui!');
+                await updateItem(selectedPerangkat.id, dataToSave);
             } else {
                 const existingDoc = await findJabatanKosongAtauPurna(dataToSave.jabatan, dataToSave.desa);
                 if (existingDoc) {
-                    const docRef = doc(db, 'perangkat', existingDoc.id);
-                    await updateDoc(docRef, dataToSave);
-                    alert(`Formasi jabatan ${dataToSave.jabatan} yang kosong/purna telah diisi.`);
+                    await updateItem(existingDoc.id, dataToSave);
+                    showNotification(`Formasi jabatan ${dataToSave.jabatan} yang kosong/purna telah diisi.`, 'info');
                 } else {
-                    await addDoc(collection(db, 'perangkat'), dataToSave);
-                    alert('Data baru berhasil ditambahkan!');
+                    await addItem(dataToSave);
                 }
             }
-            
             handleCloseModal();
         } catch (error) {
-            console.error("Error saving document: ", error);
-            alert("Gagal menyimpan data.");
+            // Notifikasi error sudah ditangani oleh hook
         } finally {
             setIsSubmitting(false);
         }
@@ -392,7 +343,6 @@ const Perangkat = () => {
 
         try {
             if (mode === 'kosongkan') {
-                const perangkatRef = doc(db, 'perangkat', selectedPerangkat.id);
                 const { jabatan, desa } = selectedPerangkat;
                 const dataToUpdate = {
                     nama: null, nik: null, jenis_kelamin: null, tempat_lahir: null, tgl_lahir: null,
@@ -400,14 +350,15 @@ const Perangkat = () => {
                     akhir_jabatan: null, no_hp: null, nip: null, foto_url: null, ktp_url: null,
                     jabatan, desa, status: 'Jabatan Kosong'
                 };
-                await updateDoc(perangkatRef, dataToUpdate);
-                alert('Data personel telah dikosongkan.');
+                await updateItem(selectedPerangkat.id, dataToUpdate);
+                showNotification('Data personel telah dikosongkan.', 'info');
             } else if (mode === 'permanen') {
-                await deleteDoc(doc(db, 'perangkat', selectedPerangkat.id));
-                alert('Data berhasil dihapus permanen.');
+                const docRef = doc(db, 'perangkat', selectedPerangkat.id);
+                await deleteDoc(docRef);
+                showNotification('Data berhasil dihapus permanen.', 'success');
             }
         } catch (error) {
-            alert("Terjadi kesalahan saat memproses data.");
+            showNotification("Terjadi kesalahan saat memproses data.", 'error');
         } finally {
             setIsDeleting(false);
             setSelectedPerangkat(null);
@@ -416,7 +367,7 @@ const Perangkat = () => {
     
     const handleExportXLSX = () => {
         const dataToExport = filteredPerangkat;
-        if (dataToExport.length === 0) return alert("Tidak ada data untuk diekspor.");
+        if (dataToExport.length === 0) return showNotification("Tidak ada data untuk diekspor.", 'warning');
         
         let groupedData;
         if (filterDesa === 'all' && currentUser.role === 'admin_kecamatan') {
@@ -482,17 +433,14 @@ const Perangkat = () => {
                         break; 
                       }
                     }
-                    
                     if (!newDoc.nama || !newDoc.jabatan || !newDoc.desa) {
                         skippedCount++;
                         continue;
                     }
-                    
                     if (currentUser.role === 'admin_desa' && newDoc.desa.toUpperCase() !== currentUser.desa.toUpperCase()) {
                         skippedCount++;
                         continue;
                     }
-                    
                     const isKades = newDoc.jabatan.toLowerCase().includes('kepala desa') || newDoc.jabatan.toLowerCase().includes('pj. kepala desa');
                     if (isKades && row['AKHIR MASA JABATAN']) {
                         newDoc.akhir_jabatan = parseAndFormatDate(row['AKHIR MASA JABATAN']);
@@ -525,18 +473,15 @@ const Perangkat = () => {
                         }
                     }
                 }
-
                 await batch.commit();
-                let alertMessage = `Impor selesai!\n- ${createdCount} data baru ditambahkan.\n- ${updatedCount} data diperbarui.\n- ${skippedCount} baris dilewati (data tidak lengkap/tidak sesuai desa/duplikat nama).`;
+                let alertMessage = `Impor selesai!\n- ${createdCount} data baru ditambahkan.\n- ${updatedCount} data diperbarui.\n- ${skippedCount} baris dilewati.`;
                 if (duplicates.length > 0) {
                     alertMessage += `\n\nData duplikat yang dilewati:\n- ${duplicates.join('\n- ')}`;
                 }
-                alert(alertMessage);
-
-
+                showNotification(alertMessage, 'info', 10000);
             } catch (error) {
                 console.error("Error processing file:", error);
-                alert(`Gagal memproses file: ${error.message}`);
+                showNotification(`Gagal memproses file: ${error.message}`, 'error');
             } finally {
                 setIsUploading(false);
                 if (e.target) e.target.value = null;
@@ -544,7 +489,6 @@ const Perangkat = () => {
         };
         reader.readAsArrayBuffer(file);
     };
-
 
     const toggleSelectionMode = () => {
         setIsSelectionMode(!isSelectionMode);
@@ -569,40 +513,46 @@ const Perangkat = () => {
             setSelectedIds(new Set());
         }
     };
-    
-    const handleBulkDelete = async (mode) => {
-        if (selectedIds.size === 0) return alert("Pilih data yang akan diproses.");
 
-        const modeText = mode === 'kosongkan' ? 'mengosongkan jabatan' : 'menghapus permanen';
-        if (window.confirm(`Anda yakin ingin ${modeText} untuk ${selectedIds.size} data yang dipilih?`)) {
-            setIsDeleting(true);
-            try {
-                const batch = writeBatch(db);
-                for (const id of selectedIds) {
-                    const docRef = doc(db, 'perangkat', id);
-                    if (mode === 'kosongkan') {
-                        const perangkat = allPerangkat.find(p => p.id === id);
-                        if(perangkat){
-                            const dataToUpdate = {
-                                nama: null, nik: null, jenis_kelamin: null, tempat_lahir: null, tgl_lahir: null,
-                                pendidikan: null, no_sk: null, tgl_sk: null, tgl_pelantikan: null,
-                                akhir_jabatan: null, no_hp: null, nip: null, foto_url: null, ktp_url: null,
-                                status: 'Jabatan Kosong'
-                            };
-                            batch.update(docRef, dataToUpdate);
-                        }
-                    } else {
-                        batch.delete(docRef);
+    const handleBulkDelete = (mode) => {
+        if (selectedIds.size === 0) {
+            showNotification("Pilih data yang akan diproses.", 'warning');
+            return;
+        }
+        setBulkDeleteMode(mode);
+        setIsBulkDeleteConfirmOpen(true);
+    };
+
+    const executeBulkDelete = async () => {
+        if (selectedIds.size === 0 || !bulkDeleteMode) return;
+        setIsDeleting(true);
+        try {
+            const batch = writeBatch(db);
+            for (const id of selectedIds) {
+                const docRef = doc(db, 'perangkat', id);
+                if (bulkDeleteMode === 'kosongkan') {
+                    const perangkat = allPerangkat.find(p => p.id === id);
+                    if(perangkat){
+                        const dataToUpdate = {
+                            nama: null, nik: null, jenis_kelamin: null, tempat_lahir: null, tgl_lahir: null,
+                            pendidikan: null, no_sk: null, tgl_sk: null, tgl_pelantikan: null,
+                            akhir_jabatan: null, no_hp: null, nip: null, foto_url: null, ktp_url: null,
+                            status: 'Jabatan Kosong'
+                        };
+                        batch.update(docRef, dataToUpdate);
                     }
+                } else {
+                    batch.delete(docRef);
                 }
-                await batch.commit();
-                alert(`${selectedIds.size} data berhasil diproses.`);
-            } catch (error) {
-                alert("Terjadi kesalahan saat memproses data.");
-            } finally {
-                setIsDeleting(false);
-                toggleSelectionMode();
             }
+            await batch.commit();
+            showNotification(`${selectedIds.size} data berhasil diproses.`, 'success');
+        } catch (error) {
+            showNotification("Terjadi kesalahan saat memproses data.", 'error');
+        } finally {
+            setIsDeleting(false);
+            toggleSelectionMode();
+            setIsBulkDeleteConfirmOpen(false);
         }
     };
 
@@ -619,42 +569,28 @@ const Perangkat = () => {
                     <div className="relative">
                         <FiFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                          <select value={filterDesa} onChange={(e) => setFilterDesa(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg appearance-none bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                            <option value="all">Semua Desa</option>
-                            {STATIC_DESA_LIST.sort().map(desa => <option key={desa} value={desa}>{desa}</option>)}
-                        </select>
+                             <option value="all">Semua Desa</option>
+                             {STATIC_DESA_LIST.sort().map(desa => <option key={desa} value={desa}>{desa}</option>)}
+                         </select>
                     </div>
                 )}
             </div>
-            
-           <div className="flex flex-wrap justify-end gap-2 mb-4">
+            <div className="flex flex-wrap justify-end gap-2 mb-4">
                 {isSelectionMode ? (
                     <>
-                        <Button onClick={() => handleBulkDelete('kosongkan')} variant="warning" disabled={isDeleting || selectedIds.size === 0} isLoading={isDeleting}>
-                           <FiUserX /> Kosongkan ({selectedIds.size})
-                        </Button>
-                        <Button onClick={() => handleBulkDelete('permanen')} variant="danger" disabled={isDeleting || selectedIds.size === 0} isLoading={isDeleting}>
-                           <FiTrash2 /> Hapus ({selectedIds.size})
-                        </Button>
-                        <Button onClick={toggleSelectionMode} variant="secondary">
-                            <FiXSquare/> Batal
-                        </Button>
+                        <Button onClick={() => handleBulkDelete('kosongkan')} variant="warning" disabled={isDeleting || selectedIds.size === 0} isLoading={isDeleting}><FiUserX /> Kosongkan ({selectedIds.size})</Button>
+                        <Button onClick={() => handleBulkDelete('permanen')} variant="danger" disabled={isDeleting || selectedIds.size === 0} isLoading={isDeleting}><FiTrash2 /> Hapus ({selectedIds.size})</Button>
+                        <Button onClick={toggleSelectionMode} variant="secondary"><FiXSquare/> Batal</Button>
                     </>
                 ) : (
                     <>
-                        <Button onClick={toggleSelectionMode} variant="danger">
-                           <FiCheckSquare/> Pilih Data
-                        </Button>
-                        <label className="btn btn-warning">
-                            <FiUpload className="mr-2"/> 
+                        <Button onClick={toggleSelectionMode} variant="danger"><FiCheckSquare/> Pilih Data</Button>
+                        <label className="btn btn-warning"><FiUpload className="mr-2"/> 
                             <input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls, .csv" disabled={isUploading}/>
                             {isUploading ? 'Mengimpor...' : 'Impor Data'}
                         </label>
-                        <Button onClick={handleExportXLSX} variant="success">
-                            <FiDownload className="mr-2"/> Ekspor XLSX
-                        </Button>
-                        <Button onClick={() => handleOpenModal(null, 'add')} variant="primary">
-                            <FiPlus className="mr-2"/> Tambah Data
-                        </Button>
+                        <Button onClick={handleExportXLSX} variant="success"><FiDownload className="mr-2"/> Ekspor XLSX</Button>
+                        <Button onClick={() => handleOpenModal(null, 'add')} variant="primary"><FiPlus className="mr-2"/> Tambah Data</Button>
                     </>
                 )}
             </div>
@@ -663,11 +599,7 @@ const Perangkat = () => {
                 <table className="table-modern">
                     <thead>
                         <tr>
-                            {isSelectionMode && (
-                                <th className="p-4">
-                                    <input type="checkbox" onChange={handleSelectAll} checked={filteredPerangkat.length > 0 && selectedIds.size === filteredPerangkat.length} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"/>
-                                </th>
-                            )}
+                            {isSelectionMode && (<th className="p-4"><input type="checkbox" onChange={handleSelectAll} checked={filteredPerangkat.length > 0 && selectedIds.size === filteredPerangkat.length} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"/></th>)}
                             <th>Nama Lengkap</th>
                             <th>Jabatan</th>
                             {currentUser.role === 'admin_kecamatan' && <th>Desa</th>}
@@ -679,39 +611,20 @@ const Perangkat = () => {
                         {filteredPerangkat.length > 0 ? filteredPerangkat.map((p) => {
                             const isPurna = p.akhir_jabatan && new Date(p.akhir_jabatan) < new Date();
                             const isKosong = !p.nama && !p.nik;
-                            
                             return (
                                 <tr key={p.id}>
-                                {isSelectionMode && (
-                                    <td className="p-4">
-                                        <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => handleSelect(p.id)} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"/>
-                                    </td>
-                                )}
+                                {isSelectionMode && (<td className="p-4"><input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => handleSelect(p.id)} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"/></td>)}
                                 <td className="font-medium flex items-center gap-3 text-gray-900 dark:text-white">
-                                    {isKosong ? (
-                                         <div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 flex items-center justify-center rounded-full text-gray-500">
-                                             <FiBriefcase />
-                                         </div>
-                                    ) : (
-                                        <img src={p.foto_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.nama || 'X')}&background=E2E8F0&color=4A5568`} alt={p.nama || 'Jabatan Kosong'} className="w-10 h-10 rounded-full object-cover"/>
-                                    )}
-                                    <div>
-                                        <p className="font-semibold">{p.nama || '(Jabatan Kosong)'}</p>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400">{p.nik || 'NIK belum diisi'}</p>
-                                    </div>
+                                    {isKosong ? (<div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 flex items-center justify-center rounded-full text-gray-500"><FiBriefcase /></div>
+                                    ) : (<img src={p.foto_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.nama || 'X')}&background=E2E8F0&color=4A5568`} alt={p.nama || 'Jabatan Kosong'} className="w-10 h-10 rounded-full object-cover"/>)}
+                                    <div><p className="font-semibold">{p.nama || '(Jabatan Kosong)'}</p><p className="text-xs text-gray-500 dark:text-gray-400">{p.nik || 'NIK belum diisi'}</p></div>
                                 </td>
                                 <td>{p.jabatan}</td>
                                 {currentUser.role === 'admin_kecamatan' && <td>{p.desa}</td>}
                                 <td>
-                                    {isPurna ? (
-                                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300">Purna Tugas</span>
-                                    ) : isKosong ? (
-                                         <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">Jabatan Kosong</span>
-                                    ) : (
-                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${isDataLengkap(p) ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'}`}>
-                                            {isDataLengkap(p) ? 'Lengkap' : 'Belum Lengkap'}
-                                        </span>
-                                    )}
+                                    {isPurna ? (<span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300">Purna Tugas</span>
+                                    ) : isKosong ? (<span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">Jabatan Kosong</span>
+                                    ) : (<span className={`px-2 py-1 text-xs font-medium rounded-full ${isDataLengkap(p) ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'}`}>{isDataLengkap(p) ? 'Lengkap' : 'Belum Lengkap'}</span>)}
                                 </td>
                                 <td className="flex space-x-3">
                                     <button onClick={() => handleOpenModal(p, 'view')} className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" title="Lihat Detail"><FiEye /></button>
@@ -719,148 +632,59 @@ const Perangkat = () => {
                                     <button onClick={() => { setSelectedPerangkat(p); setShowDeleteConfirm(true); }} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Hapus"><FiTrash2 /></button>
                                 </td>
                                 </tr>
-                                )
-                            }) : (
-                                <tr>
-                                    <td colSpan={isSelectionMode ? 6 : 5} className="text-center py-10 text-gray-500 dark:text-gray-400">Belum ada data perangkat atau hasil filter kosong.</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+                            )
+                        }) : (<tr><td colSpan={isSelectionMode ? 6 : 5} className="text-center py-10 text-gray-500 dark:text-gray-400">Belum ada data perangkat atau hasil filter kosong.</td></tr>)}
+                    </tbody>
+                </table>
             </div>
 
             <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={modalMode === 'view' ? 'Detail Data Perangkat' : (selectedPerangkat ? 'Edit Data Perangkat' : 'Tambah Data Perangkat')}>
-                 {modalMode === 'view' && selectedPerangkat ? (
-                    <PerangkatDetailView perangkat={selectedPerangkat} />
-                 ) : (
+                {modalMode === 'view' && selectedPerangkat ? (<PerangkatDetailView perangkat={selectedPerangkat} />
+                ) : (
                     <form onSubmit={handleFormSubmit} className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {Object.entries({
-                                desa: 'Desa', nama: 'Nama Lengkap', nik: 'NIK', jenis_kelamin: 'Jenis Kelamin',
-                                tempat_lahir: 'Tempat Lahir', tgl_lahir: 'Tanggal Lahir',
-                                no_sk: 'Nomor SK', tgl_sk: 'Tanggal SK', tgl_pelantikan: 'Tanggal Pelantikan',
-                                no_hp: 'No. HP / WA', nip: 'NIP/NIPD',
-                            }).map(([key, label]) => (
-                                <div key={key}>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
-                                    {
-                                        key === 'desa' ? (
-                                            <select name={key} value={formData[key] || ''} onChange={handleFormChange} className="form-input-modern" required disabled={currentUser.role === 'admin_desa'}>
-                                                <option value="">Pilih Desa</option>
-                                                {STATIC_DESA_LIST.sort().map(desa => <option key={desa} value={desa}>{desa}</option>)}
-                                            </select>
-                                        ) : key === 'jenis_kelamin' ? (
-                                            <select name={key} value={formData[key] || ''} onChange={handleFormChange} className="form-input-modern">
-                                                <option value="">Pilih Jenis Kelamin</option>
-                                                <option value="L">Laki-laki</option>
-                                                <option value="P">Perempuan</option>
-                                            </select>
-                                        ) : (
-                                            <input type={key.includes('tgl') ? 'date' : 'text'} name={key} value={formData[key] || ''} onChange={handleFormChange} className="form-input-modern"/>
-                                        )
-                                    }
-                                </div>
-                            ))}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Pendidikan Terakhir</label>
-                                <>
-                                    <select name="pendidikan" value={formData.pendidikan || ''} onChange={handleFormChange} className="form-input-modern">
-                                        <option value="">Pilih Pendidikan</option>
-                                        {PENDIDIKAN_LIST.map(p => <option key={p} value={p}>{p}</option>)}
-                                        <option value="Lainnya">Lainnya...</option>
-                                    </select>
-                                    {formData.pendidikan === 'Lainnya' && (
-                                        <input
-                                            type="text"
-                                            name="pendidikan_custom"
-                                            value={formData.pendidikan_custom || ''}
-                                            onChange={handleFormChange}
-                                            placeholder="Masukkan pendidikan"
-                                            className="mt-2 form-input-modern"
-                                            required
-                                        />
-                                    )}
-                                </>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Akhir Masa Jabatan</label>
-                                {(() => {
-                                    const isKades = formData.jabatan && (formData.jabatan.toLowerCase().includes('kepala desa') || formData.jabatan.toLowerCase().includes('pj. kepala desa'));
-                                    return (
-                                        <input 
-                                            type="date" 
-                                            name="akhir_jabatan" 
-                                            value={formData.akhir_jabatan || ''} 
-                                            onChange={handleFormChange}
-                                            className={`form-input-modern ${!isKades ? 'bg-gray-200 dark:bg-gray-700 cursor-not-allowed' : 'bg-white dark:bg-gray-700'}`}
-                                            disabled={!isKades}
-                                            title={!isKades ? "Dihitung otomatis berdasarkan tanggal lahir (usia 60 tahun)" : "Silakan masukkan tanggal akhir jabatan"}
-                                        />
-                                    );
-                                })()}
-                            </div>
-                            <div className="md:col-span-2">
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Jabatan</label>
-                                <>
-                                    <select name="jabatan" value={formData.jabatan || ''} onChange={handleFormChange} className="form-input-modern" disabled={!!selectedPerangkat && !(!selectedPerangkat.nama && !selectedPerangkat.nik)}>
-                                        <option value="">Pilih Jabatan</option>
-                                        {JABATAN_LIST.map(jabatan => <option key={jabatan} value={jabatan}>{jabatan}</option>)}
-                                        <option value="Lainnya">Jabatan Lainnya...</option>
-                                    </select>
-                                    {formData.jabatan === 'Lainnya' && (
-                                        <input
-                                            type="text"
-                                            name="jabatan_custom"
-                                            value={formData.jabatan_custom || ''}
-                                            onChange={handleFormChange}
-                                            placeholder="Masukkan nama jabatan"
-                                            className="mt-2 form-input-modern"
-                                            required
-                                            disabled={!!selectedPerangkat && !(!selectedPerangkat.nama && !selectedPerangkat.nik)}
-                                        />
-                                    )}
-                                </>
-                            </div>
-                            <div className="md:col-span-2">
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Foto Profil</label>
-                                <>
-                                    <input type="file" onChange={(e) => setFotoProfilFile(e.target.files[0])} accept="image/*" className="mt-1 block w-full text-sm text-gray-500 dark:text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-900"/>
-                                    {formData.foto_url && <img src={formData.foto_url} alt="Foto Profil Saat Ini" className="mt-2 h-24 w-24 object-cover rounded-md"/>}
-                                </>
-                            </div>
-                            <div className="md:col-span-2">
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Foto KTP</label>
-                                <>
-                                    <input type="file" onChange={(e) => setFotoKtpFile(e.target.files[0])} accept="image/*" className="mt-1 block w-full text-sm text-gray-500 dark:text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-900"/>
-                                    {formData.ktp_url && <img src={formData.ktp_url} alt="Foto KTP Saat Ini" className="mt-2 h-24 w-auto object-contain rounded-md"/>}
-                                </>
-                            </div>
+                            {Object.entries({ desa: 'Desa', nama: 'Nama Lengkap', nik: 'NIK', jenis_kelamin: 'Jenis Kelamin', tempat_lahir: 'Tempat Lahir', tgl_lahir: 'Tanggal Lahir', no_sk: 'Nomor SK', tgl_sk: 'Tanggal SK', tgl_pelantikan: 'Tanggal Pelantikan', no_hp: 'No. HP / WA', nip: 'NIP/NIPD', }).map(([key, label]) => (<div key={key}><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
+                            { key === 'desa' ? (<select name={key} value={formData[key] || ''} onChange={handleFormChange} className="form-input-modern" required disabled={currentUser.role === 'admin_desa'}><option value="">Pilih Desa</option>{STATIC_DESA_LIST.sort().map(desa => <option key={desa} value={desa}>{desa}</option>)}</select>
+                            ) : key === 'jenis_kelamin' ? (<select name={key} value={formData[key] || ''} onChange={handleFormChange} className="form-input-modern"><option value="">Pilih Jenis Kelamin</option><option value="L">Laki-laki</option><option value="P">Perempuan</option></select>
+                            ) : (<input type={key.includes('tgl') ? 'date' : 'text'} name={key} value={formData[key] || ''} onChange={handleFormChange} className="form-input-modern"/>)}</div>))}
+                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Pendidikan Terakhir</label>
+                            <><select name="pendidikan" value={formData.pendidikan || ''} onChange={handleFormChange} className="form-input-modern"><option value="">Pilih Pendidikan</option>{PENDIDIKAN_LIST.map(p => <option key={p} value={p}>{p}</option>)}<option value="Lainnya">Lainnya...</option></select>
+                            {formData.pendidikan === 'Lainnya' && (<input type="text" name="pendidikan_custom" value={formData.pendidikan_custom || ''} onChange={handleFormChange} placeholder="Masukkan pendidikan" className="mt-2 form-input-modern" required />)}</></div>
+                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Akhir Masa Jabatan</label>
+                            {(() => { const isKades = formData.jabatan && (formData.jabatan.toLowerCase().includes('kepala desa') || formData.jabatan.toLowerCase().includes('pj. kepala desa'));
+                            return (<input type="date" name="akhir_jabatan" value={formData.akhir_jabatan || ''} onChange={handleFormChange} className={`form-input-modern ${!isKades ? 'bg-gray-200 dark:bg-gray-700 cursor-not-allowed' : 'bg-white dark:bg-gray-700'}`} disabled={!isKades} title={!isKades ? "Dihitung otomatis (usia 60 tahun)" : "Masukkan tanggal akhir jabatan"}/>);})()}</div>
+                            <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Jabatan</label>
+                            <><select name="jabatan" value={formData.jabatan || ''} onChange={handleFormChange} className="form-input-modern" disabled={!!selectedPerangkat && !(!selectedPerangkat.nama && !selectedPerangkat.nik)}><option value="">Pilih Jabatan</option>{JABATAN_LIST.map(jabatan => <option key={jabatan} value={jabatan}>{jabatan}</option>)}<option value="Lainnya">Jabatan Lainnya...</option></select>
+                            {formData.jabatan === 'Lainnya' && (<input type="text" name="jabatan_custom" value={formData.jabatan_custom || ''} onChange={handleFormChange} placeholder="Masukkan nama jabatan" className="mt-2 form-input-modern" required disabled={!!selectedPerangkat && !(!selectedPerangkat.nama && !selectedPerangkat.nik)}/>)}</></div>
+                            <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Foto Profil</label>
+                            <><input type="file" onChange={(e) => setFotoProfilFile(e.target.files[0])} accept="image/*" className="mt-1 block w-full text-sm text-gray-500 dark:text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-900"/>{formData.foto_url && <img src={formData.foto_url} alt="Foto Profil Saat Ini" className="mt-2 h-24 w-24 object-cover rounded-md"/>}</></div>
+                            <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Foto KTP</label>
+                            <><input type="file" onChange={(e) => setFotoKtpFile(e.target.files[0])} accept="image/*" className="mt-1 block w-full text-sm text-gray-500 dark:text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-900"/>{formData.ktp_url && <img src={formData.ktp_url} alt="Foto KTP Saat Ini" className="mt-2 h-24 w-auto object-contain rounded-md"/>}</></div>
                         </div>
-                        <div className="flex justify-end pt-4 border-t mt-6 dark:border-gray-700">
-                             <Button type="button" variant="secondary" onClick={handleCloseModal} disabled={isSubmitting}>Tutup</Button>
-                             <Button type="submit" variant="primary" isLoading={isSubmitting} className="ml-2">
-                                 {selectedPerangkat ? 'Simpan Perubahan' : 'Simpan'}
-                             </Button>
-                        </div>
+                        <div className="flex justify-end pt-4 border-t mt-6 dark:border-gray-700"><Button type="button" variant="secondary" onClick={handleCloseModal} disabled={isSubmitting}>Tutup</Button><Button type="submit" variant="primary" isLoading={isSubmitting} className="ml-2">{selectedPerangkat ? 'Simpan Perubahan' : 'Simpan'}</Button></div>
                     </form>
-                 )}
+                )}
             </Modal>
             
             <Modal isOpen={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="Konfirmasi Hapus">
                 <p>Pilih tipe penghapusan untuk data "{selectedPerangkat?.nama}":</p>
                 <div className="flex justify-end gap-4 mt-6">
-                     <Button onClick={() => handleDelete('kosongkan')} variant="warning" isLoading={isDeleting}>
-                        <FiUserX /> Kosongkan Jabatan
-                    </Button>
-                     <Button onClick={() => handleDelete('permanen')} variant="danger" isLoading={isDeleting}>
-                        <FiTrash2 /> Hapus Permanen
-                    </Button>
+                    <Button onClick={() => handleDelete('kosongkan')} variant="warning" isLoading={isDeleting}><FiUserX /> Kosongkan Jabatan</Button>
+                    <Button onClick={() => handleDelete('permanen')} variant="danger" isLoading={isDeleting}><FiTrash2 /> Hapus Permanen</Button>
                 </div>
             </Modal>
+
+            <ConfirmationModal
+                isOpen={isBulkDeleteConfirmOpen}
+                onClose={() => setIsBulkDeleteConfirmOpen(false)}
+                onConfirm={executeBulkDelete}
+                isLoading={isDeleting}
+                title="Konfirmasi Aksi Massal"
+                message={`Anda yakin ingin ${bulkDeleteMode === 'kosongkan' ? 'mengosongkan jabatan' : 'menghapus permanen'} untuk ${selectedIds.size} data yang dipilih?`}
+            />
         </div>
     );
 };
 
 export default Perangkat;
-
 

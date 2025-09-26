@@ -1,4 +1,47 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "perangkat",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "desa",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nama",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "bpd",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "desa",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "periode",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "pkk",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "desa",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "jabatan",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }

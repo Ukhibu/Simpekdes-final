@@ -2,15 +2,17 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../../firebase';
 import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, where } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
+import { useNotification } from '../../context/NotificationContext'; // Import hook notifikasi
 import Modal from './Modal';
+import ConfirmationModal from './ConfirmationModal'; // Import modal konfirmasi
 import Spinner from './Spinner';
 import InputField from './InputField';
 import { FiSearch, FiFilter, FiPlus, FiEdit, FiTrash2 } from 'react-icons/fi';
-// PERBAIKAN: Mengimpor DESA_LIST dari file konstanta
 import { DESA_LIST } from '../../utils/constants';
 
 const OrganisasiCrudPage = ({ config }) => {
     const { currentUser } = useAuth();
+    const { showNotification } = useNotification(); // Gunakan hook notifikasi
     const [dataList, setDataList] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -18,12 +20,33 @@ const OrganisasiCrudPage = ({ config }) => {
     const [formData, setFormData] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // State untuk konfirmasi hapus
+    const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+    const [itemToDelete, setItemToDelete] = useState(null);
+
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterDesa, setFilterDesa] = useState(currentUser.role === 'admin_kecamatan' ? 'all' : currentUser.desa);
+    // PERBAIKAN: Inisialisasi state dengan nilai default yang aman dan tidak bergantung pada currentUser.
+    const [filterDesa, setFilterDesa] = useState('all');
+
+    // PERBAIKAN: Gunakan useEffect untuk mengatur filterDesa dengan aman setelah currentUser tersedia.
+    useEffect(() => {
+        if (currentUser) {
+            setFilterDesa(currentUser.role === 'admin_kecamatan' ? 'all' : currentUser.desa);
+        }
+    }, [currentUser]);
 
     useEffect(() => {
-        if (!currentUser || !config.collectionName) return;
+        // Jangan jalankan query jika currentUser belum ada (masih loading)
+        if (!currentUser || !config.collectionName) {
+            // Jika pengguna bukan admin kecamatan, dan filterDesa masih 'all',
+            // tunggu sampai useEffect di atas mengaturnya ke desa yang benar.
+            if (currentUser && currentUser.role === 'admin_desa' && filterDesa === 'all') {
+                return;
+            }
+            setLoading(false); // Berhenti loading jika tidak ada user atau config
+            return;
+        };
         setLoading(true);
 
         const dataCollection = collection(db, config.collectionName);
@@ -43,11 +66,12 @@ const OrganisasiCrudPage = ({ config }) => {
             setLoading(false);
         }, (error) => {
             console.error(`Error fetching ${config.collectionName}:`, error);
+            showNotification(`Gagal memuat data: ${error.message}`, 'error');
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, [currentUser, config.collectionName, filterDesa]);
+    }, [currentUser, config.collectionName, filterDesa, showNotification]);
 
     const filteredData = useMemo(() => {
         return dataList.filter(item => {
@@ -81,7 +105,7 @@ const OrganisasiCrudPage = ({ config }) => {
     const handleFormSubmit = async (e) => {
         e.preventDefault();
         if (!formData.desa && config.formFields.some(f => f.name === 'desa')) {
-            alert("Desa wajib diisi!");
+            showNotification("Desa wajib diisi!", 'error');
             return;
         }
         setIsSubmitting(true);
@@ -89,24 +113,41 @@ const OrganisasiCrudPage = ({ config }) => {
             if (selectedItem) {
                 const docRef = doc(db, config.collectionName, selectedItem.id);
                 await updateDoc(docRef, formData);
-                alert(`${config.title} berhasil diperbarui!`);
+                showNotification(`${config.title} berhasil diperbarui!`, 'success');
             } else {
                 await addDoc(collection(db, config.collectionName), formData);
-                alert(`${config.title} berhasil ditambahkan!`);
+                showNotification(`${config.title} berhasil ditambahkan!`, 'success');
             }
             handleCloseModal();
         } catch (error) {
             console.error(`Error saving ${config.title}:`, error);
-            alert(`Gagal menyimpan ${config.title}.`);
+            showNotification(`Gagal menyimpan ${config.title}.`, 'error');
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    const handleDelete = async (id) => {
-        if (window.confirm(`Yakin ingin menghapus data ${config.title} ini?`)) {
-            await deleteDoc(doc(db, config.collectionName, id));
-            alert('Data berhasil dihapus.');
+    const openDeleteConfirm = (item) => {
+        setItemToDelete(item);
+        setIsDeleteConfirmOpen(true);
+    };
+
+    const closeDeleteConfirm = () => {
+        setItemToDelete(null);
+        setIsDeleteConfirmOpen(false);
+    };
+
+    const handleDelete = async () => {
+        if (!itemToDelete) return;
+        setIsSubmitting(true); // Gunakan isSubmitting untuk menonaktifkan tombol saat menghapus
+        try {
+            await deleteDoc(doc(db, config.collectionName, itemToDelete.id));
+            showNotification('Data berhasil dihapus.', 'success');
+        } catch(error) {
+            showNotification(`Gagal menghapus data: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
+            closeDeleteConfirm();
         }
     };
 
@@ -154,7 +195,7 @@ const OrganisasiCrudPage = ({ config }) => {
                                     ))}
                                     <td className="px-6 py-4 flex items-center space-x-2">
                                         <button onClick={() => handleOpenModal(item)} className="text-blue-500 hover:text-blue-700"><FiEdit /></button>
-                                        <button onClick={() => handleDelete(item.id)} className="text-red-500 hover:text-red-700"><FiTrash2 /></button>
+                                        <button onClick={() => openDeleteConfirm(item)} className="text-red-500 hover:text-red-700"><FiTrash2 /></button>
                                     </td>
                                 </tr>
                             ))}
@@ -196,6 +237,15 @@ const OrganisasiCrudPage = ({ config }) => {
                     </div>
                 </form>
             </Modal>
+
+            <ConfirmationModal
+                isOpen={isDeleteConfirmOpen}
+                onClose={closeDeleteConfirm}
+                onConfirm={handleDelete}
+                isLoading={isSubmitting}
+                title={`Hapus Data ${config.title}`}
+                message={`Apakah Anda yakin ingin menghapus data "${itemToDelete ? itemToDelete[config.formFields[0]?.name] : ''}"?`}
+            />
         </div>
     );
 };

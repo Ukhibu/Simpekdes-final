@@ -2,7 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, where } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext';
 import Modal from '../components/common/Modal';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 import Spinner from '../components/common/Spinner';
 import InputField from '../components/common/InputField';
 import { FiDollarSign, FiPlus, FiBarChart2, FiEdit, FiTrash2, FiFilter, FiSearch } from 'react-icons/fi';
@@ -13,12 +15,15 @@ const KATEGORI_BELANJA = ["Penyelenggaraan Pemerintahan Desa", "Pelaksanaan Pemb
 
 const KeuanganDesa = () => {
     const { currentUser } = useAuth();
+    const { showNotification } = useNotification();
     const [transaksiList, setTransaksiList] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedTransaksi, setSelectedTransaksi] = useState(null);
     const [formData, setFormData] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+    const [transactionToDelete, setTransactionToDelete] = useState(null);
     
     // Filters
     const [filterTahun, setFilterTahun] = useState(new Date().getFullYear());
@@ -54,7 +59,7 @@ const KeuanganDesa = () => {
     }, [currentUser, filterDesa, filterTahun]);
     
     const filteredTransaksi = useMemo(() => {
-        return transaksiList.filter(t => t.uraian.toLowerCase().includes(searchTerm.toLowerCase()));
+        return transaksiList.filter(t => (t.uraian || '').toLowerCase().includes(searchTerm.toLowerCase()));
     }, [transaksiList, searchTerm]);
 
     const { totalPendapatan, totalBelanja } = useMemo(() => {
@@ -89,24 +94,37 @@ const KeuanganDesa = () => {
             if (selectedTransaksi) {
                 const docRef = doc(db, 'keuangan', selectedTransaksi.id);
                 await updateDoc(docRef, dataToSave);
-                alert('Transaksi berhasil diperbarui!');
+                showNotification('Transaksi berhasil diperbarui!', 'success');
             } else {
                 await addDoc(collection(db, 'keuangan'), dataToSave);
-                alert('Transaksi berhasil ditambahkan!');
+                showNotification('Transaksi berhasil ditambahkan!', 'success');
             }
             handleCloseModal();
         } catch (error) {
             console.error("Error saving transaction: ", error);
-            alert("Gagal menyimpan transaksi.");
+            showNotification(`Gagal menyimpan transaksi: ${error.message}`, 'error');
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    const handleDelete = async (id) => {
-        if (window.confirm("Yakin ingin menghapus transaksi ini?")) {
-            await deleteDoc(doc(db, 'keuangan', id));
-            alert("Transaksi berhasil dihapus.");
+    const confirmDelete = (transaksi) => {
+        setTransactionToDelete(transaksi);
+        setIsDeleteConfirmOpen(true);
+    };
+
+    const executeDelete = async () => {
+        if (!transactionToDelete) return;
+        setIsSubmitting(true);
+        try {
+            await deleteDoc(doc(db, 'keuangan', transactionToDelete.id));
+            showNotification("Transaksi berhasil dihapus.", 'success');
+        } catch (error) {
+            showNotification(`Gagal menghapus transaksi: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
+            setIsDeleteConfirmOpen(false);
+            setTransactionToDelete(null);
         }
     };
 
@@ -186,7 +204,7 @@ const KeuanganDesa = () => {
                                     {currentUser.role === 'admin_desa' && (
                                         <td className="px-6 py-4 flex items-center space-x-2">
                                             <button onClick={() => handleOpenModal(t)} className="text-blue-500 hover:text-blue-700"><FiEdit /></button>
-                                            <button onClick={() => handleDelete(t.id)} className="text-red-500 hover:text-red-700"><FiTrash2 /></button>
+                                            <button onClick={() => confirmDelete(t)} className="text-red-500 hover:text-red-700"><FiTrash2 /></button>
                                         </td>
                                     )}
                                 </tr>
@@ -222,6 +240,15 @@ const KeuanganDesa = () => {
                     </div>
                 </form>
             </Modal>
+            
+            <ConfirmationModal
+                isOpen={isDeleteConfirmOpen}
+                onClose={() => setIsDeleteConfirmOpen(false)}
+                onConfirm={executeDelete}
+                isLoading={isSubmitting}
+                title="Konfirmasi Hapus Transaksi"
+                message={`Apakah Anda yakin ingin menghapus transaksi "${transactionToDelete?.uraian}"? Tindakan ini tidak dapat dibatalkan.`}
+            />
         </div>
     );
 };

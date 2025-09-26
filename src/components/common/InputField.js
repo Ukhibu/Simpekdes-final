@@ -60,4 +60,3 @@ const InputField = ({ label, name, value, onChange, type = 'text', required = fa
 };
 
 export default InputField;
-

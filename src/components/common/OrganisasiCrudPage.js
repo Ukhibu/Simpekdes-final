@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../../firebase';
 import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, where } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
-import { useNotification } from '../../context/NotificationContext'; // Import hook notifikasi
+import { useNotification } from '../../context/NotificationContext';
 import Modal from './Modal';
-import ConfirmationModal from './ConfirmationModal'; // Import modal konfirmasi
+import ConfirmationModal from './ConfirmationModal';
 import Spinner from './Spinner';
 import InputField from './InputField';
 import { FiSearch, FiFilter, FiPlus, FiEdit, FiTrash2 } from 'react-icons/fi';
@@ -12,24 +12,21 @@ import { DESA_LIST } from '../../utils/constants';
 
 const OrganisasiCrudPage = ({ config }) => {
     const { currentUser } = useAuth();
-    const { showNotification } = useNotification(); // Gunakan hook notifikasi
+    const { showNotification } = useNotification();
     const [dataList, setDataList] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
     const [formData, setFormData] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    // State untuk konfirmasi hapus
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState(null);
-
-    // Filters
     const [searchTerm, setSearchTerm] = useState('');
-    // PERBAIKAN: Inisialisasi state dengan nilai default yang aman dan tidak bergantung pada currentUser.
+    // PERBAIKAN: Inisialisasi state filter desa ke 'all' sebagai default yang aman.
     const [filterDesa, setFilterDesa] = useState('all');
 
-    // PERBAIKAN: Gunakan useEffect untuk mengatur filterDesa dengan aman setelah currentUser tersedia.
+    // PERBAIKAN: Menggunakan useEffect untuk mengatur filterDesa dengan aman setelah currentUser tersedia.
+    // Ini mencegah kondisi di mana filter salah diterapkan pada render pertama.
     useEffect(() => {
         if (currentUser) {
             setFilterDesa(currentUser.role === 'admin_kecamatan' ? 'all' : currentUser.desa);
@@ -37,14 +34,11 @@ const OrganisasiCrudPage = ({ config }) => {
     }, [currentUser]);
 
     useEffect(() => {
-        // Jangan jalankan query jika currentUser belum ada (masih loading)
         if (!currentUser || !config.collectionName) {
-            // Jika pengguna bukan admin kecamatan, dan filterDesa masih 'all',
-            // tunggu sampai useEffect di atas mengaturnya ke desa yang benar.
             if (currentUser && currentUser.role === 'admin_desa' && filterDesa === 'all') {
                 return;
             }
-            setLoading(false); // Berhenti loading jika tidak ada user atau config
+            setLoading(false);
             return;
         };
         setLoading(true);
@@ -139,7 +133,7 @@ const OrganisasiCrudPage = ({ config }) => {
 
     const handleDelete = async () => {
         if (!itemToDelete) return;
-        setIsSubmitting(true); // Gunakan isSubmitting untuk menonaktifkan tombol saat menghapus
+        setIsSubmitting(true);
         try {
             await deleteDoc(doc(db, config.collectionName, itemToDelete.id));
             showNotification('Data berhasil dihapus.', 'success');
@@ -251,4 +245,3 @@ const OrganisasiCrudPage = ({ config }) => {
 };
 
 export default OrganisasiCrudPage;
-

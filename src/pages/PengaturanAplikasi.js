@@ -3,31 +3,8 @@ import { db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { useNotification } from '../context/NotificationContext';
 import Spinner from '../components/common/Spinner';
-
-// Fungsi helper untuk unggah gambar (bisa dipindahkan ke utils)
-const uploadImageToCloudinary = async (file) => {
-    if (!file) return null;
-    const data = new FormData();
-    data.append('file', file);
-    data.append('upload_preset', process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET);
-
-    try {
-        const res = await fetch(`https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME}/image/upload`, {
-            method: 'POST',
-            body: data
-        });
-        const result = await res.json();
-        if (result.secure_url) {
-            return result.secure_url;
-        } else {
-            throw new Error(result.error.message || 'Upload ke Cloudinary gagal.');
-        }
-    } catch (error) {
-        console.error("Cloudinary upload error:", error);
-        throw error;
-    }
-};
-
+// --- PERBAIKAN: Mengimpor fungsi uploader dari file utilitas ---
+import { uploadImageToCloudinary } from '../utils/imageUploader';
 
 const PengaturanAplikasi = () => {
     const [activeTab, setActiveTab] = useState('branding');
@@ -195,4 +172,3 @@ const PengaturanAplikasi = () => {
 };
 
 export default PengaturanAplikasi;
-

@@ -30,7 +30,7 @@ const Modal = ({ isOpen, onClose, title, children, size = '3xl' }) => {
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center p-4 transition-opacity duration-300" onClick={onClose}>
             <div 
-                // --- FIX: Menambahkan styling untuk mode gelap ---
+                // PERBAIKAN: Menambahkan kelas untuk background dan border pada dark mode.
                 className={`bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full ${sizeClasses[size]} transform transition-transform duration-300 scale-95 animate-scale-in`} 
                 onClick={e => e.stopPropagation()}
             >

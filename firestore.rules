@@ -3,7 +3,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
   
-    // Fungsi bantuan untuk validasi
+    // =================================
+    // FUNGSI BANTUAN (HELPER FUNCTIONS)
+    // =================================
     function isSignedIn() {
       return request.auth != null;
     }
@@ -16,62 +18,134 @@ service cloud.firestore {
     	return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.desa;
     }
     
-    function isDataOwner(desa) {
-    	return getUserDesa() == desa;
-    }
-    
-    function validatePerangkatData(data) {
-        return data.nama is string && data.nama.size() > 0 &&
-               data.desa is string && data.desa.size() > 0 &&
-               data.jabatan is string && data.jabatan.size() > 0 &&
-               (!('nik' in data) || data.nik is string && data.nik.size() <= 16);
+    function isOwnerOfExistingDoc() {
+    	return getUserDesa() == resource.data.desa;
     }
 
-    // Aturan untuk koleksi 'users'
-    match /users/{userId} {
-      allow read, update: if request.auth.uid == userId || isUserRole('admin_kecamatan');
-      allow create: if isSignedIn();
+    function isCreatingForOwnDesa() {
+      return getUserDesa() == request.resource.data.desa;
     }
     
-    // Aturan untuk koleksi 'perangkat'
+    // Validasi untuk data perangkat yang lengkap
+    function validatePerangkatData(data) {
+      return data.nama is string && data.nama.size() > 0 &&
+             data.desa is string && data.desa.size() > 0 &&
+             data.jabatan is string && data.jabatan.size() > 0 &&
+             (!('nik' in data) || data.nik is string && data.nik.size() <= 16);
+    }
+    
+    // --- PERBAIKAN: Fungsi validasi baru untuk mengizinkan pengosongan jabatan ---
+    // Fungsi ini memperbolehkan field data diri (nama, foto, ktp, dll.) menjadi null,
+    // selama field inti (desa, jabatan) tetap ada dan tidak berubah.
+    function validateJabatanKosongUpdate(requestData, existingData) {
+      return requestData.nama == null &&
+             requestData.nik == null &&
+             requestData.foto_url == null &&
+             requestData.ktp_url == null &&
+             requestData.desa is string && requestData.desa == existingData.desa &&
+             requestData.jabatan is string && requestData.jabatan == existingData.jabatan;
+    }
+
+    // =================================
+    // ATURAN PER KOLEKSI (COLLECTION RULES)
+    // =================================
+
+    match /users/{userId} {
+      allow read, update: if request.auth.uid == userId || isUserRole('admin_kecamatan');
+      allow create: if isUserRole('admin_kecamatan');
+    }
+    
     match /perangkat/{docId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && 
-                      (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isDataOwner(request.resource.data.desa))) &&
+                      (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa())) &&
                       validatePerangkatData(request.resource.data);
                       
+      // --- PERBAIKAN: Memperbarui aturan `update` ---
+      // Izinkan pembaruan jika:
+      // 1. Ini adalah pembaruan data standar yang valid, ATAU
+      // 2. Ini adalah operasi "kosongkan jabatan" yang valid.
       allow update: if isSignedIn() && 
-                      (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isDataOwner(resource.data.desa))) &&
-                      validatePerangkatData(request.resource.data);
+                      (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc())) &&
+                      (validatePerangkatData(request.resource.data) || validateJabatanKosongUpdate(request.resource.data, resource.data));
                       
-      allow delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isDataOwner(resource.data.desa)));
+      allow delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
     }
     
-    // Aturan untuk koleksi 'bpd'
     match /bpd/{docId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isDataOwner(request.resource.data.desa)));
-      allow delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isDataOwner(resource.data.desa)));
-    }
-
-    // Aturan umum untuk organisasi desa lainnya (PKK, LPM, dll.)
-    match /{collectionName}/{docId} {
-      // Izinkan baca untuk semua yang login
-      allow read: if isSignedIn();
-      
-      // Izinkan tulis (buat, ubah, hapus) jika admin kecamatan, atau jika admin desa yang memiliki data
-      allow write: if isSignedIn() &&
-                     (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isDataOwner(request.resource.data.desa)));
-                     
-      // Kecuali untuk koleksi yang sudah diatur di atas
-      // Ini mencegah aturan umum menimpa aturan yang lebih spesifik
-      // Namun, karena 'write' mencakup create, update, delete, ini sudah cukup
-      // untuk pkk, lpm, karang_taruna, rt_rw
+      allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
+      allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
     }
     
-     match /settings/{docId} {
+    match /lpm/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
+      allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
+    }
+
+    match /pkk/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
+      allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
+    }
+    
+    match /pkk_program/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
+      allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
+    }
+
+    match /karang_taruna/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
+      allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
+    }
+    
+    match /karang_taruna_kegiatan/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
+      allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
+    }
+
+    match /rt_rw/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
+      allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
+    }
+    
+    match /keuangan/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
+      allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
+    }
+    
+    match /aset/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
+      allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
+    }
+    
+    match /efile/{docId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
+    }
+    
+    match /kegiatan/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
+      allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
+    }
+    
+    match /notifications/{notificationId} {
+      allow read, update: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn();
+    }
+    
+    match /settings/{docId} {
       allow read: if isSignedIn();
       allow write: if isUserRole('admin_kecamatan');
     }
   }
 }
+

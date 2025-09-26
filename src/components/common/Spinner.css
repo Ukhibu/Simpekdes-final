@@ -2,8 +2,6 @@
   display: grid;
   place-items: center;
   width: 100%;
-  padding: 1.5em 0;
-  font-size: 16px; /* Ukuran default, akan di-override oleh kelas ukuran */
 }
 
 .sp {
@@ -12,7 +10,7 @@
   height: 1em;
 }
 
-/* --- PERUBAHAN: Warna dikontrol penuh oleh CSS --- */
+/* --- PERBAIKAN: Warna dikontrol penuh oleh CSS untuk mendukung dark mode --- */
 .sp__ring,
 .sp-worm-color-1,
 .sp-worm-color-2,
@@ -20,6 +18,7 @@
     transition: stroke 0.4s ease-in-out;
 }
 
+/* Warna untuk Mode Terang */
 .sp__ring {
   stroke: hsla(223, 90%, 50%, 0.1);
 }
@@ -33,7 +32,7 @@
     stroke: hsl(283, 90%, 55%); /* Purple */
 }
 
-/* --- PERUBAHAN: Gaya dark mode yang lebih komprehensif --- */
+/* Warna untuk Mode Gelap */
 html.dark .sp__ring {
     stroke: hsla(223, 90%, 95%, 0.15);
 }

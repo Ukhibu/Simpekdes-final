@@ -5,7 +5,7 @@ import { useBranding } from '../../context/BrandingContext';
 import { 
     FiGrid, FiUsers, FiFileText, FiUserPlus, FiSettings, 
     FiBarChart2, FiArrowLeft, FiBriefcase, FiBookOpen, 
-    FiDollarSign, FiArchive, FiShare2, FiAward, FiHome, FiHeart, FiActivity
+    FiDollarSign, FiArchive, FiShare2, FiAward, FiHome, FiHeart, FiActivity, FiCalendar // FiCalendar ditambahkan
 } from 'react-icons/fi';
 
 const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
@@ -29,6 +29,10 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
             </NavLink>
             <NavLink to="/app/perangkat" className={navLinkClasses}>
                 <FiUsers className="w-5 h-5 mr-3" /><span>Data Perangkat</span>
+            </NavLink>
+            {/* Link Kalender Kegiatan ditambahkan di sini */}
+            <NavLink to="/app/kalender-kegiatan" className={navLinkClasses}>
+                <FiCalendar className="w-5 h-5 mr-3" /><span>Kalender Kegiatan</span>
             </NavLink>
             {currentUser?.role === 'admin_kecamatan' && (
                 <>
@@ -74,7 +78,7 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
     );
 
     const LpmMenu = () => (
-         <>
+        <>
             <div className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">LPM</div>
             <NavLink to="/app/lpm" end className={navLinkClasses}>
                 <FiGrid className="w-5 h-5 mr-3" /><span>Dashboard</span>
@@ -154,7 +158,7 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
         </>
     );
 
-   
+    
     // --- LOGIKA UTAMA RENDER SIDEBAR ---
 
     const renderCurrentMenu = () => {

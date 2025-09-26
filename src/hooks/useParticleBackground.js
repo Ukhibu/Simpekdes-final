@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-// --- PERUBAHAN: Menggunakan named export ---
+// --- PERBAIKAN: Mengganti default export menjadi named export untuk konsistensi ---
 export const useParticleBackground = () => {
     const canvasRef = useRef(null);
 
@@ -139,4 +139,3 @@ export const useParticleBackground = () => {
 
     return canvasRef;
 };
-

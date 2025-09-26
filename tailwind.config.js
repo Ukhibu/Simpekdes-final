@@ -1,12 +1,10 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  // --- PERBAIKAN 1: Mengaktifkan Dark Mode ---
-  // Ini memberitahu Tailwind untuk mencari kelas 'dark' pada elemen html
+  // --- PERBAIKAN: Mengaktifkan Dark Mode berdasarkan kelas di elemen HTML ---
   darkMode: 'class',
 
-  // --- PERBAIKAN 2: Menentukan file mana yang akan dipindai ---
-  // Ini adalah bagian terpenting. Tailwind akan memindai file-file ini
-  // untuk menemukan kelas yang Anda gunakan dan menghasilkan CSS yang sesuai.
+  // --- PERBAIKAN: Menambahkan path file sumber untuk dipindai oleh Tailwind ---
+  // Ini penting agar semua kelas utility yang Anda gunakan disertakan dalam CSS final.
   content: [
     "./src/**/*.{js,jsx,ts,tsx}",
   ],

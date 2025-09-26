@@ -4,44 +4,59 @@
       "collectionGroup": "perangkat",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "desa",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "nama",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "desa", "order": "ASCENDING" },
+        { "fieldPath": "nama", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "bpd",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "desa",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "periode",
-          "order": "DESCENDING"
-        }
+        { "fieldPath": "desa", "order": "ASCENDING" },
+        { "fieldPath": "nama", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "kegiatan",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "desa", "order": "ASCENDING" },
+        { "fieldPath": "tanggalMulai", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "lpm",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "desa", "order": "ASCENDING" },
+        { "fieldPath": "nama", "order": "ASCENDING" }
       ]
     },
     {
       "collectionGroup": "pkk",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "desa",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "jabatan",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "desa", "order": "ASCENDING" },
+        { "fieldPath": "nama", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "karang_taruna",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "desa", "order": "ASCENDING" },
+        { "fieldPath": "nama", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "rt_rw",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "desa", "order": "ASCENDING" },
+        { "fieldPath": "nama", "order": "ASCENDING" }
       ]
     }
   ],
   "fieldOverrides": []
 }
+

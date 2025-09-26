@@ -2,7 +2,7 @@ import React, { createContext, useState, useEffect, useContext } from 'react';
 import { db } from '../firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import defaultLogo from '../assets/banjarnegara-logo.png';
-// PERBAIKAN: Tambahkan URL gambar default
+// PERBAIKAN: Mengimpor gambar latar belakang default sebagai fallback.
 import defaultBackground from '../assets/default-bg.jpg';
 
 const BrandingContext = createContext();
@@ -17,7 +17,7 @@ export function BrandingProvider({ children }) {
         loginTitle: 'Sistem Informasi Manajemen Perangkat Desa',
         loginSubtitle: 'Kecamatan Punggelan',
         loginLogoUrl: defaultLogo,
-        // PERBAIKAN: Tambahkan properti baru dengan gambar default
+        // PERBAIKAN: Menambahkan properti baru dengan gambar default.
         hubBackgroundUrl: defaultBackground,
     });
     const [loading, setLoading] = useState(true);
@@ -27,7 +27,7 @@ export function BrandingProvider({ children }) {
         const unsubscribe = onSnapshot(docRef, (doc) => {
             if (doc.exists()) {
                 const data = doc.data();
-                // PERBAIKAN: Pastikan semua properti memiliki fallback
+                // PERBAIKAN: Memastikan semua properti memiliki nilai fallback jika tidak ada di database.
                 setBranding({
                     appName: data.appName || 'SIMPEKDES',
                     loginTitle: data.loginTitle || 'Sistem Informasi',

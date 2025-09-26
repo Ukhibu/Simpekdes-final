@@ -1,11 +1,9 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 
-// Helper untuk memformat tanggal (jika diperlukan)
 const formatDate = (dateString) => {
     if (!dateString) return '';
     try {
-        // Coba parsing tanggal yang mungkin dalam format YYYY-MM-DD atau DD-MM-YYYY
         const parts = dateString.split(/[-/]/);
         let date;
         if (parts[0].length === 4) { // YYYY-MM-DD
@@ -14,14 +12,14 @@ const formatDate = (dateString) => {
             date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
         }
         
-        if (isNaN(date.getTime())) return dateString; // Kembalikan string asli jika tidak valid
+        if (isNaN(date.getTime())) return dateString;
         
         const day = String(date.getDate()).padStart(2, '0');
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const year = date.getFullYear();
         return `${day}/${month}/${year}`;
     } catch (error) {
-        return dateString; // Fallback
+        return dateString;
     }
 };
 
@@ -30,28 +28,24 @@ export const generateBpdXLSX = async (groupedData, periodeFilter) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Data BPD');
 
-    // --- Judul Dinamis ---
     const title = periodeFilter 
         ? `BPD PERIODE ${periodeFilter.toUpperCase()}` 
         : `BPD TAHUN ${new Date().getFullYear()}`;
     
-    // Baris Judul 1
     worksheet.mergeCells('A1:P1');
     const titleCell = worksheet.getCell('A1');
     titleCell.value = title;
     titleCell.font = { name: 'Arial', size: 16, bold: true };
     titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
-    // Baris Judul 2
     worksheet.mergeCells('A2:P2');
     const subtitleCell = worksheet.getCell('A2');
     subtitleCell.value = "TP. Pemerintahan Kec. Punggelan";
     subtitleCell.font = { name: 'Arial', size: 12, bold: true };
     subtitleCell.alignment = { horizontal: 'center', vertical: 'middle' };
     
-    worksheet.addRow([]); // Baris kosong
+    worksheet.addRow([]);
 
-    // --- Header Tabel ---
     const headerRow1 = worksheet.addRow([
         "NO", "NO. SK Bupati", "Tgl. SK Bupati", "PERIODE", "Tgl Pelantikan/Pengambilan Sumpah",
         "Wil Pmlhn", "NAMA", "Tempat Lahir", "Tgl Lahir", "Pekerjaan", "Pendidikan",
@@ -63,21 +57,18 @@ export const generateBpdXLSX = async (groupedData, periodeFilter) => {
         "DESA", "RT", "RW", null
     ]);
 
-    // Menggabungkan sel header vertikal
     worksheet.mergeCells('A4:A5'); worksheet.mergeCells('B4:B5'); worksheet.mergeCells('C4:C5');
     worksheet.mergeCells('D4:D5'); worksheet.mergeCells('E4:E5'); worksheet.mergeCells('F4:F5');
     worksheet.mergeCells('G4:G5'); worksheet.mergeCells('H4:H5'); worksheet.mergeCells('I4:I5');
     worksheet.mergeCells('J4:J5'); worksheet.mergeCells('K4:K5'); worksheet.mergeCells('L4:L5');
     worksheet.mergeCells('P4:P5');
-    // Menggabungkan sel header horizontal
     worksheet.mergeCells('M4:O4');
     
-    // --- Styling Header ---
     const headerStyle = {
         font: { name: 'Arial', size: 11, bold: true },
         alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
         border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } },
-        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } } // Warna abu-abu muda
+        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } }
     };
     [headerRow1, headerRow2].forEach(row => {
         row.eachCell({ includeEmpty: true }, cell => {
@@ -86,13 +77,11 @@ export const generateBpdXLSX = async (groupedData, periodeFilter) => {
         row.height = 30;
     });
 
-
-    // --- Isi Data ---
     let overallIndex = 1;
-    // --- PERBAIKAN: Mengubah perataan horizontal menjadi 'left' ---
+    // PERBAIKAN: Mendefinisikan gaya sel data untuk perataan yang lebih baik.
     const dataCellStyle = {
         font: { name: 'Arial', size: 10 },
-        alignment: { horizontal: 'left', vertical: 'middle', wrapText: true },
+        alignment: { vertical: 'middle', wrapText: true }, // Perataan vertikal
         border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
     };
 
@@ -120,40 +109,26 @@ export const generateBpdXLSX = async (groupedData, periodeFilter) => {
                     bpd.jabatan || ''
                 ]);
 
+                // PERBAIKAN: Menerapkan gaya sel secara konsisten.
                 row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-                    // Kolom nomor tetap di tengah
-                    if (colNumber === 1) {
-                        cell.style = { ...dataCellStyle, alignment: { ...dataCellStyle.alignment, horizontal: 'center' } };
-                    } else {
-                        // Semua data selain header dan kolom nomor rata kiri
-                        cell.style = { ...dataCellStyle, alignment: { ...dataCellStyle.alignment, horizontal: 'left' } };
+                    cell.style = { ...dataCellStyle };
+                    if (colNumber === 1) { // Kolom 'NO'
+                        cell.alignment.horizontal = 'center';
+                    } else { // Kolom lainnya
+                        cell.alignment.horizontal = 'left';
                     }
                 });
             });
         }
     }
 
-    // Atur Lebar Kolom
     worksheet.columns = [
-        { width: 5 },   // NO
-        { width: 20 },  // NO SK
-        { width: 15 },  // Tgl SK
-        { width: 15 },  // Periode
-        { width: 20 },  // Tgl Pelantikan
-        { width: 15 },  // Wil Pmlhn
-        { width: 25 },  // Nama
-        { width: 20 },  // Tempat Lahir
-        { width: 15 },  // Tgl Lahir
-        { width: 20 },  // Pekerjaan
-        { width: 15 },  // Pendidikan
-        { width: 15 },  // Agama
-        { width: 18 },  // Desa
-        { width: 5 },   // RT
-        { width: 5 },   // RW
-        { width: 20 }   // Jabatan
+        { width: 5 }, { width: 20 }, { width: 15 }, { width: 15 }, { width: 20 },
+        { width: 15 }, { width: 25 }, { width: 20 }, { width: 15 }, { width: 20 },
+        { width: 15 }, { width: 15 }, { width: 18 }, { width: 5 }, { width: 5 },
+        { width: 20 }
     ];
 
-    // --- Generate & Download File ---
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const fileName = `Data_BPD_${periodeFilter || new Date().getFullYear()}.xlsx`;

@@ -4,9 +4,9 @@ import './Spinner.css'; // Impor file CSS baru
 const Spinner = ({ size = 'md' }) => {
     // Menentukan kelas ukuran berdasarkan prop
     const sizeClasses = {
-        sm: 'text-4xl', // 4rem
-        md: 'text-6xl', // 6rem
-        lg: 'text-8xl', // 8rem
+        sm: 'text-base', // 1rem
+        md: 'text-2xl', // 1.5rem
+        lg: 'text-4xl', // 2.25rem
     };
 
     return (
@@ -32,7 +32,7 @@ const Spinner = ({ size = 'md' }) => {
                 </defs>
                 <g fill="none" strokeLinecap="round" strokeWidth="16">
                     <circle className="sp__ring" r="56" cx="64" cy="64" />
-                    {/* --- PERUBAHAN: Menghapus 'stroke' dan menggunakan kelas CSS --- */}
+                    {/* PERBAIKAN: Menghapus atribut 'stroke' dan menggunakan kelas CSS untuk warna dinamis */}
                     <g>
                         <path className="sp__worm1 sp-worm-color-1" d="M120,64c0,30.928-25.072,56-56,56S8,94.928,8,64" strokeDasharray="43.98 307.87" />
                         <g transform="translate(42,42)">

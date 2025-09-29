@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
-import { collection, query, where, onSnapshot, addDoc, doc, deleteDoc, updateDoc, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, doc, deleteDoc, updateDoc, getDocs, getDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { useNotification } from '../context/NotificationContext'; // Diimpor
+import { useNotification } from '../context/NotificationContext';
 import Modal from '../components/common/Modal';
-import ConfirmationModal from '../components/common/ConfirmationModal'; // Diimpor
+import ConfirmationModal from '../components/common/ConfirmationModal';
 import Spinner from '../components/common/Spinner';
 import { FiUpload, FiSearch, FiFilter, FiEye, FiDownload, FiTrash2, FiDatabase, FiCheckSquare } from 'react-icons/fi';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { createNotificationForAdmins } from '../utils/notificationService';
 
 const DESA_LIST = [
     "Punggelan", "Petuguran", "Karangsari", "Jembangan", "Tanjungtirta",
@@ -14,29 +16,9 @@ const DESA_LIST = [
     "Sambong", "Klapa", "Kecepit", "Mlaya", "Sidarata", "Purwasana", "Tlaga"
 ];
 
-// --- Fungsi untuk membuat notifikasi ---
-const createNotificationForAdmins = async (perangkat) => {
-    const adminQuery = query(collection(db, "users"), where("role", "==", "admin_kecamatan"));
-    try {
-        const adminSnapshot = await getDocs(adminQuery);
-        adminSnapshot.forEach(async (adminDoc) => {
-            await addDoc(collection(db, "notifications"), {
-                userId: adminDoc.id,
-                message: `SK baru untuk ${perangkat.nama} dari Desa ${perangkat.desa} telah diunggah dan menunggu verifikasi.`,
-                link: '/app/efile/manage',
-                readStatus: false,
-                timestamp: new Date(),
-            });
-        });
-        console.log("Notifikasi berhasil dibuat untuk semua admin kecamatan.");
-    } catch (error) {
-        console.error("Gagal membuat notifikasi:", error);
-    }
-};
-
 const EFilePage = () => {
     const { currentUser } = useAuth();
-    const { showNotification } = useNotification(); // Menggunakan hook notifikasi global
+    const { showNotification } = useNotification();
     const [activeTab, setActiveTab] = useState('manajemen');
     const [allPerangkat, setAllPerangkat] = useState([]);
     const [selectedDesaForUpload, setSelectedDesaForUpload] = useState(currentUser?.role === 'admin_desa' ? currentUser.desa : '');
@@ -49,14 +31,27 @@ const EFilePage = () => {
     const [filterDesa, setFilterDesa] = useState(currentUser?.role === 'admin_kecamatan' ? 'all' : currentUser.desa);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [previewUrl, setPreviewUrl] = useState('');
-
-    // State untuk modal konfirmasi
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [skDocToDelete, setSkDocToDelete] = useState(null);
     const [isSubmittingDelete, setIsSubmittingDelete] = useState(false);
+    const [highlightedRow, setHighlightedRow] = useState(null);
+    const [searchParams, setSearchParams] = useSearchParams();
+    const navigate = useNavigate();
 
+    useEffect(() => {
+        const highlightId = searchParams.get('highlight');
+        if (highlightId) {
+            setHighlightedRow(highlightId);
+            const timer = setTimeout(() => {
+                setHighlightedRow(null);
+                // Clean up URL
+                searchParams.delete('highlight');
+                setSearchParams(searchParams, { replace: true });
+            }, 3000); // Highlight for 3 seconds
+            return () => clearTimeout(timer);
+        }
+    }, [searchParams, setSearchParams]);
 
-    // Fetch all perangkat data for lookups (foto, jabatan)
     useEffect(() => {
         const q = query(collection(db, "perangkat"));
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -65,7 +60,6 @@ const EFilePage = () => {
         return () => unsubscribe();
     }, []);
 
-    // Fetch SK documents based on role
     useEffect(() => {
         if (!currentUser) return;
         setLoading(true);
@@ -84,7 +78,6 @@ const EFilePage = () => {
         return () => unsubscribe();
     }, [currentUser, showNotification]);
     
-    // Create a memoized list of perangkat for the upload dropdown, filtered by selected desa
     const perangkatListForUpload = useMemo(() => {
         if (!selectedDesaForUpload) return [];
         return allPerangkat.filter(p => p.desa === selectedDesaForUpload);
@@ -156,7 +149,7 @@ const EFilePage = () => {
 
             const fileUrl = result.content.download_url;
 
-            await addDoc(collection(db, 'efile'), {
+            const newDocRef = await addDoc(collection(db, 'efile'), {
                 perangkatId: perangkat.id,
                 perangkatNama: perangkat.nama,
                 desa: perangkat.desa,
@@ -168,7 +161,7 @@ const EFilePage = () => {
             });
             
             if (currentUser.role === 'admin_desa') {
-                await createNotificationForAdmins(perangkat);
+                await createNotificationForAdmins(`SK baru untuk ${perangkat.nama} dari Desa ${perangkat.desa} telah diunggah dan menunggu verifikasi.`, `/app/efile/manage?highlight=${newDocRef.id}`);
             }
 
             showNotification('Dokumen SK berhasil diunggah dan menunggu verifikasi.', 'success');
@@ -209,16 +202,27 @@ const EFilePage = () => {
         }
     };
 
-    const handleVerify = async (skId) => {
-        const docRef = doc(db, 'efile', skId);
+    const handleVerify = async (skDoc) => {
+        const docRef = doc(db, 'efile', skDoc.id);
         try {
             await updateDoc(docRef, { status: 'terverifikasi' });
+
+            const perangkatDoc = await getDoc(doc(db, 'perangkat', skDoc.perangkatId));
+            if (perangkatDoc.exists()) {
+                const userQuery = query(collection(db, "users"), where("desa", "==", perangkatDoc.data().desa), where("role", "==", "admin_desa"));
+                const userSnapshot = await getDocs(userQuery);
+                userSnapshot.forEach(async (userDoc) => {
+                    await createNotificationForAdmins(`Dokumen SK untuk ${skDoc.perangkatNama} telah diverifikasi.`, `/app/efile/manage?highlight=${skDoc.id}`, userDoc.id);
+                });
+            }
+
             showNotification('Dokumen berhasil diverifikasi.', 'success');
         } catch (error) {
             console.error("Error verifying document: ", error);
             showNotification('Gagal memverifikasi dokumen.', 'error');
         }
     };
+
 
     const openPdfPreview = (url) => {
         const encodedUrl = encodeURIComponent(url);
@@ -287,7 +291,7 @@ const EFilePage = () => {
                                 <input type="file" onChange={handleFileChange} accept="application/pdf" className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 dark:file:bg-blue-900 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-800" required />
                              </div>
                              <div>
-                                 <button type="submit" disabled={isUploading} className="w-full flex justify-center items-center px-4 py-2 font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-blue-400">
+                                 <button type="submit" disabled={isUploading} className="w-full flex justify-center items-center px-4 py-3 font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-blue-400">
                                      {isUploading ? <Spinner size="sm" /> : <><FiUpload className="mr-2" /> Unggah File</>}
                                  </button>
                              </div>
@@ -328,7 +332,7 @@ const EFilePage = () => {
                                  </thead>
                                  <tbody>
                                      {filteredSkDocuments.length > 0 ? filteredSkDocuments.map((sk) => (
-                                         <tr key={sk.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                                         <tr key={sk.id} className={`bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 ${highlightedRow === sk.id ? 'highlight-row' : ''}`}>
                                              <td className="px-6 py-4 font-medium text-gray-900 dark:text-white flex items-center gap-3">
                                                 <img src={sk.foto_url || `https://ui-avatars.com/api/?name=${sk.perangkatNama}&background=E2E8F0&color=4A5568`} alt={sk.perangkatNama} className="w-10 h-10 rounded-full object-cover"/>
                                                 {sk.perangkatNama}
@@ -349,7 +353,7 @@ const EFilePage = () => {
                                                  <button onClick={() => openPdfPreview(sk.fileUrl)} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300" title="Lihat"><FiEye /></button>
                                                  <a href={sk.fileUrl} download={sk.fileName} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" title="Unduh"><FiDownload /></a>
                                                  {currentUser.role === 'admin_kecamatan' && sk.status !== 'terverifikasi' && (
-                                                    <button onClick={() => handleVerify(sk.id)} className="text-teal-600 hover:text-teal-800 dark:text-teal-400 dark:hover:text-teal-300" title="Verifikasi">
+                                                    <button onClick={() => handleVerify(sk)} className="text-teal-600 hover:text-teal-800 dark:text-teal-400 dark:hover:text-teal-300" title="Verifikasi">
                                                         <FiCheckSquare />
                                                     </button>
                                                  )}

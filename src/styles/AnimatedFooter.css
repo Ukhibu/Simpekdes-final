@@ -1,58 +1,77 @@
+/*
+ * Perbaikan pada AnimatedFooter.css
+ * - Menggunakan animasi gradien "glow-move" yang modern dan dinamis.
+ * - Memastikan footer selalu terlihat baik di mode terang maupun gelap.
+ */
 .animated-footer {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    padding: 1rem;
-    text-align: center;
-    font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.4);
-    z-index: 10;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 1rem;
+  text-align: center;
+  font-size: 0.8rem;
+  z-index: 10;
 }
 
 .footer-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    max-width: 1200px;
-    margin: 0 auto;
-    flex-wrap: wrap; /* Agar responsif di layar kecil */
-    gap: 1rem; /* Jarak antar item saat wrap */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1200px;
+  margin: 0 auto;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.footer-content span {
+  /*
+   * Efek Teks Gradien Animasi (Glow Bergerak)
+   * Teks dibuat transparan dan gradien di belakangnya dianimasikan.
+   * Ini memastikan teks selalu terlihat di berbagai latar belakang.
+   */
+  background-image: linear-gradient(
+    -225deg,
+    #a0aec0 0%,  /* abu-abu terang */
+    #e2e8f0 29%, /* putih keabu-abuan */
+    #4299e1 67%, /* biru tema */
+    #a0aec0 100% /* kembali ke abu-abu terang */
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: glow-move 4s linear infinite;
+  font-weight: 500; /* Sedikit lebih tebal agar gradien terlihat */
+  text-shadow: 0 0 5px rgba(0, 0, 0, 0.5); /* Shadow agar lebih terbaca di background terang */
+}
+
+/* Penyesuaian shadow untuk dark mode jika diperlukan */
+.dark .footer-content span {
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
 }
 
 .contact-info {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem; /* Jarak antara ikon dan teks */
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .contact-icon {
-    margin-bottom: 2px; /* Menyesuaikan posisi ikon */
+  margin-bottom: 2px;
 }
 
-
-/* Breathing animation */
-@keyframes breathing {
-    0% {
-        text-shadow: 0 0 3px rgba(255, 255, 255, 0.2);
-    }
-    50% {
-        text-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
-    }
-    100% {
-        text-shadow: 0 0 3px rgba(255, 255, 255, 0.2);
-    }
+/* Animasi untuk menggerakkan posisi gradien */
+@keyframes glow-move {
+  to {
+    background-position: 200% center;
+  }
 }
 
-.animated-footer span {
-    animation: breathing 5s infinite ease-in-out;
-}
-
-/* Responsiveness for smaller screens */
+/* Responsiveness untuk layar kecil */
 @media (max-width: 768px) {
-    .footer-content {
-        flex-direction: column;
-        gap: 0.5rem;
-    }
+  .footer-content {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
 }
-

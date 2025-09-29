@@ -1,229 +1,274 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { db } from '../firebase';
-import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, where } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { db, storage } from '../firebase';
+import { collection, doc, writeBatch, getDocs, query, where } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { useAuth } from '../context/AuthContext';
+import { useSearchParams } from 'react-router-dom';
+import { useFirestoreCollection } from '../hooks/useFirestoreCollection';
 import { useNotification } from '../context/NotificationContext';
+
 import Modal from '../components/common/Modal';
-import ConfirmationModal from '../components/common/ConfirmationModal';
 import Spinner from '../components/common/Spinner';
 import InputField from '../components/common/InputField';
-import { FiArchive, FiPlus, FiSearch, FiFilter, FiEdit, FiTrash2 } from 'react-icons/fi';
+import ConfirmationModal from '../components/common/ConfirmationModal';
+import MapPicker from '../components/aset/MapPicker';
+import { FiEdit, FiTrash2, FiSearch, FiFilter, FiPlus, FiUpload, FiDownload, FiEye, FiMapPin } from 'react-icons/fi';
+import { KATEGORI_ASET, KONDISI_ASET, DESA_LIST } from '../utils/constants';
 
-const DESA_LIST = [ "Punggelan", "Petuguran", "Karangsari", "Jembangan", "Tanjungtirta", "Sawangan", "Bondolharjo", "Danakerta", "Badakarya", "Tribuana", "Sambong", "Klapa", "Kecepit", "Mlaya", "Sidarata", "Purwasana", "Tlaga" ];
-const KATEGORI_ASET = ["Tanah", "Peralatan dan Mesin", "Gedung dan Bangunan", "Jalan, Jaringan, dan Irigasi", "Aset Tetap Lainnya", "Konstruksi Dalam Pengerjaan"];
-const KONDISI_ASET = ["Baik", "Rusak Ringan", "Rusak Berat"];
+const AsetDetailView = ({ aset }) => {
+    if (!aset) return null;
+    const formatDate = (dateString) => {
+        if (!dateString) return 'N/A';
+        const date = dateString.toDate ? dateString.toDate() : new Date(dateString);
+        return isNaN(date.getTime()) ? 'Invalid Date' : date.toLocaleDateString('id-ID');
+    };
+    return (
+        <div className="space-y-4">
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white">{aset.namaAset}</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <p><strong className="font-semibold">Kategori:</strong> {aset.kategori}</p>
+                <p><strong className="font-semibold">Kode Barang:</strong> {aset.kodeBarang}</p>
+                <p><strong className="font-semibold">Tanggal Perolehan:</strong> {formatDate(aset.tanggalPerolehan)}</p>
+                <p><strong className="font-semibold">Nilai Aset (Rp):</strong> {Number(aset.nilaiAset).toLocaleString('id-ID')}</p>
+                <p><strong className="font-semibold">Kondisi:</strong> {aset.kondisi}</p>
+                <p><strong className="font-semibold">Lokasi Fisik:</strong> {aset.lokasiFisik}</p>
+            </div>
+            {aset.latitude && aset.longitude && (
+                <div>
+                    <h4 className="font-semibold mb-2">Lokasi di Peta</h4>
+                    <div className="h-48 rounded-lg overflow-hidden">
+                       <MapPicker initialPosition={[aset.latitude, aset.longitude]} viewOnly={true} />
+                    </div>
+                </div>
+            )}
+            <p className="text-sm text-gray-600 dark:text-gray-400 pt-2 border-t dark:border-gray-700">
+                <strong className="font-semibold">Keterangan:</strong> {aset.keterangan || '-'}
+            </p>
+        </div>
+    );
+};
 
 const AsetDesa = () => {
     const { currentUser } = useAuth();
-    const [asetList, setAsetList] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const { data: allAset, loading, addItem, updateItem, deleteItem } = useFirestoreCollection('aset');
+    const { showNotification } = useNotification();
+    
+    const [modalMode, setModalMode] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedAset, setSelectedAset] = useState(null);
     const [formData, setFormData] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const { showNotification } = useNotification();
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-    const [assetToDelete, setAssetToDelete] = useState(null);
-    
-    // Filters
-    const [searchTerm, setSearchTerm] = useState('');
-    const [filterDesa, setFilterDesa] = useState(currentUser.role === 'admin_kecamatan' ? 'all' : currentUser.desa);
-    const [filterKategori, setFilterKategori] = useState('all');
+    const [itemToDelete, setItemToDelete] = useState(null);
+    const [filters, setFilters] = useState({ searchTerm: '', kategori: 'all', desa: 'all' });
+    const [searchParams, setSearchParams] = useSearchParams();
 
     useEffect(() => {
-        if (!currentUser) return;
-        setLoading(true);
-
-        let q = collection(db, 'aset');
-        let constraints = [];
-        
         if (currentUser.role === 'admin_desa') {
-            constraints.push(where("desa", "==", currentUser.desa));
-        } else if (filterDesa !== 'all') {
-            constraints.push(where("desa", "==", filterDesa));
+            setFilters(prev => ({ ...prev, desa: currentUser.desa }));
         }
-        
-        if (filterKategori !== 'all') {
-            constraints.push(where("kategori", "==", filterKategori));
+    }, [currentUser]);
+
+    useEffect(() => {
+        const editId = searchParams.get('edit');
+        if (editId && allAset.length > 0) {
+            const asetToEdit = allAset.find(a => a.id === editId);
+            if (asetToEdit) {
+                handleOpenModal(asetToEdit, 'edit');
+                setSearchParams({}, { replace: true });
+            }
         }
-        
-        q = query(q, ...constraints);
+    }, [allAset, searchParams, setSearchParams]);
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setAsetList(list);
-            setLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, [currentUser, filterDesa, filterKategori]);
-
-    const filteredAset = useMemo(() => {
-        return asetList.filter(aset => 
-            (aset.namaAset || '').toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    }, [asetList, searchTerm]);
-
-    const handleOpenModal = (aset = null) => {
+    const handleOpenModal = (aset = null, mode = 'add') => {
+        setModalMode(mode);
         setSelectedAset(aset);
-        const initialDesa = currentUser.role === 'admin_desa' ? currentUser.desa : '';
-        setFormData(aset ? {...aset} : { desa: initialDesa, tanggalPerolehan: new Date().toISOString().split('T')[0], kondisi: 'Baik' });
+        setFormData(aset || { desa: currentUser.desa, kondisi: 'Baik' });
         setIsModalOpen(true);
     };
-    
+
     const handleCloseModal = () => {
         if(isSubmitting) return;
         setIsModalOpen(false);
         setSelectedAset(null);
         setFormData({});
     };
-
+    
     const handleFormChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
+
+    // --- PERBAIKAN: Menggunakan useCallback ---
+    const handleLocationChange = useCallback((location) => {
+        setFormData(prev => ({
+            ...prev,
+            latitude: location.lat,
+            longitude: location.lng
+        }));
+    }, []);
 
     const handleFormSubmit = async (e) => {
         e.preventDefault();
         setIsSubmitting(true);
         try {
-            const dataToSave = { ...formData, nilaiPerolehan: Number(formData.nilaiPerolehan) };
             if (selectedAset) {
-                const docRef = doc(db, 'aset', selectedAset.id);
-                await updateDoc(docRef, dataToSave);
-                showNotification('Aset berhasil diperbarui!', 'success');
+                await updateItem(selectedAset.id, formData);
+                showNotification('Aset berhasil diperbarui', 'success');
             } else {
-                await addDoc(collection(db, 'aset'), dataToSave);
-                showNotification('Aset berhasil ditambahkan!', 'success');
+                await addItem(formData);
+                showNotification('Aset berhasil ditambahkan', 'success');
             }
             handleCloseModal();
         } catch (error) {
-            console.error("Error saving asset: ", error);
-            showNotification(`Gagal menyimpan aset: ${error.message}`, 'error');
+            showNotification(`Gagal menyimpan: ${error.message}`, 'error');
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    const confirmDelete = (aset) => {
-        setAssetToDelete(aset);
+    const confirmDelete = (item) => {
+        setItemToDelete(item);
         setIsDeleteConfirmOpen(true);
     };
-
+    
     const executeDelete = async () => {
-        if (!assetToDelete) return;
+        if (!itemToDelete) return;
         setIsSubmitting(true);
         try {
-            await deleteDoc(doc(db, 'aset', assetToDelete.id));
-            showNotification('Aset berhasil dihapus.', 'success');
+            await deleteItem(itemToDelete.id);
+            showNotification('Aset berhasil dihapus', 'success');
         } catch (error) {
-            showNotification(`Gagal menghapus aset: ${error.message}`, 'error');
+            showNotification(`Gagal menghapus: ${error.message}`, 'error');
         } finally {
             setIsSubmitting(false);
             setIsDeleteConfirmOpen(false);
-            setAssetToDelete(null);
+            setItemToDelete(null);
         }
     };
 
+    const handleFilterChange = (e) => {
+        setFilters({ ...filters, [e.target.name]: e.target.value });
+    };
+
+    const filteredAset = useMemo(() => {
+        return allAset.filter(aset => {
+            const searchTermMatch = aset.namaAset.toLowerCase().includes(filters.searchTerm.toLowerCase());
+            const kategoriMatch = filters.kategori === 'all' || aset.kategori === filters.kategori;
+            const desaMatch = currentUser.role === 'admin_kecamatan'
+                ? (filters.desa === 'all' || aset.desa === filters.desa)
+                : aset.desa === currentUser.desa;
+            return searchTermMatch && kategoriMatch && desaMatch;
+        });
+    }, [allAset, filters, currentUser]);
+
     return (
-        <div className="space-y-8">
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Modul Manajemen Aset Desa</h1>
-
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-4 flex-wrap">
-                    <InputField type="text" placeholder="Cari nama aset..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} icon={<FiSearch />} />
-                    <InputField type="select" value={filterKategori} onChange={(e) => setFilterKategori(e.target.value)} icon={<FiFilter />}>
-                        <option value="all">Semua Kategori</option>
-                        {KATEGORI_ASET.map(k => <option key={k} value={k}>{k}</option>)}
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
+            <h1 className="text-2xl font-bold mb-4">Manajemen Aset Desa (KIB)</h1>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <InputField name="searchTerm" placeholder="Cari nama aset..." value={filters.searchTerm} onChange={handleFilterChange} icon={<FiSearch />} />
+                <InputField name="kategori" type="select" value={filters.kategori} onChange={handleFilterChange}>
+                    <option value="all">Semua Kategori</option>
+                    {KATEGORI_ASET.map(k => <option key={k} value={k}>{k}</option>)}
+                </InputField>
+                {currentUser.role === 'admin_kecamatan' && (
+                    <InputField name="desa" type="select" value={filters.desa} onChange={handleFilterChange}>
+                        <option value="all">Semua Desa</option>
+                        {DESA_LIST.map(d => <option key={d} value={d}>{d}</option>)}
                     </InputField>
-                    {currentUser.role === 'admin_kecamatan' && (
-                        <InputField type="select" value={filterDesa} onChange={(e) => setFilterDesa(e.target.value)} icon={<FiFilter />}>
-                            <option value="all">Semua Desa</option>
-                            {DESA_LIST.map(desa => <option key={desa} value={desa}>{desa}</option>)}
-                        </InputField>
-                    )}
-                </div>
-                {currentUser.role === 'admin_desa' && (
-                    <button onClick={() => handleOpenModal()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
-                        <FiPlus /> Tambah Aset
-                    </button>
                 )}
+                <button onClick={() => handleOpenModal()} className="w-full md:w-auto bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2">
+                    <FiPlus /> Tambah Aset
+                </button>
             </div>
-
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                        <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700">
+            
+            <div className="overflow-x-auto">
+                {loading ? <Spinner /> : (
+                    <table className="w-full text-sm">
+                        {/* ... Table Head ... */}
+                         <thead className="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">
                             <tr>
                                 <th className="px-6 py-3">Nama Aset</th>
                                 <th className="px-6 py-3">Kategori</th>
-                                <th className="px-6 py-3">Tanggal Perolehan</th>
+                                {currentUser.role === 'admin_kecamatan' && <th className="px-6 py-3">Desa</th>}
                                 <th className="px-6 py-3">Nilai (Rp)</th>
                                 <th className="px-6 py-3">Kondisi</th>
-                                {currentUser.role === 'admin_desa' && <th className="px-6 py-3">Aksi</th>}
+                                <th className="px-6 py-3">Lokasi</th>
+                                <th className="px-6 py-3">Aksi</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {loading ? <tr><td colSpan="6" className="text-center py-4"><Spinner /></td></tr> :
-                             filteredAset.map(aset => (
+                            {filteredAset.map(aset => (
                                 <tr key={aset.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
                                     <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{aset.namaAset}</td>
                                     <td className="px-6 py-4">{aset.kategori}</td>
-                                    <td className="px-6 py-4">{aset.tanggalPerolehan}</td>
-                                    <td className="px-6 py-4">{Number(aset.nilaiPerolehan).toLocaleString('id-ID')}</td>
-                                    <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${aset.kondisi === 'Baik' ? 'bg-green-100 text-green-800' : (aset.kondisi === 'Rusak Ringan' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800')}`}>
-                                            {aset.kondisi}
-                                        </span>
+                                    {currentUser.role === 'admin_kecamatan' && <td className="px-6 py-4">{aset.desa}</td>}
+                                    <td className="px-6 py-4 text-right">{Number(aset.nilaiAset).toLocaleString('id-ID')}</td>
+                                    <td className="px-6 py-4">{aset.kondisi}</td>
+                                    <td className="px-6 py-4 text-center">
+                                        {aset.latitude && <FiMapPin className="text-green-500 mx-auto" title={`Lat: ${aset.latitude}, Lng: ${aset.longitude}`} />}
                                     </td>
-                                    {currentUser.role === 'admin_desa' && (
-                                        <td className="px-6 py-4 flex items-center space-x-2">
-                                            <button onClick={() => handleOpenModal(aset)} className="text-blue-500 hover:text-blue-700"><FiEdit /></button>
-                                            <button onClick={() => confirmDelete(aset)} className="text-red-500 hover:text-red-700"><FiTrash2 /></button>
-                                        </td>
-                                    )}
+                                    <td className="px-6 py-4 flex space-x-2">
+                                        <button onClick={() => handleOpenModal(aset, 'view')} className="text-gray-500 hover:text-gray-700"><FiEye size={18} /></button>
+                                        <button onClick={() => handleOpenModal(aset, 'edit')} className="text-blue-600 hover:text-blue-800"><FiEdit size={18} /></button>
+                                        <button onClick={() => confirmDelete(aset)} className="text-red-600 hover:text-red-800"><FiTrash2 size={18} /></button>
+                                    </td>
                                 </tr>
-                             ))}
+                            ))}
                         </tbody>
                     </table>
-                </div>
+                )}
             </div>
 
-            <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={selectedAset ? "Edit Aset Desa" : "Tambah Aset Desa"}>
-                <form onSubmit={handleFormSubmit} className="space-y-4">
-                    <InputField label="Nama Aset" name="namaAset" value={formData.namaAset} onChange={handleFormChange} required />
-                    <InputField label="Kategori Aset" name="kategori" type="select" value={formData.kategori} onChange={handleFormChange}>
-                        <option value="">Pilih Kategori</option>
-                        {KATEGORI_ASET.map(k => <option key={k} value={k}>{k}</option>)}
-                    </InputField>
-                    <InputField label="Kode Barang" name="kodeBarang" value={formData.kodeBarang} onChange={handleFormChange} />
-                    <InputField label="Tanggal Perolehan" name="tanggalPerolehan" type="date" value={formData.tanggalPerolehan} onChange={handleFormChange} required />
-                    <InputField label="Nilai Perolehan (Rp)" name="nilaiPerolehan" type="number" value={formData.nilaiPerolehan} onChange={handleFormChange} required />
-                    <InputField label="Kondisi" name="kondisi" type="select" value={formData.kondisi} onChange={handleFormChange}>
-                        {KONDISI_ASET.map(k => <option key={k} value={k}>{k}</option>)}
-                    </InputField>
-                    <InputField label="Lokasi" name="lokasi" value={formData.lokasi} onChange={handleFormChange} />
-                    <InputField label="Keterangan" name="keterangan" type="textarea" value={formData.keterangan} onChange={handleFormChange} />
-                    {currentUser.role === 'admin_kecamatan' && (
-                         <InputField label="Desa" name="desa" type="select" value={formData.desa} onChange={handleFormChange} required>
-                            <option value="">Pilih Desa</option>
-                            {DESA_LIST.map(d => <option key={d} value={d}>{d}</option>)}
-                         </InputField>
-                    )}
-                    <div className="flex justify-end pt-4 border-t dark:border-gray-700">
-                        <button type="button" onClick={handleCloseModal} className="px-4 py-2 mr-2 bg-gray-300 dark:bg-gray-600 rounded-lg">Batal</button>
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg" disabled={isSubmitting}>{isSubmitting ? <Spinner size="sm"/> : "Simpan"}</button>
-                    </div>
-                </form>
+            <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={modalMode === 'add' ? 'Tambah Aset' : (modalMode === 'edit' ? 'Edit Aset' : 'Detail Aset')}>
+                {modalMode === 'view' ? <AsetDetailView aset={selectedAset} /> : (
+                    <form onSubmit={handleFormSubmit} className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <InputField label="Nama Aset" name="namaAset" value={formData.namaAset || ''} onChange={handleFormChange} required />
+                            <InputField label="Kategori" name="kategori" type="select" value={formData.kategori || ''} onChange={handleFormChange} required>
+                                <option value="">Pilih Kategori</option>
+                                {KATEGORI_ASET.map(k => <option key={k} value={k}>{k}</option>)}
+                            </InputField>
+                            <InputField label="Kode Barang" name="kodeBarang" value={formData.kodeBarang || ''} onChange={handleFormChange} />
+                            <InputField label="Tanggal Perolehan" name="tanggalPerolehan" type="date" value={formData.tanggalPerolehan || ''} onChange={handleFormChange} />
+                            <InputField label="Nilai Aset (Rp)" name="nilaiAset" type="number" value={formData.nilaiAset || ''} onChange={handleFormChange} />
+                            <InputField label="Kondisi" name="kondisi" type="select" value={formData.kondisi || ''} onChange={handleFormChange}>
+                                {KONDISI_ASET.map(k => <option key={k} value={k}>{k}</option>)}
+                            </InputField>
+                            {currentUser.role === 'admin_kecamatan' && (
+                                <InputField label="Desa" name="desa" type="select" value={formData.desa || ''} onChange={handleFormChange} required>
+                                    <option value="">Pilih Desa</option>
+                                    {DESA_LIST.map(d => <option key={d} value={d}>{d}</option>)}
+                                </InputField>
+                            )}
+                             <InputField label="Lokasi Fisik (Gedung/Ruangan)" name="lokasiFisik" value={formData.lokasiFisik || ''} onChange={handleFormChange} />
+                        </div>
+                        <InputField label="Keterangan" name="keterangan" type="textarea" value={formData.keterangan || ''} onChange={handleFormChange} />
+                        
+                        <div className="col-span-1 md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Lokasi Aset di Peta</label>
+                            <MapPicker
+                                key={selectedAset ? selectedAset.id : 'new'}
+                                initialPosition={
+                                    formData.latitude && formData.longitude
+                                        ? [formData.latitude, formData.longitude]
+                                        : null
+                                }
+                                onLocationChange={handleLocationChange}
+                            />
+                        </div>
+
+                        <div className="flex justify-end pt-4">
+                            <button type="button" onClick={handleCloseModal} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-md mr-2">Batal</button>
+                            <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-md flex items-center">
+                                {isSubmitting && <Spinner size="sm" />}
+                                Simpan
+                            </button>
+                        </div>
+                    </form>
+                )}
             </Modal>
-            
-            <ConfirmationModal
-                isOpen={isDeleteConfirmOpen}
-                onClose={() => setIsDeleteConfirmOpen(false)}
-                onConfirm={executeDelete}
-                isLoading={isSubmitting}
-                title="Konfirmasi Hapus Aset"
-                message={`Apakah Anda yakin ingin menghapus aset "${assetToDelete?.namaAset}"? Tindakan ini tidak dapat dibatalkan.`}
-            />
+
+            <ConfirmationModal isOpen={isDeleteConfirmOpen} onClose={() => setIsDeleteConfirmOpen(false)} onConfirm={executeDelete} isLoading={isSubmitting} title="Konfirmasi Hapus" message={`Yakin ingin menghapus aset ${itemToDelete?.namaAset}?`} />
         </div>
     );
 };

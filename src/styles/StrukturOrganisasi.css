@@ -1,0 +1,114 @@
+/* Container Utama Bagan */
+.org-chart-container {
+    padding: 1.5rem;
+    border-radius: 0.75rem;
+    background-color: #f9fafb; /* gray-50 */
+    border: 1px solid #e5e7eb; /* gray-200 */
+}
+
+.dark .org-chart-container {
+    background-color: #1f2937; /* gray-800 */
+    border-color: #374151; /* gray-700 */
+}
+
+/* Setiap Level/Baris dalam Struktur */
+.org-level {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    position: relative;
+    margin-bottom: 50px; /* Jarak vertikal antar level */
+}
+
+/* Menghubungkan Garis Vertikal */
+.org-level::before {
+    content: '';
+    position: absolute;
+    top: -25px; /* Setengah dari margin-bottom */
+    left: 50%;
+    width: 2px;
+    height: 25px; /* Garis ke atas */
+    background-color: #d1d5db; /* gray-300 */
+}
+.dark .org-level::before {
+    background-color: #4b5563; /* gray-600 */
+}
+
+/* Sembunyikan garis untuk level pertama (paling atas) */
+.org-level:first-child::before {
+    display: none;
+}
+
+/* Kartu/Node untuk Setiap Anggota */
+.org-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background-color: #ffffff;
+    border: 1px solid #d1d5db; /* gray-300 */
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+    min-width: 150px;
+    max-width: 200px;
+    margin: 0 1rem;
+    position: relative;
+    text-align: center;
+}
+
+.dark .org-node {
+    background-color: #374151; /* gray-700 */
+    border-color: #4b5563; /* gray-600 */
+}
+
+/* Garis Horizontal yang Menghubungkan Node di Level yang Sama */
+.org-node:not(:first-child)::before {
+    content: '';
+    position: absolute;
+    top: -26px; /* Sejajar dengan garis vertikal dari .org-level */
+    left: -2rem; /* Lebar margin + setengah dari node */
+    right: 50%;
+    border-top: 2px solid #d1d5db; /* gray-300 */
+}
+.dark .org-node:not(:first-child)::before {
+    border-top-color: #4b5563; /* gray-600 */
+}
+
+.org-node:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: -26px;
+    right: -2rem;
+    left: 50%;
+    border-top: 2px solid #d1d5db; /* gray-300 */
+}
+.dark .org-node:not(:last-child)::after {
+    border-top-color: #4b5563; /* gray-600 */
+}
+
+/* Khusus untuk node tunggal agar tidak ada garis horizontal */
+.org-node:only-child::before,
+.org-node:only-child::after {
+    display: none;
+}
+
+.org-node .name {
+    font-weight: 600;
+    color: #111827; /* gray-900 */
+}
+.dark .org-node .name {
+    color: #f9fafb; /* gray-50 */
+}
+
+.org-node .jabatan {
+    font-size: 0.75rem;
+    color: #4b5563; /* gray-600 */
+    background-color: #e5e7eb; /* gray-200 */
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    margin-top: 0.25rem;
+}
+.dark .org-node .jabatan {
+    color: #d1d5db; /* gray-300 */
+    background-color: #4b5563; /* gray-600 */
+}

@@ -18,15 +18,16 @@ service cloud.firestore {
     	return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.desa;
     }
     
+    // Digunakan untuk operasi UPDATE dan DELETE (memeriksa dokumen yang sudah ada)
     function isOwnerOfExistingDoc() {
     	return getUserDesa() == resource.data.desa;
     }
 
+    // Digunakan untuk operasi CREATE (memeriksa data baru yang akan ditulis)
     function isCreatingForOwnDesa() {
       return getUserDesa() == request.resource.data.desa;
     }
     
-    // Validasi untuk data perangkat yang lengkap
     function validatePerangkatData(data) {
       return data.nama is string && data.nama.size() > 0 &&
              data.desa is string && data.desa.size() > 0 &&
@@ -34,9 +35,6 @@ service cloud.firestore {
              (!('nik' in data) || data.nik is string && data.nik.size() <= 16);
     }
     
-    // --- PERBAIKAN: Fungsi validasi baru untuk mengizinkan pengosongan jabatan ---
-    // Fungsi ini memperbolehkan field data diri (nama, foto, ktp, dll.) menjadi null,
-    // selama field inti (desa, jabatan) tetap ada dan tidak berubah.
     function validateJabatanKosongUpdate(requestData, existingData) {
       return requestData.nama == null &&
              requestData.nik == null &&
@@ -60,15 +58,9 @@ service cloud.firestore {
       allow create: if isSignedIn() && 
                       (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa())) &&
                       validatePerangkatData(request.resource.data);
-                      
-      // --- PERBAIKAN: Memperbarui aturan `update` ---
-      // Izinkan pembaruan jika:
-      // 1. Ini adalah pembaruan data standar yang valid, ATAU
-      // 2. Ini adalah operasi "kosongkan jabatan" yang valid.
       allow update: if isSignedIn() && 
                       (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc())) &&
                       (validatePerangkatData(request.resource.data) || validateJabatanKosongUpdate(request.resource.data, resource.data));
-                      
       allow delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
     }
     
@@ -119,6 +111,12 @@ service cloud.firestore {
       allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
       allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
     }
+
+    match /anggaran/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
+      allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
+    }
     
     match /aset/{docId} {
       allow read: if isSignedIn();
@@ -128,7 +126,8 @@ service cloud.firestore {
     
     match /efile/{docId} {
       allow read: if isSignedIn();
-      allow create, update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
+      allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
+      allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
     }
     
     match /kegiatan/{docId} {
@@ -148,4 +147,3 @@ service cloud.firestore {
     }
   }
 }
-

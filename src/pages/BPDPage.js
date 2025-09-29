@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
-import { collection, query, where, writeBatch, getDoc, doc } from 'firebase/firestore';
+import { collection, query, where, writeBatch, getDoc, doc, getDocs } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 import Modal from '../components/common/Modal';
@@ -15,12 +15,12 @@ import ConfirmationModal from '../components/common/ConfirmationModal';
 import { DESA_LIST } from '../utils/constants';
 import Pagination from '../components/common/Pagination';
 
+// Daftar statis & Komponen Detail tetap sama
 const JABATAN_BPD_LIST = ["Ketua", "Wakil Ketua", "Sekretaris", "Anggota"];
 const PENDIDIKAN_LIST = ["SD", "SLTP", "SLTA", "D1", "D2", "D3", "S1", "S2", "S3"];
 const AGAMA_LIST = ["Islam", "Kristen", "Katolik", "Hindu", "Budha", "Konghucu"];
 const JENIS_KELAMIN_LIST = ["Laki-laki", "Perempuan"];
 
-// Komponen baru untuk menampilkan detail dalam mode "lihat"
 const BpdDetailView = ({ bpd }) => {
     if (!bpd) return null;
 
@@ -79,12 +79,18 @@ const BpdDetailView = ({ bpd }) => {
     );
 };
 
+
 const BPDPage = () => {
     const { currentUser } = useAuth();
     const { showNotification } = useNotification();
-    const { data: allBpd, loading, addItem, updateItem, deleteItem } = useFirestoreCollection('bpd', { orderByField: 'nama' });
+    const { data: allBpd, loading, addItem, updateItem, deleteItem } = useFirestoreCollection('bpd');
 
-    const [modalMode, setModalMode] = useState(null); // 'add', 'edit', 'view'
+    // --- State Baru untuk data tambahan ---
+    const [allPerangkat, setAllPerangkat] = useState([]);
+    const [exportConfig, setExportConfig] = useState(null);
+    const [loadingExtras, setLoadingExtras] = useState(true);
+
+    const [modalMode, setModalMode] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedBpd, setSelectedBpd] = useState(null);
     const [formData, setFormData] = useState({});
@@ -104,6 +110,36 @@ const BPDPage = () => {
             setCurrentDesa(currentUser.desa);
         }
     }, [currentUser]);
+
+    // --- useEffect BARU untuk mengambil data Perangkat dan Konfigurasi Ekspor ---
+    useEffect(() => {
+        const fetchExtraData = async () => {
+            setLoadingExtras(true);
+            try {
+                // Fetch export config for Camat's signature
+                const exportRef = doc(db, 'settings', 'exportConfig');
+                const exportSnap = await getDoc(exportRef);
+                if (exportSnap.exists()) {
+                    setExportConfig(exportSnap.data());
+                }
+
+                // Fetch all 'perangkat' data to find Kepala Desa
+                const perangkatQuery = query(collection(db, 'perangkat'));
+                const perangkatSnapshot = await getDocs(perangkatQuery);
+                const perangkatList = perangkatSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setAllPerangkat(perangkatList);
+
+            } catch (error) {
+                console.error("Error fetching extra data for export:", error);
+                showNotification("Gagal memuat data pendukung untuk ekspor.", "error");
+            } finally {
+                setLoadingExtras(false);
+            }
+        };
+
+        fetchExtraData();
+    }, [showNotification]);
+
 
     useEffect(() => {
         const fetchUploadConfig = async () => {
@@ -185,7 +221,7 @@ const BPDPage = () => {
         }
     };
 
-    const handleFileUpload = (e) => {
+   const handleFileUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
         if (!uploadConfig || Object.values(uploadConfig).every(v => !v)) {
@@ -278,15 +314,24 @@ const BPDPage = () => {
         return data;
     }, [allBpd, searchTerm, currentUser, currentDesa, periodeFilter]);
     
+    // --- FUNGSI EKSPOR DIPERBARUI ---
     const handleExportXLSX = () => {
-        const dataToExport = filteredBpd;
+        const dataToExport = currentUser.role === 'admin_kecamatan' ? allBpd : filteredBpd;
         if (dataToExport.length === 0) {
-            showNotification(`Tidak ada data untuk diekspor di Desa ${currentDesa}.`, "warning");
+            showNotification("Tidak ada data untuk diekspor.", "warning");
             return;
         }
-        const desaName = currentUser.role === 'admin_desa' ? currentUser.desa : currentDesa;
-        const groupedData = { [desaName]: dataToExport };
-        generateBpdXLSX(groupedData, periodeFilter);
+        
+        const exportDetails = {
+            bpdData: dataToExport,
+            role: currentUser.role,
+            desa: currentUser.role === 'admin_desa' ? currentUser.desa : 'all',
+            periodeFilter: periodeFilter,
+            exportConfig: exportConfig,
+            allPerangkat: allPerangkat
+        };
+
+        generateBpdXLSX(exportDetails);
     };
     
     const getModalTitle = () => {
@@ -295,7 +340,7 @@ const BPDPage = () => {
         return 'Tambah Data BPD';
     };
 
-    if (loading) return <Spinner size="lg" />;
+    if (loading || loadingExtras) return <Spinner size="lg" />;
 
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">

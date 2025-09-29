@@ -1,6 +1,7 @@
 @import 'tailwindcss/base';
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
+@import './styles/Highlight.css'; /* Tambahkan baris ini */
 
 body {
   margin: 0;
@@ -94,4 +95,3 @@ code {
 .table-modern tbody tr:hover {
     @apply bg-blue-50 dark:bg-gray-700/50;
 }
-

@@ -1,12 +1,17 @@
 import React from 'react';
 import OrganisasiCrudPage from '../components/common/OrganisasiCrudPage';
-// PERBAIKAN: Mengimpor KARANG_TARUNA_CONFIG secara spesifik
 import { KARANG_TARUNA_CONFIG } from '../utils/constants';
+import { useFirestoreCollection } from '../hooks/useFirestoreCollection';
+import Spinner from '../components/common/Spinner';
 
 const KarangTarunaPage = () => {
-    // PERBAIKAN: Menggunakan KARANG_TARUNA_CONFIG sebagai prop
-    return <OrganisasiCrudPage config={KARANG_TARUNA_CONFIG} />;
+    const { data: allPerangkat, loading: perangkatLoading } = useFirestoreCollection('perangkat');
+    
+    if (perangkatLoading) {
+        return <div className="flex justify-center items-center h-full"><Spinner size="lg" /></div>;
+    }
+
+    return <OrganisasiCrudPage config={KARANG_TARUNA_CONFIG} allPerangkat={allPerangkat} />;
 };
 
 export default KarangTarunaPage;
-

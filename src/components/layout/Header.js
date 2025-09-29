@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect, Fragment } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { FiMenu, FiMoon, FiSun, FiLogOut, FiBell, FiFileText } from 'react-icons/fi';
 
+// Komponen Notifikasi yang Ditingkatkan
 const NotificationBell = () => {
     const { notifications, unreadCount, markNotificationAsRead } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
@@ -10,15 +11,18 @@ const NotificationBell = () => {
     const bellRef = useRef(null);
 
     const handleNotificationClick = (notification) => {
+        // Tandai sebagai sudah dibaca saat diklik
         if (!notification.readStatus) {
             markNotificationAsRead(notification.id);
         }
+        // Arahkan ke link jika ada
         if (notification.link) {
             navigate(notification.link);
         }
-        setIsOpen(false);
+        setIsOpen(false); // Tutup dropdown setelah diklik
     };
 
+    // Menutup dropdown jika pengguna mengklik di luar area notifikasi
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (bellRef.current && !bellRef.current.contains(event.target)) {
@@ -65,6 +69,7 @@ const NotificationBell = () => {
         </div>
     );
 };
+
 
 const Header = ({ pageTitle, onMenuClick }) => {
     const { currentUser, logout, theme, toggleTheme } = useAuth();

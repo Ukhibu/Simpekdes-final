@@ -2,10 +2,11 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useBranding } from '../../context/BrandingContext';
-import { 
-    FiGrid, FiUsers, FiFileText, FiUserPlus, FiSettings, 
-    FiBarChart2, FiArrowLeft, FiBriefcase, FiBookOpen, 
-    FiDollarSign, FiArchive, FiShare2, FiAward, FiHome, FiHeart, FiActivity, FiCalendar // FiCalendar ditambahkan
+import {
+    FiGrid, FiUsers, FiFileText, FiUserPlus, FiSettings,
+    FiBarChart2, FiArrowLeft, FiBriefcase, FiBookOpen,
+    FiDollarSign, FiArchive, FiShare2, FiAward, FiHome, FiHeart, FiActivity, FiCalendar,
+    FiClipboard, FiEdit, FiMap // <-- Impor baru
 } from 'react-icons/fi';
 
 const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
@@ -14,11 +15,11 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
 
     const navLinkClasses = ({ isActive }) =>
         `flex items-center px-4 py-3 transition-colors duration-200 transform rounded-md ${
-            isActive 
-            ? 'bg-blue-600 text-white' 
+            isActive
+            ? 'bg-blue-600 text-white'
             : 'text-gray-200 hover:bg-gray-700 hover:text-white'
         }`;
-    
+
     // --- MENU KOMPONEN UNTUK SETIAP MODUL ---
 
     const PerangkatMenu = () => (
@@ -30,7 +31,6 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
             <NavLink to="/app/perangkat" className={navLinkClasses}>
                 <FiUsers className="w-5 h-5 mr-3" /><span>Data Perangkat</span>
             </NavLink>
-            {/* Link Kalender Kegiatan ditambahkan di sini */}
             <NavLink to="/app/kalender-kegiatan" className={navLinkClasses}>
                 <FiCalendar className="w-5 h-5 mr-3" /><span>Kalender Kegiatan</span>
             </NavLink>
@@ -54,8 +54,6 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
             )}
         </>
     );
-
-    // --- MENU FOKUS UNTUK SETIAP SUB-MODUL ORGANISASI ---
 
     const BpdMenu = () => (
         <>
@@ -88,7 +86,7 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
             </NavLink>
         </>
     );
-    
+
     const PkkMenu = () => (
         <>
             <div className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">PKK</div>
@@ -133,6 +131,7 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
 
     const EFileMenu = () => (
         <>
+            <div className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">E-File</div>
             <NavLink to="/app/efile" end className={navLinkClasses}>
                 <FiGrid className="w-5 h-5 mr-3" /><span>Dashboard E-File</span>
             </NavLink>
@@ -144,21 +143,41 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
 
     const KeuanganMenu = () => (
         <>
+            <div className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">Keuangan Desa</div>
              <NavLink to="/app/keuangan" end className={navLinkClasses}>
-                <FiDollarSign className="w-5 h-5 mr-3" /><span>APBDes</span>
+                <FiGrid className="w-5 h-5 mr-3" /><span>Dashboard Keuangan</span>
+            </NavLink>
+            {currentUser?.role === 'admin_desa' && (
+                <NavLink to="/app/keuangan/penganggaran" className={navLinkClasses}>
+                    <FiClipboard className="w-5 h-5 mr-3" /><span>Penganggaran (APBDes)</span>
+                </NavLink>
+            )}
+            <NavLink to="/app/keuangan/penatausahaan" className={navLinkClasses}>
+                <FiEdit className="w-5 h-5 mr-3" /><span>Penatausahaan (BKU)</span>
+            </NavLink>
+            <NavLink to="/app/keuangan/laporan" className={navLinkClasses}>
+                <FiFileText className="w-5 h-5 mr-3" /><span>Laporan Realisasi</span>
             </NavLink>
         </>
     );
-
+    
     const AsetMenu = () => (
          <>
+            <div className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">Aset Desa</div>
              <NavLink to="/app/aset" end className={navLinkClasses}>
-                <FiArchive className="w-5 h-5 mr-3" /><span>Manajemen Aset</span>
+                <FiGrid className="w-5 h-5 mr-3" /><span>Dashboard Aset</span>
+            </NavLink>
+            <NavLink to="/app/aset/manajemen" className={navLinkClasses}>
+                <FiArchive className="w-5 h-5 mr-3" /><span>Manajemen Aset (KIB)</span>
+            </NavLink>
+             {/* --- Tautan Baru --- */}
+            <NavLink to="/app/aset/peta" className={navLinkClasses}>
+                <FiMap className="w-5 h-5 mr-3" /><span>Peta Aset</span>
             </NavLink>
         </>
     );
 
-    
+
     // --- LOGIKA UTAMA RENDER SIDEBAR ---
 
     const renderCurrentMenu = () => {
@@ -169,16 +188,16 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
                 case 'pkk': return <PkkMenu />;
                 case 'karang_taruna': return <KarangTarunaMenu />;
                 case 'rt_rw': return <RtRwMenu />;
-                default: return null; // Tidak ada menu jika tidak di sub-modul spesifik
+                default: return null;
             }
         }
-        
+
         switch (currentModule) {
             case 'perangkat': return <PerangkatMenu />;
             case 'efile': return <EFileMenu />;
             case 'keuangan': return <KeuanganMenu />;
             case 'aset': return <AsetMenu />;
-            default: return <PerangkatMenu />; // Fallback
+            default: return <PerangkatMenu />;
         }
     };
 

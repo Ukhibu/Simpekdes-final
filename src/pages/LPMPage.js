@@ -1,12 +1,18 @@
 import React from 'react';
 import OrganisasiCrudPage from '../components/common/OrganisasiCrudPage';
-// PERBAIKAN: Mengimpor LPM_CONFIG secara spesifik
 import { LPM_CONFIG } from '../utils/constants';
+import { useFirestoreCollection } from '../hooks/useFirestoreCollection';
+import Spinner from '../components/common/Spinner';
 
 const LPMPage = () => {
-    // PERBAIKAN: Menggunakan LPM_CONFIG sebagai prop
-    return <OrganisasiCrudPage config={LPM_CONFIG} />;
+    // Ambil data perangkat untuk tanda tangan Kepala Desa saat ekspor
+    const { data: allPerangkat, loading: perangkatLoading } = useFirestoreCollection('perangkat');
+    
+    if (perangkatLoading) {
+        return <div className="flex justify-center items-center h-full"><Spinner size="lg" /></div>;
+    }
+
+    return <OrganisasiCrudPage config={LPM_CONFIG} allPerangkat={allPerangkat} />;
 };
 
 export default LPMPage;
-

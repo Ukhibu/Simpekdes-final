@@ -1,0 +1,69 @@
+/*
+  Styling baru untuk Pagination.js, diadaptasi dari contoh Anda.
+  File ini harus dibuat di src/components/common/Pagination.css
+*/
+.pagination-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-top: 1.5rem;
+  padding: 0.75rem;
+  background-color: #fff;
+  border-radius: 9999px; /* Pill shape */
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+}
+
+.dark .pagination-wrapper {
+  background-color: #1f2937; /* gray-800 */
+  border-color: #374151; /* gray-700 */
+}
+
+.pagination-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.indicator {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background-color: #3b82f6; /* blue-500 */
+  transition: all 0.4s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+  z-index: 1;
+}
+
+.dark .indicator {
+    background-color: #2563eb; /* blue-600 */
+}
+
+.pag-link {
+  margin: 0;
+  padding: 0;
+  width: 2.5rem; /* 40px */
+  height: 2.5rem; /* 40px */
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+  color: #4b5563; /* gray-600 */
+  transition: color 0.3s ease;
+  position: relative;
+  z-index: 2;
+}
+
+.dark .pag-link {
+  color: #d1d5db; /* gray-300 */
+}
+
+.pag-link.active {
+  color: #ffffff;
+}
+

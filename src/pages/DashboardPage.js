@@ -7,24 +7,22 @@ import Spinner from '../components/common/Spinner';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { FiUsers, FiCheckCircle, FiAlertCircle, FiEdit, FiMapPin, FiCalendar, FiBriefcase } from 'react-icons/fi';
-
-// Komponen Chart yang sudah ada tetap digunakan
 import PerangkatDesaChart from '../components/dashboard/PerangkatDesaChart';
 
 // --- Helper Functions ---
 
 const isDataLengkap = (perangkat) => {
     const requiredFields = [
-        'nama', 'jabatan', 'nik', 'tempat_lahir', 'tgl_lahir', 
-        'pendidikan', 'no_sk', 'tgl_sk', 'tgl_pelantikan', 
+        'nama', 'jabatan', 'nik', 'tempat_lahir', 'tgl_lahir',
+        'pendidikan', 'no_sk', 'tgl_sk', 'tgl_pelantikan',
         'foto_url', 'ktp_url'
     ];
     return requiredFields.every(field => perangkat[field] && String(perangkat[field]).trim() !== '');
 };
 
 const DESA_LIST = [
-    "Punggelan", "Petuguran", "Karangsari", "Jembangan", "Tanjungtirta", 
-    "Sawangan", "Bondolharjo", "Danakerta", "Badakarya", "Tribuana", 
+    "Punggelan", "Petuguran", "Karangsari", "Jembangan", "Tanjungtirta",
+    "Sawangan", "Bondolharjo", "Danakerta", "Badakarya", "Tribuana",
     "Sambong", "Klapa", "Kecepit", "Mlaya", "Sidarata", "Purwasana", "Tlaga"
 ];
 
@@ -115,33 +113,36 @@ const JabatanChart = ({ data }) => {
     }
 
     return (
-        <>
+        <div className="h-full flex flex-col">
             <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">
                 Komposisi Jabatan Aparatur
             </h2>
-            <ResponsiveContainer width="100%" height={320}>
-                <PieChart>
-                    <Pie
-                        data={chartData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        outerRadius={100}
-                        fill="#8884d8"
-                        dataKey="value"
-                        nameKey="name"
-                    >
-                        {chartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                    </Pie>
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend iconSize={12} wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
-                </PieChart>
-            </ResponsiveContainer>
-        </>
+            <div className="flex-grow">
+                <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                        <Pie
+                            data={chartData}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            outerRadius={100}
+                            fill="#8884d8"
+                            dataKey="value"
+                            nameKey="name"
+                        >
+                            {chartData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                        </Pie>
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend iconSize={12} wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
+                    </PieChart>
+                </ResponsiveContainer>
+            </div>
+        </div>
     );
 };
+
 
 // --- Komponen Utama Dashboard ---
 const DashboardPage = () => {
@@ -196,7 +197,7 @@ const DashboardPage = () => {
     }, [currentUser, dateRange]);
 
     const memoizedData = useMemo(() => {
-        if (!currentUser) return { stats: {}, incompleteList: [], barChartData: null, doughnutChartData: { datasets: [] }, ageChartData: { datasets: [] }, rekapPerDesa: [] };
+        if (!currentUser) return { stats: {}, incompleteList: [], kelengkapanChartData: { datasets: [] }, ageChartData: { datasets: [] }, rekapPerDesa: [], pendidikanDoughnutData: { datasets: [] } };
 
         const totalPerangkat = perangkatData.length;
         const lengkap = perangkatData.filter(isDataLengkap).length;
@@ -204,13 +205,13 @@ const DashboardPage = () => {
         const listBelumLengkap = perangkatData.filter(p => !isDataLengkap(p));
         const totalBpd = bpdData.length;
 
-        let barData = null;
         const rekapData = [];
+        let kelengkapanData = {};
 
         if (currentUser.role === 'admin_kecamatan') {
             const dataLengkapPerDesa = DESA_LIST.map(desa => perangkatData.filter(p => p.desa === desa && isDataLengkap(p)).length);
             const dataBelumLengkapPerDesa = DESA_LIST.map(desa => perangkatData.filter(p => p.desa === desa && !isDataLengkap(p)).length);
-            barData = {
+            kelengkapanData = {
                 labels: DESA_LIST,
                 datasets: [
                     { label: 'Data Lengkap', data: dataLengkapPerDesa, backgroundColor: '#22C55E', borderColor: '#16A34A' },
@@ -231,14 +232,15 @@ const DashboardPage = () => {
             pendidikanMap.set(pendidikan, (pendidikanMap.get(pendidikan) || 0) + 1);
         });
 
-        const doughnutData = {
-            labels: [...pendidikanMap.keys()],
-            datasets: [{
+        const pendidikanDoughnutData = {
+             labels: [...pendidikanMap.keys()],
+             datasets: [{
+                label: 'Jumlah Aparatur',
                 data: [...pendidikanMap.values()],
                 backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6B7280'],
                 hoverOffset: 4
-            }]
-        };
+             }]
+        }
         
         const ageGroups = { '< 30': 0, '30-40': 0, '41-50': 0, '> 50': 0, 'N/A': 0 };
         perangkatData.forEach(p => {
@@ -263,11 +265,11 @@ const DashboardPage = () => {
 
         return {
             stats: { totalPerangkat, totalBpd, lengkap, belumLengkap },
-            barChartData: barData,
-            doughnutChartData: doughnutData,
+            kelengkapanChartData: kelengkapanData,
             ageChartData: ageData,
             incompleteList: listBelumLengkap,
-            rekapPerDesa: rekapData
+            rekapPerDesa: rekapData,
+            pendidikanDoughnutData: pendidikanDoughnutData
         };
     }, [perangkatData, bpdData, currentUser]);
     
@@ -305,38 +307,72 @@ const DashboardPage = () => {
                 <StatCard icon={<FiCheckCircle size={28} />} title="Data Lengkap" value={memoizedData.stats.lengkap} color="green" />
                 <StatCard icon={<FiAlertCircle size={28} />} title="Belum Lengkap" value={memoizedData.stats.belumLengkap} color="red" />
             </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-                <div className="lg:col-span-3 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
-                    {currentUser?.role === 'admin_kecamatan' ? (
-                        <PerangkatDesaChart data={memoizedData.rekapPerDesa} />
-                    ) : (
-                        <JabatanChart data={perangkatData} />
-                    )}
-                </div>
-                <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
-                     <JabatanChart data={perangkatData} />
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
-                    <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">Demografi Usia Aparatur</h2>
-                     <Bar options={{ responsive: true, plugins: { legend: { display: false } } }} data={memoizedData.ageChartData} />
-                </div>
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md flex flex-col">
-                    <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">Statistik Pendidikan</h2>
-                    <div className="flex-grow flex items-center justify-center h-80">
-                        <Doughnut data={memoizedData.doughnutChartData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: document.documentElement.classList.contains('dark') ? '#9CA3AF' : '#4B5563' } } } }} />
+            
+            {/* Tampilan Dashboard akan berbeda tergantung peran pengguna */}
+            {currentUser.role === 'admin_kecamatan' ? (
+                // --- TAMPILAN UNTUK ADMIN KECAMATAN ---
+                <>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md min-h-[400px]">
+                            <PerangkatDesaChart data={memoizedData.rekapPerDesa} loading={loading} />
+                        </div>
+                        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md min-h-[400px]">
+                            <JabatanChart data={perangkatData} />
+                        </div>
                     </div>
-                </div>
-            </div>
-
-            {currentUser?.role === 'admin_kecamatan' && memoizedData.barChartData && (
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
-                    <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">Rekapitulasi Kelengkapan Data per Desa</h2>
-                    <Line options={{ responsive: true, plugins: { legend: { position: 'top', labels: { color: document.documentElement.classList.contains('dark') ? '#9CA3AF' : '#4B5563' } } }, scales: { y: { beginAtZero: true, ticks: { color: document.documentElement.classList.contains('dark') ? '#9CA3AF' : '#4B5563'} }, x: { ticks: { color: document.documentElement.classList.contains('dark') ? '#9CA3AF' : '#4B5563'} } } }} data={memoizedData.barChartData} />
-                </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md min-h-[400px]">
+                            <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">Demografi Usia Aparatur</h2>
+                            <div className="h-80"><Bar options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }} data={memoizedData.ageChartData} /></div>
+                        </div>
+                        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md min-h-[400px] flex flex-col">
+                            <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">Tingkat Pendidikan Aparatur</h2>
+                            <div className="relative h-80">
+                                <Doughnut data={memoizedData.pendidikanDoughnutData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: document.documentElement.classList.contains('dark') ? '#9CA3AF' : '#4B5563' } } } }} />
+                            </div>
+                        </div>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
+                        <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">Rekapitulasi Kelengkapan Data per Desa</h2>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                           <div className="relative h-[350px]">
+                                <h3 className="text-lg font-semibold text-center mb-2 dark:text-gray-300">Diagram Batang</h3>
+                                <Bar 
+                                    options={{ responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true, ticks: { color: '#9CA3AF'} }, y: { stacked: true, beginAtZero: true, ticks: { color: '#9CA3AF'} } }, plugins: { legend: { position: 'top', labels: { color: document.documentElement.classList.contains('dark') ? '#9CA3AF' : '#4B5563' } } } }} 
+                                    data={memoizedData.kelengkapanChartData} 
+                                />
+                           </div>
+                           <div className="relative h-[350px]">
+                                <h3 className="text-lg font-semibold text-center mb-2 dark:text-gray-300">Diagram Kurva</h3>
+                                <Line
+                                    options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top', labels: { color: document.documentElement.classList.contains('dark') ? '#9CA3AF' : '#4B5563' } } }, scales: { y: { beginAtZero: true, ticks: { color: document.documentElement.classList.contains('dark') ? '#9CA3AF' : '#4B5563'} }, x: { ticks: { color: document.documentElement.classList.contains('dark') ? '#9CA3AF' : '#4B5563'} } } }}
+                                    data={memoizedData.kelengkapanChartData}
+                                />
+                           </div>
+                        </div>
+                    </div>
+                </>
+            ) : (
+                // --- TAMPILAN UNTUK ADMIN DESA ---
+                <>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md min-h-[400px]">
+                            <JabatanChart data={perangkatData} />
+                        </div>
+                        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md min-h-[400px] flex flex-col">
+                            <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">Tingkat Pendidikan Aparatur</h2>
+                            <div className="relative h-80">
+                                <Doughnut data={memoizedData.pendidikanDoughnutData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: document.documentElement.classList.contains('dark') ? '#9CA3AF' : '#4B5563' } } } }} />
+                            </div>
+                        </div>
+                    </div>
+                     <div className="grid grid-cols-1">
+                        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md min-h-[400px]">
+                            <h2 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">Demografi Usia Aparatur</h2>
+                             <div className="h-80"><Bar options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }} data={memoizedData.ageChartData} /></div>
+                        </div>
+                    </div>
+                </>
             )}
 
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">

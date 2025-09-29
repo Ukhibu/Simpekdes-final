@@ -12,9 +12,10 @@ import { FiEdit, FiSearch, FiUpload, FiDownload, FiPlus, FiEye, FiUserX, FiTrash
 import * as XLSX from 'xlsx';
 import { generatePerangkatXLSX } from '../utils/generatePerangkatXLSX';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
-import { uploadImageToCloudinary } from '../utils/imageUploader'; // Diperbaiki: Menggunakan nama fungsi yang benar
-import { DESA_LIST } from '../utils/constants'; 
-import Pagination from '../components/common/Pagination'; 
+import { uploadImageToCloudinary } from '../utils/imageUploader';
+import { DESA_LIST } from '../utils/constants';
+import Pagination from '../components/common/Pagination';
+import { createNotificationForAdmins } from '../utils/notificationService'; // <-- Impor baru
 
 // --- Daftar statis & Komponen Detail ---
 const JABATAN_LIST = [ "Kepala Desa", "Pj. Kepala Desa", "Sekretaris Desa", "Kasi Pemerintahan", "Kasi Kesejahteraan", "Kasi Pelayanan", "Kaur Tata Usaha dan Umum", "Kaur Keuangan", "Kaur Perencanaan", "Kepala Dusun", "Staf Desa" ];
@@ -108,6 +109,24 @@ const Perangkat = () => {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const location = useLocation();
+
+    // --- BARU: State dan Effect untuk menyorot baris dari notifikasi ---
+    const [highlightedRow, setHighlightedRow] = useState(null);
+    useEffect(() => {
+        const highlightId = searchParams.get('highlight');
+        if (highlightId) {
+            setHighlightedRow(highlightId);
+            // Secara otomatis pindah ke desa yang relevan jika admin kecamatan
+            if (currentUser.role === 'admin_kecamatan') {
+                const targetDesa = searchParams.get('desa');
+                if (targetDesa) {
+                    setCurrentDesa(targetDesa);
+                }
+            }
+            const timer = setTimeout(() => setHighlightedRow(null), 3000); // Hapus sorotan setelah 3 detik
+            return () => clearTimeout(timer);
+        }
+    }, [searchParams, currentUser.role]);
     
     useEffect(() => {
         if (currentUser && currentUser.role === 'admin_desa') {
@@ -311,17 +330,30 @@ const Perangkat = () => {
             if (fotoProfilUrl) dataToSave.foto_url = fotoProfilUrl;
             if (fotoKtpUrl) dataToSave.ktp_url = fotoKtpUrl;
             
+            let docId = selectedPerangkat ? selectedPerangkat.id : null;
+            
             if (selectedPerangkat) {
                 await updateItem(selectedPerangkat.id, dataToSave);
             } else {
                 const existingDoc = await findJabatanKosongAtauPurna(dataToSave.jabatan, dataToSave.desa);
                 if (existingDoc) {
                     await updateItem(existingDoc.id, dataToSave);
+                    docId = existingDoc.id; // Gunakan ID dokumen yang ada
                     showNotification(`Formasi jabatan ${dataToSave.jabatan} yang kosong/purna telah diisi.`, 'info');
                 } else {
-                    await addItem(dataToSave);
+                    const newDoc = await addItem(dataToSave);
+                    docId = newDoc.id; // Gunakan ID dari dokumen yang baru dibuat
                 }
             }
+            
+            // --- BARU: Pemicu Notifikasi ---
+            if (currentUser.role === 'admin_desa' && docId) {
+                const action = selectedPerangkat ? 'memperbarui' : 'menambahkan';
+                const message = `Admin Desa ${currentUser.desa} telah ${action} data perangkat: "${dataToSave.nama}".`;
+                const link = `/app/perangkat?desa=${currentUser.desa}&highlight=${docId}`;
+                await createNotificationForAdmins(message, link);
+            }
+
             handleCloseModal();
         } catch (error) {
             showNotification(error.message, 'error');
@@ -564,7 +596,7 @@ const Perangkat = () => {
                 ) : (
                     <>
                         <Button onClick={toggleSelectionMode} variant="danger"><FiCheckSquare/> Pilih Data</Button>
-                        <label className="btn btn-warning"><FiUpload className="mr-2"/> 
+                        <label className="btn btn-warning cursor-pointer"><FiUpload className="mr-2"/> 
                             <input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls, .csv" disabled={isUploading}/>
                             {isUploading ? 'Mengimpor...' : 'Impor Data'}
                         </label>
@@ -591,25 +623,25 @@ const Perangkat = () => {
                             const isPurna = p.akhir_jabatan && new Date(p.akhir_jabatan) < new Date();
                             const isKosong = !p.nama && !p.nik;
                             return (
-                                <tr key={p.id}>
-                                {isSelectionMode && (<td className="p-4"><input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => handleSelect(p.id)} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"/></td>)}
-                                <td className="font-medium flex items-center gap-3 text-gray-900 dark:text-white">
-                                    {isKosong ? (<div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 flex items-center justify-center rounded-full text-gray-500"><FiBriefcase /></div>
-                                    ) : (<img src={p.foto_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.nama || 'X')}&background=E2E8F0&color=4A5568`} alt={p.nama || 'Jabatan Kosong'} className="w-10 h-10 rounded-full object-cover"/>)}
-                                    <div><p className="font-semibold">{p.nama || '(Jabatan Kosong)'}</p><p className="text-xs text-gray-500 dark:text-gray-400">{p.nik || 'NIK belum diisi'}</p></div>
-                                </td>
-                                <td>{p.jabatan}</td>
-                                {currentUser.role === 'admin_kecamatan' && <td>{p.desa}</td>}
-                                <td>
-                                    {isPurna ? (<span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300">Purna Tugas</span>
-                                    ) : isKosong ? (<span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">Jabatan Kosong</span>
-                                    ) : (<span className={`px-2 py-1 text-xs font-medium rounded-full ${isDataLengkap(p) ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'}`}>{isDataLengkap(p) ? 'Lengkap' : 'Belum Lengkap'}</span>)}
-                                </td>
-                                <td className="flex space-x-3">
-                                    <button onClick={() => handleOpenModal(p, 'view')} className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" title="Lihat Detail"><FiEye /></button>
-                                    <button onClick={() => handleOpenModal(p, 'edit')} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300" title="Edit"><FiEdit /></button>
-                                    <button onClick={() => { setSelectedPerangkat(p); setShowDeleteConfirm(true); }} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Hapus"><FiTrash2 /></button>
-                                </td>
+                                <tr key={p.id} className={highlightedRow === p.id ? 'highlight-row' : ''}>
+                                    {isSelectionMode && (<td className="p-4"><input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => handleSelect(p.id)} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"/></td>)}
+                                    <td className="font-medium flex items-center gap-3 text-gray-900 dark:text-white">
+                                        {isKosong ? (<div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 flex items-center justify-center rounded-full text-gray-500"><FiBriefcase /></div>
+                                        ) : (<img src={p.foto_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.nama || 'X')}&background=E2E8F0&color=4A5568`} alt={p.nama || 'Jabatan Kosong'} className="w-10 h-10 rounded-full object-cover"/>)}
+                                        <div><p className="font-semibold">{p.nama || '(Jabatan Kosong)'}</p><p className="text-xs text-gray-500 dark:text-gray-400">{p.nik || 'NIK belum diisi'}</p></div>
+                                    </td>
+                                    <td>{p.jabatan}</td>
+                                    {currentUser.role === 'admin_kecamatan' && <td>{p.desa}</td>}
+                                    <td>
+                                        {isPurna ? (<span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300">Purna Tugas</span>
+                                        ) : isKosong ? (<span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">Jabatan Kosong</span>
+                                        ) : (<span className={`px-2 py-1 text-xs font-medium rounded-full ${isDataLengkap(p) ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'}`}>{isDataLengkap(p) ? 'Lengkap' : 'Belum Lengkap'}</span>)}
+                                    </td>
+                                    <td className="flex space-x-3">
+                                        <button onClick={() => handleOpenModal(p, 'view')} className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" title="Lihat Detail"><FiEye /></button>
+                                        <button onClick={() => handleOpenModal(p, 'edit')} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300" title="Edit"><FiEdit /></button>
+                                        <button onClick={() => { setSelectedPerangkat(p); setShowDeleteConfirm(true); }} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Hapus"><FiTrash2 /></button>
+                                    </td>
                                 </tr>
                             )
                         }) : (<tr><td colSpan={isSelectionMode ? 6 : (currentUser.role === 'admin_kecamatan' ? 5 : 4)} className="text-center py-10 text-gray-500 dark:text-gray-400">Tidak ada data untuk ditampilkan di Desa {currentDesa}.</td></tr>)}

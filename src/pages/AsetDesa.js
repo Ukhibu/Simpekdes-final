@@ -3,7 +3,7 @@ import { db, storage } from '../firebase';
 import { collection, doc, writeBatch, getDocs, query, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { useAuth } from '../context/AuthContext';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useFirestoreCollection } from '../hooks/useFirestoreCollection';
 import { useNotification } from '../context/NotificationContext';
 
@@ -62,6 +62,7 @@ const AsetDesa = () => {
     const [itemToDelete, setItemToDelete] = useState(null);
     const [filters, setFilters] = useState({ searchTerm: '', kategori: 'all', desa: 'all' });
     const [searchParams, setSearchParams] = useSearchParams();
+    const navigate = useNavigate(); // useNavigate ditambahkan
 
     useEffect(() => {
         if (currentUser.role === 'admin_desa') {
@@ -69,12 +70,18 @@ const AsetDesa = () => {
         }
     }, [currentUser]);
 
+    // --- PERBAIKAN: Logika untuk menangani parameter URL 'view' dan 'edit' ---
     useEffect(() => {
+        const viewId = searchParams.get('view');
         const editId = searchParams.get('edit');
-        if (editId && allAset.length > 0) {
-            const asetToEdit = allAset.find(a => a.id === editId);
-            if (asetToEdit) {
-                handleOpenModal(asetToEdit, 'edit');
+        const assetId = viewId || editId;
+
+        if (assetId && allAset.length > 0) {
+            const asetToShow = allAset.find(a => a.id === assetId);
+            if (asetToShow) {
+                const mode = viewId ? 'view' : 'edit';
+                handleOpenModal(asetToShow, mode);
+                // Hapus parameter dari URL setelah modal dibuka
                 setSearchParams({}, { replace: true });
             }
         }
@@ -98,7 +105,6 @@ const AsetDesa = () => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-    // --- PERBAIKAN: Menggunakan useCallback ---
     const handleLocationChange = useCallback((location) => {
         setFormData(prev => ({
             ...prev,
@@ -176,7 +182,7 @@ const AsetDesa = () => {
                         {DESA_LIST.map(d => <option key={d} value={d}>{d}</option>)}
                     </InputField>
                 )}
-                <button onClick={() => handleOpenModal()} className="w-full md:w-auto bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2">
+                <button onClick={() => handleOpenModal(null, 'add')} className="w-full md:w-auto bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2">
                     <FiPlus /> Tambah Aset
                 </button>
             </div>
@@ -184,7 +190,6 @@ const AsetDesa = () => {
             <div className="overflow-x-auto">
                 {loading ? <Spinner /> : (
                     <table className="w-full text-sm">
-                        {/* ... Table Head ... */}
                          <thead className="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">
                             <tr>
                                 <th className="px-6 py-3">Nama Aset</th>
@@ -274,4 +279,3 @@ const AsetDesa = () => {
 };
 
 export default AsetDesa;
-

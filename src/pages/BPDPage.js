@@ -14,6 +14,7 @@ import { useNotification } from '../context/NotificationContext';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import { DESA_LIST } from '../utils/constants';
 import Pagination from '../components/common/Pagination';
+import Button from '../components/common/Button';
 
 // Daftar statis & Komponen Detail tetap sama
 const JABATAN_BPD_LIST = ["Ketua", "Wakil Ketua", "Sekretaris", "Anggota"];
@@ -85,7 +86,6 @@ const BPDPage = () => {
     const { showNotification } = useNotification();
     const { data: allBpd, loading, addItem, updateItem, deleteItem } = useFirestoreCollection('bpd');
 
-    // --- State Baru untuk data tambahan ---
     const [allPerangkat, setAllPerangkat] = useState([]);
     const [exportConfig, setExportConfig] = useState(null);
     const [loadingExtras, setLoadingExtras] = useState(true);
@@ -104,6 +104,7 @@ const BPDPage = () => {
     const [bpdToDelete, setBpdToDelete] = useState(null);
     const [currentDesa, setCurrentDesa] = useState(DESA_LIST[0]);
     const [searchParams, setSearchParams] = useSearchParams();
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
     useEffect(() => {
         if (currentUser && currentUser.role === 'admin_desa') {
@@ -111,19 +112,16 @@ const BPDPage = () => {
         }
     }, [currentUser]);
 
-    // --- useEffect BARU untuk mengambil data Perangkat dan Konfigurasi Ekspor ---
     useEffect(() => {
         const fetchExtraData = async () => {
             setLoadingExtras(true);
             try {
-                // Fetch export config for Camat's signature
                 const exportRef = doc(db, 'settings', 'exportConfig');
                 const exportSnap = await getDoc(exportRef);
                 if (exportSnap.exists()) {
                     setExportConfig(exportSnap.data());
                 }
 
-                // Fetch all 'perangkat' data to find Kepala Desa
                 const perangkatQuery = query(collection(db, 'perangkat'));
                 const perangkatSnapshot = await getDocs(perangkatQuery);
                 const perangkatList = perangkatSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -298,8 +296,13 @@ const BPDPage = () => {
         if (!currentUser) return [];
         let data = allBpd;
 
-        const desaToFilter = currentUser.role === 'admin_desa' ? currentUser.desa : currentDesa;
-        data = data.filter(b => b.desa === desaToFilter);
+        if (currentUser.role === 'admin_kecamatan') {
+            if (currentDesa !== 'all') {
+                data = data.filter(b => b.desa === currentDesa);
+            }
+        } else {
+            data = data.filter(b => b.desa === currentUser.desa);
+        }
         
         if (searchTerm) {
             const searchLower = searchTerm.toLowerCase();
@@ -314,9 +317,24 @@ const BPDPage = () => {
         return data;
     }, [allBpd, searchTerm, currentUser, currentDesa, periodeFilter]);
     
-    // --- FUNGSI EKSPOR DIPERBARUI ---
-    const handleExportXLSX = () => {
-        const dataToExport = currentUser.role === 'admin_kecamatan' ? allBpd : filteredBpd;
+    const handleExportClick = () => {
+        if (currentUser.role === 'admin_kecamatan') {
+            setIsExportModalOpen(true);
+        } else {
+            handleExportXLSX('current');
+        }
+    };
+
+    const handleExportXLSX = (scope) => {
+        setIsExportModalOpen(false);
+        let dataToExport;
+
+        if (scope === 'all') {
+            dataToExport = allBpd;
+        } else { // scope === 'current'
+            dataToExport = filteredBpd;
+        }
+
         if (dataToExport.length === 0) {
             showNotification("Tidak ada data untuk diekspor.", "warning");
             return;
@@ -325,7 +343,7 @@ const BPDPage = () => {
         const exportDetails = {
             bpdData: dataToExport,
             role: currentUser.role,
-            desa: currentUser.role === 'admin_desa' ? currentUser.desa : 'all',
+            desa: scope === 'all' ? 'all' : (currentUser.desa || currentDesa),
             periodeFilter: periodeFilter,
             exportConfig: exportConfig,
             allPerangkat: allPerangkat
@@ -345,16 +363,16 @@ const BPDPage = () => {
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <InputField type="text" placeholder={`Cari di Desa ${currentDesa}...`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} icon={<FiSearch />} />
+                <InputField type="text" placeholder={`Cari nama atau jabatan...`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} icon={<FiSearch />} />
                 <InputField type="text" placeholder="Filter periode (cth: 2019-2025)" value={periodeFilter} onChange={(e) => setPeriodeFilter(e.target.value)} icon={<FiFilter />} />
             </div>
             <div className="flex flex-wrap justify-end gap-2 mb-4">
-                <label className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 cursor-pointer flex items-center gap-2">
-                    <FiUpload/> {isUploading ? 'Mengimpor...' : 'Impor Data'}
+                <label className="btn btn-warning cursor-pointer"><FiUpload className="mr-2"/> 
                     <input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading}/>
+                    {isUploading ? 'Mengimpor...' : 'Impor Data'}
                 </label>
-                <button onClick={handleExportXLSX} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"><FiDownload/> Ekspor XLSX</button>
-                <button onClick={() => handleOpenModal(null, 'add')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"><FiPlus/> Tambah Data</button>
+                <Button onClick={handleExportClick} variant="success"><FiDownload className="mr-2"/> Ekspor XLSX</Button>
+                <Button onClick={() => handleOpenModal(null, 'add')} variant="primary"><FiPlus className="mr-2"/> Tambah Data</Button>
             </div>
             
             <div className="overflow-x-auto">
@@ -362,6 +380,7 @@ const BPDPage = () => {
                     <thead className="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">
                         <tr>
                             <th className="px-6 py-3">Nama</th>
+                            {currentUser.role === 'admin_kecamatan' && <th className="px-6 py-3">Desa</th>}
                             <th className="px-6 py-3">Jabatan</th>
                             <th className="px-6 py-3">Periode</th>
                             <th className="px-6 py-3">Aksi</th>
@@ -375,6 +394,7 @@ const BPDPage = () => {
                                         <p className="font-semibold">{p.nama}</p>
                                         <p className="text-xs text-gray-500 dark:text-gray-400">No. SK: {p.no_sk_bupati || 'N/A'}</p>
                                     </td>
+                                    {currentUser.role === 'admin_kecamatan' && <td className="px-6 py-4">{p.desa}</td>}
                                     <td className="px-6 py-4">{p.jabatan}</td>
                                     <td className="px-6 py-4">{p.periode}</td>
                                     <td className="px-6 py-4 flex space-x-3">
@@ -386,8 +406,8 @@ const BPDPage = () => {
                             ))
                         ) : (
                             <tr>
-                                <td colSpan="4" className="text-center py-10 text-gray-500 dark:text-gray-400">
-                                    Tidak ada data untuk ditampilkan di Desa {currentDesa}.
+                                <td colSpan={currentUser.role === 'admin_kecamatan' ? 5 : 4} className="text-center py-10 text-gray-500 dark:text-gray-400">
+                                    Tidak ada data untuk ditampilkan.
                                 </td>
                             </tr>
                         )}
@@ -477,8 +497,23 @@ const BPDPage = () => {
                 title="Konfirmasi Hapus Anggota BPD"
                 message={`Apakah Anda yakin ingin menghapus data anggota BPD "${bpdToDelete?.nama}"? Tindakan ini tidak dapat dibatalkan.`}
             />
+
+            {currentUser.role === 'admin_kecamatan' && (
+                 <Modal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} title="Pilih Opsi Ekspor Data BPD">
+                    <p className="text-gray-600 dark:text-gray-400 mb-6">Pilih data BPD yang ingin Anda ekspor ke dalam file XLSX.</p>
+                    <div className="flex flex-col md:flex-row justify-center gap-4">
+                        <Button onClick={() => handleExportXLSX('current')} variant="secondary" className="w-full md:w-auto">
+                            Hanya Desa {currentDesa}
+                        </Button>
+                        <Button onClick={() => handleExportXLSX('all')} variant="primary" className="w-full md:w-auto">
+                            Semua Desa (Rekap Kecamatan)
+                        </Button>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 };
 
 export default BPDPage;
+

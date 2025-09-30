@@ -55,8 +55,6 @@ const OrganisasiDashboard = ({ config }) => {
 
     return (
         <div className="space-y-8">
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">{config.title} Dashboard</h1>
-            
             {currentUser.role === 'admin_kecamatan' && (
                  <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md">
                      <InputField label="Filter Desa" type="select" value={filterDesa} onChange={(e) => setFilterDesa(e.target.value)}>

@@ -15,10 +15,9 @@ import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { uploadImageToCloudinary } from '../utils/imageUploader';
 import { DESA_LIST } from '../utils/constants';
 import Pagination from '../components/common/Pagination';
-import { createNotificationForAdmins } from '../utils/notificationService'; // <-- Impor baru
+import { createNotificationForAdmins } from '../utils/notificationService';
 
-// --- Daftar statis & Komponen Detail ---
-const JABATAN_LIST = [ "Kepala Desa", "Pj. Kepala Desa", "Sekretaris Desa", "Kasi Pemerintahan", "Kasi Kesejahteraan", "Kasi Pelayanan", "Kaur Tata Usaha dan Umum", "Kaur Keuangan", "Kaur Perencanaan", "Kepala Dusun", "Staf Desa" ];
+const JABATAN_LIST = [ "Kepala Desa", "Pj. Kepala Desa", "Sekretaris Desa", "Kasi Pemerintahan", "Kasi Kesejahteraan", "Kasi Pelayanan", "Kaur TU dan Umum", "Kaur Keuangan", "Kaur Perencanaan", "Kadus I","Kadus II","Kadus III" ,"Kadus IV","Kadus V","Kadus VI","Staf Desa" ];
 const PENDIDIKAN_LIST = ["SD", "SLTP", "SLTA", "D1", "D2", "D3", "S1", "S2", "S3"];
 
 const PerangkatDetailView = ({ perangkat }) => {
@@ -103,6 +102,8 @@ const Perangkat = () => {
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
     const [bulkDeleteMode, setBulkDeleteMode] = useState(null);
+    // --- PERBAIKAN: State untuk modal pilihan ekspor ---
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     
     const [currentDesa, setCurrentDesa] = useState(DESA_LIST[0]);
 
@@ -110,20 +111,18 @@ const Perangkat = () => {
     const navigate = useNavigate();
     const location = useLocation();
 
-    // --- BARU: State dan Effect untuk menyorot baris dari notifikasi ---
     const [highlightedRow, setHighlightedRow] = useState(null);
     useEffect(() => {
         const highlightId = searchParams.get('highlight');
         if (highlightId) {
             setHighlightedRow(highlightId);
-            // Secara otomatis pindah ke desa yang relevan jika admin kecamatan
             if (currentUser.role === 'admin_kecamatan') {
                 const targetDesa = searchParams.get('desa');
                 if (targetDesa) {
                     setCurrentDesa(targetDesa);
                 }
             }
-            const timer = setTimeout(() => setHighlightedRow(null), 3000); // Hapus sorotan setelah 3 detik
+            const timer = setTimeout(() => setHighlightedRow(null), 3000);
             return () => clearTimeout(timer);
         }
     }, [searchParams, currentUser.role]);
@@ -338,15 +337,14 @@ const Perangkat = () => {
                 const existingDoc = await findJabatanKosongAtauPurna(dataToSave.jabatan, dataToSave.desa);
                 if (existingDoc) {
                     await updateItem(existingDoc.id, dataToSave);
-                    docId = existingDoc.id; // Gunakan ID dokumen yang ada
+                    docId = existingDoc.id;
                     showNotification(`Formasi jabatan ${dataToSave.jabatan} yang kosong/purna telah diisi.`, 'info');
                 } else {
                     const newDoc = await addItem(dataToSave);
-                    docId = newDoc.id; // Gunakan ID dari dokumen yang baru dibuat
+                    docId = newDoc.id;
                 }
             }
             
-            // --- BARU: Pemicu Notifikasi ---
             if (currentUser.role === 'admin_desa' && docId) {
                 const action = selectedPerangkat ? 'memperbarui' : 'menambahkan';
                 const message = `Admin Desa ${currentUser.desa} telah ${action} data perangkat: "${dataToSave.nama}".`;
@@ -391,14 +389,52 @@ const Perangkat = () => {
         }
     };
     
-    const handleExportXLSX = () => {
-        const dataToExport = filteredPerangkat;
-        if (dataToExport.length === 0) {
-            showNotification("Tidak ada data untuk diekspor di desa ini.", 'warning');
-            return;
+    // --- PERBAIKAN: Fungsi utama untuk menangani klik ekspor ---
+    const handleExportClick = () => {
+        if (currentUser.role === 'admin_kecamatan') {
+            setIsExportModalOpen(true);
+        } else {
+            // Admin Desa hanya punya satu pilihan, langsung ekspor
+            handleExportXLSX('current');
         }
-        const desaName = currentUser.role === 'admin_desa' ? currentUser.desa : currentDesa;
-        const groupedData = [{ desa: desaName, perangkat: dataToExport }];
+    };
+
+    // --- PERBAIKAN: Fungsi ekspor yang menerima scope (cakupan data) ---
+    const handleExportXLSX = (scope) => {
+        setIsExportModalOpen(false); // Tutup modal setelah pilihan dibuat
+        let dataToExport;
+        let groupedData;
+
+        if (scope === 'all') {
+            dataToExport = allPerangkat;
+            if (dataToExport.length === 0) {
+                showNotification("Tidak ada data untuk diekspor.", "warning");
+                return;
+            }
+            // Kelompokkan semua data berdasarkan desa
+            const dataByDesa = dataToExport.reduce((acc, p) => {
+                const desa = p.desa || 'Lainnya';
+                if (!acc[desa]) {
+                    acc[desa] = [];
+                }
+                acc[desa].push(p);
+                return acc;
+            }, {});
+            groupedData = DESA_LIST.map(desa => ({
+                desa: desa,
+                perangkat: dataByDesa[desa] || []
+            }));
+
+        } else { // scope === 'current'
+            dataToExport = filteredPerangkat;
+            if (dataToExport.length === 0) {
+                showNotification("Tidak ada data untuk diekspor di desa ini.", "warning");
+                return;
+            }
+            const desaName = currentUser.role === 'admin_desa' ? currentUser.desa : currentDesa;
+            groupedData = [{ desa: desaName, perangkat: dataToExport }];
+        }
+
         generatePerangkatXLSX(groupedData, exportConfig);
     };
 
@@ -600,7 +636,8 @@ const Perangkat = () => {
                             <input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls, .csv" disabled={isUploading}/>
                             {isUploading ? 'Mengimpor...' : 'Impor Data'}
                         </label>
-                        <Button onClick={handleExportXLSX} variant="success"><FiDownload className="mr-2"/> Ekspor XLSX</Button>
+                        {/* --- PERBAIKAN: Tombol ekspor memanggil fungsi baru --- */}
+                        <Button onClick={handleExportClick} variant="success"><FiDownload className="mr-2"/> Ekspor XLSX</Button>
                         <Button onClick={() => handleOpenModal(null, 'add')} variant="primary"><FiPlus className="mr-2"/> Tambah Data</Button>
                     </>
                 )}
@@ -699,11 +736,25 @@ const Perangkat = () => {
                 onConfirm={executeBulkDelete}
                 isLoading={isDeleting}
                 title="Konfirmasi Aksi Massal"
-                message={`Anda yakin ingin ${bulkDeleteMode === 'kosongkan' ? 'mengosongkan jabatan' : 'menghapus permanen'} untuk ${selectedIds.size} data yang dipilih?`}
+                message={`Apakah Anda yakin ingin ${bulkDeleteMode === 'kosongkan' ? 'mengosongkan jabatan' : 'menghapus permanen'} untuk ${selectedIds.size} data yang dipilih?`}
             />
+
+            {/* --- PERBAIKAN: Modal baru untuk pilihan ekspor --- */}
+            {currentUser.role === 'admin_kecamatan' && (
+                 <Modal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} title="Pilih Opsi Ekspor Data Perangkat">
+                    <p className="text-gray-600 dark:text-gray-400 mb-6">Pilih data yang ingin Anda ekspor ke dalam file XLSX.</p>
+                    <div className="flex flex-col md:flex-row justify-center gap-4">
+                        <Button onClick={() => handleExportXLSX('current')} variant="secondary" className="w-full md:w-auto">
+                            Hanya Desa {currentDesa}
+                        </Button>
+                        <Button onClick={() => handleExportXLSX('all')} variant="primary" className="w-full md:w-auto">
+                            Semua Desa (Rekap Kecamatan)
+                        </Button>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 };
 
 export default Perangkat;
-

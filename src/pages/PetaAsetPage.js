@@ -34,17 +34,14 @@ const PetaAsetPage = () => {
             mapInstanceRef.current = map;
         }
         
-        // --- PERBAIKAN: Fungsi Cleanup yang Lebih Kuat ---
         return () => {
             if (mapInstanceRef.current) {
-                // Hapus semua event listener dari peta untuk mencegah memory leak
                 mapInstanceRef.current.off();
-                // Hapus peta dari DOM
                 mapInstanceRef.current.remove();
                 mapInstanceRef.current = null;
             }
         };
-    }, []); // Dependency array kosong, hanya berjalan sekali.
+    }, []);
 
     const filteredAset = useMemo(() => {
         return allAset.filter(aset => {
@@ -101,7 +98,8 @@ const PetaAsetPage = () => {
                     event.preventDefault();
                     const asetId = internalLink.getAttribute('data-aset-id');
                     if (asetId) {
-                        navigate(`/app/aset/data?edit=${asetId}`);
+                        // --- PERBAIKAN: Mengarahkan ke path yang benar dan menggunakan param 'view' ---
+                        navigate(`/app/aset/manajemen?view=${asetId}`);
                     }
                 };
             }
@@ -143,4 +141,3 @@ const PetaAsetPage = () => {
 };
 
 export default PetaAsetPage;
-

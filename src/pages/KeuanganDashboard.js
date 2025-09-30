@@ -132,7 +132,7 @@ const KeuanganDashboard = () => {
 
     return (
         <div className="space-y-6">
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Dashboard Keuangan</h1>
+            
             
             <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md flex flex-wrap items-center gap-4">
                  <InputField label="Tahun Anggaran" type="number" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)} />

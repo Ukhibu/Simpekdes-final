@@ -1,16 +1,28 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
+import { DESA_LIST } from './constants';
 
 // Helper untuk memformat tanggal dengan aman
-const formatDateForExcel = (dateField) => {
+const formatDate = (dateField, formatType = 'default') => {
     if (!dateField) return null;
     try {
         const date = dateField.toDate ? dateField.toDate() : new Date(dateField);
         if (isNaN(date.getTime())) return null;
-        // Menyesuaikan dengan zona waktu lokal untuk menghindari tanggal bergeser
+
         const userTimezoneOffset = date.getTimezoneOffset() * 60000;
-        return new Date(date.getTime() + userTimezoneOffset);
+        const localDate = new Date(date.getTime() + userTimezoneOffset);
+
+        if (formatType === 'birthdate') {
+            return localDate.toLocaleDateString('id-ID', {
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric'
+            });
+        }
+        // Default format for Excel date object
+        return localDate;
     } catch (error) {
+        console.error("Gagal mem-parsing tanggal:", dateField, error);
         return null;
     }
 };
@@ -18,12 +30,6 @@ const formatDateForExcel = (dateField) => {
 /**
  * Membuat file XLSX untuk data BPD dengan format yang disesuaikan untuk Admin Desa dan Admin Kecamatan.
  * @param {object} exportData - Data yang dibutuhkan untuk ekspor.
- * @param {Array<object>} exportData.bpdData - Array data anggota BPD yang akan diekspor.
- * @param {string} exportData.role - Peran pengguna ('admin_desa' atau 'admin_kecamatan').
- * @param {string} exportData.desa - Nama desa (untuk Admin Desa) atau 'all' (untuk Admin Kecamatan).
- * @param {string} exportData.periodeFilter - Filter periode yang sedang aktif.
- * @param {object} exportData.exportConfig - Konfigurasi tanda tangan Camat.
- * @param {Array<object>} exportData.allPerangkat - Semua data perangkat untuk mencari Kepala Desa.
  */
 export const generateBpdXLSX = async (exportData) => {
     const { bpdData, role, desa, periodeFilter, exportConfig, allPerangkat } = exportData;
@@ -54,26 +60,27 @@ export const generateBpdXLSX = async (exportData) => {
     // --- Definisi Styles ---
     const titleStyle = { font: { name: 'Arial', size: 14, bold: true }, alignment: { horizontal: 'center', vertical: 'middle' } };
     const subTitleStyle = { font: { name: 'Arial', size: 12, bold: true }, alignment: { horizontal: 'center', vertical: 'middle' } };
-    const desaHeaderStyle = { font: { name: 'Arial', size: 11, bold: true }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } }, alignment: { horizontal: 'center', vertical: 'middle' } };
     const tableHeaderStyle = { font: { name: 'Arial', size: 10, bold: true }, alignment: { horizontal: 'center', vertical: 'middle', wrapText: true }, border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } } };
-    const cellStyle = { font: { name: 'Arial', size: 9 }, border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }, alignment: { vertical: 'middle', wrapText: true } };
+    // --- PERBAIKAN: Menghapus wrapText untuk memastikan satu baris ---
+    const cellStyle = { font: { name: 'Arial', size: 8 }, border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }, alignment: { vertical: 'middle' } };
 
     let currentRow = 1;
+    const TOTAL_COLUMNS = 16; // Jumlah total kolom dari A sampai P
 
     // --- Judul Global ---
     const mainTitle = role === 'admin_kecamatan'
         ? 'DATA ANGGOTA BADAN PERMUSYAWARATAN DESA (BPD) SE-KECAMATAN PUNGGELAN'
         : `DATA ANGGOTA BADAN PERMUSYAWARATAN DESA (BPD) DESA ${desa.toUpperCase()}`;
     
-    worksheet.mergeCells(`A${currentRow}:P${currentRow}`);
-    worksheet.getCell(`A${currentRow}`).value = mainTitle;
-    worksheet.getCell(`A${currentRow}`).style = titleStyle;
+    worksheet.mergeCells(currentRow, 1, currentRow, TOTAL_COLUMNS);
+    worksheet.getCell(currentRow, 1).value = mainTitle;
+    worksheet.getCell(currentRow, 1).style = titleStyle;
     currentRow++;
 
     const subTitle = periodeFilter ? `PERIODE ${periodeFilter}` : `TAHUN ${currentYear}`;
-    worksheet.mergeCells(`A${currentRow}:P${currentRow}`);
-    worksheet.getCell(`A${currentRow}`).value = subTitle;
-    worksheet.getCell(`A${currentRow}`).style = subTitleStyle;
+    worksheet.mergeCells(currentRow, 1, currentRow, TOTAL_COLUMNS);
+    worksheet.getCell(currentRow, 1).value = subTitle;
+    worksheet.getCell(currentRow, 1).style = subTitleStyle;
     currentRow += 2;
 
     const addTableHeader = (startRow) => {
@@ -82,7 +89,6 @@ export const generateBpdXLSX = async (exportData) => {
         headerRow1.values = ["NO", "NO. SK Bupati", "Tgl. SK Bupati", "PERIODE", "Tgl Pelantikan", "Wilayah Pemilihan", "NAMA", "Tempat Lahir", "Tgl Lahir", "Pekerjaan", "Pendidikan", "Agama", "ALAMAT", null, null, "Jabatan"];
         headerRow2.values = [null, null, null, null, null, null, null, null, null, null, null, null, "DESA", "RT", "RW", null];
         
-        // Merge Cells for Headers
         worksheet.mergeCells(`A${startRow}:A${startRow + 1}`);
         worksheet.mergeCells(`B${startRow}:B${startRow + 1}`);
         worksheet.mergeCells(`C${startRow}:C${startRow + 1}`);
@@ -98,130 +104,162 @@ export const generateBpdXLSX = async (exportData) => {
         worksheet.mergeCells(`M${startRow}:O${startRow}`);
         worksheet.mergeCells(`P${startRow}:P${startRow + 1}`);
         
-        // Apply Style
         [headerRow1, headerRow2].forEach(row => {
-            row.height = 30;
+            row.height = 25;
             row.eachCell({ includeEmpty: true }, cell => cell.style = tableHeaderStyle);
         });
         
-        return startRow + 2; // Return next starting row index
+        return startRow + 2;
     };
     
-    const addDataRows = (data, startRow, startIndex = 1) => {
-        data.forEach((bpd, index) => {
-            const row = worksheet.getRow(startRow + index);
-            row.values = [
-                startIndex + index,
-                bpd.no_sk_bupati || '',
-                formatDateForExcel(bpd.tgl_sk_bupati),
-                bpd.periode || '',
-                formatDateForExcel(bpd.tgl_pelantikan),
-                bpd.wil_pmlhn || '',
-                `${bpd.nama || ''}${bpd.gelar ? ', ' + bpd.gelar : ''}`,
-                bpd.tempat_lahir || '',
-                formatDateForExcel(bpd.tgl_lahir),
-                bpd.pekerjaan || '',
-                bpd.pendidikan || '',
-                bpd.agama || '',
-                bpd.desa || '',
-                bpd.rt || '',
-                bpd.rw || '',
-                bpd.jabatan || ''
-            ];
-            row.height = 20;
-            row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-                cell.style = { ...cellStyle };
-                if ([1, 14, 15].includes(colNumber)) cell.alignment.horizontal = 'center';
-                if ([3, 5, 9].includes(colNumber)) cell.numFmt = 'dd/mm/yyyy';
-            });
+    const addDataRow = (bpd, index) => {
+        const row = worksheet.addRow([
+            index,
+            bpd.no_sk_bupati || '',
+            formatDate(bpd.tgl_sk_bupati),
+            bpd.periode || '',
+            formatDate(bpd.tgl_pelantikan),
+            bpd.wil_pmlhn || '',
+            `${bpd.nama || ''}${bpd.gelar ? ', ' + bpd.gelar : ''}`,
+            bpd.tempat_lahir || '',
+            formatDate(bpd.tgl_lahir, 'birthdate'),
+            bpd.pekerjaan || '',
+            bpd.pendidikan || '',
+            bpd.agama || '',
+            bpd.desa || '',
+            bpd.rt || '',
+            bpd.rw || '',
+            bpd.jabatan || ''
+        ]);
+        // --- PERBAIKAN: Menyeragamkan tinggi baris data ---
+        row.height = 20;
+        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+            cell.style = { ...cellStyle };
+            cell.alignment = { ...cell.alignment, horizontal: 'left', vertical: 'middle', indent: 1 };
+            
+            if ([1, 3, 4, 5, 6, 11, 12, 14, 15, 16].includes(colNumber)) {
+                cell.alignment.horizontal = 'center';
+            }
+            
+            if ([3, 5].includes(colNumber)) {
+                cell.numFmt = 'dd/mm/yyyy';
+            }
         });
-        return startRow + data.length;
     };
     
     const addSignatureBlock = (startRow, signer) => {
-        worksheet.mergeCells(`M${startRow}:P${startRow}`);
-        worksheet.getCell(`M${startRow}`).value = `${signer.location}, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`;
-        worksheet.mergeCells(`M${startRow + 1}:P${startRow + 1}`);
-        worksheet.getCell(`M${startRow + 1}`).value = signer.jabatan;
-        worksheet.mergeCells(`M${startRow + 5}:P${startRow + 5}`);
-        const nameCell = worksheet.getCell(`M${startRow + 5}`);
-        nameCell.value = signer.nama.toUpperCase();
+        const signatureColStart = 'M';
+        const signatureColEnd = 'P';
+        
+        worksheet.mergeCells(`${signatureColStart}${startRow}:${signatureColEnd}${startRow}`);
+        worksheet.getCell(`${signatureColStart}${startRow}`).value = `${signer.location}, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`;
+        worksheet.mergeCells(`${signatureColStart}${startRow + 1}:${signatureColEnd}${startRow + 1}`);
+        worksheet.getCell(`${signatureColStart}${startRow + 1}`).value = signer.jabatan;
+        
+        worksheet.mergeCells(`${signatureColStart}${startRow + 5}:${signatureColEnd}${startRow + 5}`);
+        const nameCell = worksheet.getCell(`${signatureColStart}${startRow + 5}`);
+        nameCell.value = (signer.nama || '(....................................)').toUpperCase();
         nameCell.font = { name: 'Arial', size: 10, bold: true, underline: true };
         
         for (let i = 0; i <= 7; i++) {
-            const cell = worksheet.getCell(`M${startRow + i}`);
-            cell.alignment = { ...cell.alignment, horizontal: 'center' };
-            if(i > 1 && i < 5) worksheet.getRow(startRow + i).height = 15; // Spasi untuk TTD
+            const row = worksheet.getRow(startRow + i);
+            if (row) {
+                const cell = row.getCell(signatureColStart);
+                cell.alignment = { ...cell.alignment, horizontal: 'center' };
+                 if(i > 1 && i < 5) row.height = 15;
+            }
         }
 
         if(signer.pangkat) {
-             worksheet.mergeCells(`M${startRow + 6}:P${startRow + 6}`);
-             worksheet.getCell(`M${startRow + 6}`).value = signer.pangkat;
+             worksheet.mergeCells(`${signatureColStart}${startRow + 6}:${signatureColEnd}${startRow + 6}`);
+             worksheet.getCell(`${signatureColStart}${startRow + 6}`).value = signer.pangkat;
         }
         if(signer.nip) {
-            worksheet.mergeCells(`M${startRow + 7}:P${startRow + 7}`);
-            worksheet.getCell(`M${startRow + 7}`).value = `NIP. ${signer.nip}`;
+            worksheet.mergeCells(`${signatureColStart}${startRow + 7}:${signatureColEnd}${startRow + 7}`);
+            worksheet.getCell(`${signatureColStart}${startRow + 7}`).value = `NIP. ${signer.nip}`;
         }
     }
 
-    if (role === 'admin_kecamatan') {
-        const dataByDesa = bpdData.reduce((acc, bpd) => {
-            (acc[bpd.desa] = acc[bpd.desa] || []).push(bpd);
-            return acc;
-        }, {});
+    currentRow = addTableHeader(currentRow);
 
-        Object.keys(dataByDesa).sort().forEach((namaDesa, index) => {
-            if(index > 0) {
-                worksheet.getRow(currentRow).addPageBreak();
-                currentRow += 2;
-            }
-            worksheet.mergeCells(`A${currentRow}:P${currentRow}`);
-            worksheet.getCell(`A${currentRow}`).value = `DESA ${namaDesa.toUpperCase()}`;
-            worksheet.getCell(`A${currentRow}`).style = desaHeaderStyle;
-            currentRow++;
+    if (role === 'admin_kecamatan') {
+        const JABATAN_BPD_ORDER = ["KETUA", "WAKIL KETUA", "SEKRETARIS", "ANGGOTA"];
+        const upperCaseDesaList = DESA_LIST.map(d => d.toUpperCase());
+        
+        // --- PERBAIKAN: Logika pengurutan yang lebih presisi ---
+        const sortedData = [...bpdData].sort((a, b) => {
+            const desaA = (a.desa || '').trim().toUpperCase();
+            const desaB = (b.desa || '').trim().toUpperCase();
             
-            currentRow = addTableHeader(currentRow);
-            currentRow = addDataRows(dataByDesa[namaDesa], currentRow);
-            currentRow += 2; // Spacing before next table
+            const indexA = upperCaseDesaList.indexOf(desaA);
+            const indexB = upperCaseDesaList.indexOf(desaB);
+            
+            // Urutan pertama: berdasarkan urutan desa
+            if (indexA !== indexB) {
+                 if (indexA === -1) return 1;
+                 if (indexB === -1) return -1;
+                 return indexA - indexB;
+            }
+
+            // Urutan kedua: berdasarkan jabatan
+            const jabatanA = (a.jabatan || '').toUpperCase();
+            const jabatanB = (b.jabatan || '').toUpperCase();
+            const indexJabatanA = JABATAN_BPD_ORDER.indexOf(jabatanA);
+            const indexJabatanB = JABATAN_BPD_ORDER.indexOf(jabatanB);
+            
+            if(indexJabatanA !== indexJabatanB){
+                if (indexJabatanA === -1) return 1;
+                if (indexJabatanB === -1) return -1;
+                return indexJabatanA - indexJabatanB;
+            }
+
+            // Urutan ketiga: berdasarkan nama jika desa dan jabatan sama
+            return (a.nama || '').localeCompare(b.nama || '');
         });
         
-        // Tanda Tangan Camat di akhir
+        // --- PERBAIKAN: Langsung render data tanpa header pemisah ---
+        sortedData.forEach((bpd, index) => {
+            addDataRow(bpd, index + 1);
+        });
+        
+        currentRow = worksheet.lastRow.number + 3;
         addSignatureBlock(currentRow, {
             location: 'Punggelan',
             jabatan: exportConfig?.jabatanPenandaTangan || 'Camat Punggelan',
-            nama: exportConfig?.namaPenandaTangan || '(....................................)',
+            nama: exportConfig?.namaPenandaTangan,
             pangkat: exportConfig?.pangkatPenandaTangan,
             nip: exportConfig?.nipPenandaTangan
         });
 
     } else { // admin_desa
-        currentRow = addTableHeader(currentRow);
-        currentRow = addDataRows(bpdData, currentRow);
-
-        // Tanda Tangan Kepala Desa
-        const kades = allPerangkat.find(p => p.desa === desa && p.jabatan?.toLowerCase() === 'kepala desa');
-        addSignatureBlock(currentRow + 2, {
+        bpdData.forEach((bpd, index) => {
+            addDataRow(bpd, index + 1);
+        });
+        
+        currentRow = worksheet.lastRow.number + 3;
+        const kades = allPerangkat.find(p => p.desa === desa && p.jabatan?.toLowerCase().includes('kepala desa'));
+        addSignatureBlock(currentRow, {
             location: desa,
             jabatan: 'Kepala Desa',
             nama: kades ? kades.nama : '(....................................)'
         });
     }
 
-    // Atur Lebar Kolom
+    // --- PERBAIKAN: Menyesuaikan lebar kolom agar lebih optimal ---
     worksheet.columns = [
         { width: 5 },   // NO
-        { width: 20 },  // No SK
+        { width: 22 },  // No SK
         { width: 12 },  // Tgl SK
         { width: 12 },  // Periode
         { width: 12 },  // Tgl Pelantikan
-        { width: 15 },  // Wil Pemilihan
-        { width: 25 },  // Nama
-        { width: 15 },  // Tempat Lahir
-        { width: 12 },  // Tgl Lahir
-        { width: 15 },  // Pekerjaan
+        { width: 18 },  // Wil Pemilihan
+        { width: 30 },  // Nama
+        { width: 20 },  // Tempat Lahir
+        { width: 18 },  // Tgl Lahir
+        { width: 20 },  // Pekerjaan
         { width: 12 },  // Pendidikan
         { width: 12 },  // Agama
-        { width: 15 },  // Desa (Alamat)
+        { width: 18 },  // Desa (Alamat)
         { width: 5 },   // RT
         { width: 5 },   // RW
         { width: 18 }   // Jabatan
@@ -233,3 +271,4 @@ export const generateBpdXLSX = async (exportData) => {
     const fileName = role === 'admin_kecamatan' ? `Data_BPD_Kecamatan_Punggelan_${currentYear}.xlsx` : `Data_BPD_Desa_${desa}_${currentYear}.xlsx`;
     saveAs(blob, fileName);
 };
+

@@ -78,7 +78,6 @@ const EFileDashboard = () => {
 
     return (
         <div className="space-y-8">
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Dashboard E-File</h1>
             
             {error && <p className="text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-lg">{error}</p>}
 

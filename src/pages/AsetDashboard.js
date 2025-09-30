@@ -26,7 +26,8 @@ const AsetDashboard = () => {
     const { currentUser } = useAuth();
     const [asetData, setAsetData] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [filterTahun, setFilterTahun] = useState(new Date().getFullYear());
+    // --- PERBAIKAN: Default filter tahun diubah menjadi kosong untuk menampilkan semua data awal ---
+    const [filterTahun, setFilterTahun] = useState('');
     const [filterDesa, setFilterDesa] = useState('all');
 
     useEffect(() => {
@@ -47,31 +48,49 @@ const AsetDashboard = () => {
         } else if (filterDesa !== 'all') {
             constraints.push(where("desa", "==", filterDesa));
         }
-
-        // Filter berdasarkan tahun perolehan
-        if (filterTahun) {
-            const startDate = `${filterTahun}-01-01`;
-            const endDate = `${filterTahun}-12-31`;
-            constraints.push(where("tanggalPerolehan", ">=", startDate));
-            constraints.push(where("tanggalPerolehan", "<=", endDate));
-        }
         
         q = query(q, ...constraints);
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setAsetData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             setLoading(false);
+        }, (error) => {
+            console.error("Error fetching asset data:", error);
+            setLoading(false);
         });
 
         return () => unsubscribe();
-    }, [currentUser, filterTahun, filterDesa]);
+    }, [currentUser, filterDesa]);
 
-    const { stats, kategoriChartData, kondisiChartData } = useMemo(() => {
-        const totalAset = asetData.reduce((sum, aset) => sum + (Number(aset.jumlah) || 1), 0);
-        const totalNilai = asetData.reduce((sum, aset) => sum + (Number(aset.nilaiPerolehan) || 0) * (Number(aset.jumlah) || 1), 0);
+    const { stats, grandTotalNilai, kategoriChartData, kondisiChartData } = useMemo(() => {
+        // --- PERBAIKAN: Kalkulasi total keseluruhan dari data mentah (sebelum difilter tahun) ---
+        const grandTotalNilai = asetData.reduce((sum, aset) => {
+            const cleanValue = Number(String(aset.nilaiAset || '0').replace(/[^0-9]/g, ''));
+            return sum + (cleanValue * (Number(aset.jumlah) || 1));
+        }, 0);
+
+        const filteredData = asetData.filter(aset => {
+            if (!filterTahun) return true; // Jika filter tahun kosong, tampilkan semua aset
+            if (!aset.tanggalPerolehan) return false;
+            try {
+                // Logika parsing tanggal yang lebih robust
+                const dateString = aset.tanggalPerolehan.toDate ? aset.tanggalPerolehan.toDate().toISOString() : aset.tanggalPerolehan;
+                const perolehanYear = parseInt(dateString.substring(0, 4), 10);
+                return perolehanYear === Number(filterTahun);
+            } catch (e) {
+                return false;
+            }
+        });
+
+        const totalAset = filteredData.reduce((sum, aset) => sum + (Number(aset.jumlah) || 1), 0);
+        // --- PERBAIKAN UTAMA: Menggunakan `nilaiAset` secara konsisten ---
+        const totalNilai = filteredData.reduce((sum, aset) => {
+            const cleanValue = Number(String(aset.nilaiAset || '0').replace(/[^0-9]/g, ''));
+            return sum + (cleanValue * (Number(aset.jumlah) || 1));
+        }, 0);
         
         const kategoriCount = KATEGORI_ASET.reduce((acc, kategori) => {
-            acc[kategori] = asetData.filter(a => a.kategori === kategori).reduce((sum, a) => sum + (Number(a.jumlah) || 1), 0);
+            acc[kategori] = filteredData.filter(a => a.kategori === kategori).reduce((sum, a) => sum + (Number(a.jumlah) || 1), 0);
             return acc;
         }, {});
 
@@ -84,7 +103,7 @@ const AsetDashboard = () => {
         };
 
         const kondisiCount = { 'Baik': 0, 'Rusak Ringan': 0, 'Rusak Berat': 0 };
-        asetData.forEach(aset => {
+        filteredData.forEach(aset => {
             if (kondisiCount[aset.kondisi] !== undefined) {
                 kondisiCount[aset.kondisi] += (Number(aset.jumlah) || 1);
             }
@@ -100,20 +119,24 @@ const AsetDashboard = () => {
         };
 
         return { 
-            stats: { totalAset, totalNilai }, 
+            stats: { totalAset, totalNilai },
+            grandTotalNilai,
             kategoriChartData: kategoriData, 
             kondisiChartData: kondisiData 
         };
-    }, [asetData]);
+    }, [asetData, filterTahun]);
 
     if (loading) return <div className="flex justify-center items-center h-full"><Spinner size="lg" /></div>;
+
+    // --- PERBAIKAN: Label dinamis untuk judul ---
+    const filterTitle = filterTahun ? `(${filterTahun})` : '(Semua Tahun)';
 
     return (
         <div className="space-y-6">
              <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md flex flex-wrap items-center gap-4">
                 <FiFilter className="text-gray-600 dark:text-gray-300" />
                 <h3 className="font-semibold text-gray-700 dark:text-gray-200">Filter Data:</h3>
-                <InputField label="Tahun Perolehan" type="number" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)} />
+                <InputField label="Tahun Perolehan" type="number" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)} placeholder="Semua Tahun" />
                 {currentUser.role === 'admin_kecamatan' && (
                     <InputField label="Desa" type="select" value={filterDesa} onChange={(e) => setFilterDesa(e.target.value)}>
                         <option value="all">Semua Desa</option>
@@ -122,14 +145,15 @@ const AsetDashboard = () => {
                 )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
-                 <StatCard title="Total Unit Aset" value={stats.totalAset} icon={<FiBox size={24} className="text-blue-500" />} colorClass="bg-blue-100 dark:bg-blue-900/50" />
-                 <StatCard title="Total Nilai Aset" value={stats.totalNilai} icon={<FiDollarSign size={24} className="text-green-500" />} colorClass="bg-green-100 dark:bg-green-900/50" isCurrency={true}/>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                 <StatCard title={`Total Unit Aset ${filterTitle}`} value={stats.totalAset} icon={<FiBox size={24} className="text-blue-500" />} colorClass="bg-blue-100 dark:bg-blue-900/50" />
+                 <StatCard title={`Total Nilai Aset ${filterTitle}`} value={stats.totalNilai} icon={<FiDollarSign size={24} className="text-yellow-500" />} colorClass="bg-yellow-100 dark:bg-yellow-900/50" isCurrency={true}/>
+                 <StatCard title="Total Nilai Aset (Keseluruhan)" value={grandTotalNilai} icon={<FiArchive size={24} className="text-green-500" />} colorClass="bg-green-100 dark:bg-green-900/50" isCurrency={true}/>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                 <div className="lg:col-span-3 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
-                     <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">Distribusi Aset per Kategori</h2>
+                     <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">Distribusi Aset per Kategori {filterTitle}</h2>
                      <div className="h-80 mx-auto flex justify-center">
                         <Pie 
                             data={kategoriChartData}
@@ -138,7 +162,7 @@ const AsetDashboard = () => {
                      </div>
                 </div>
                 <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
-                     <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">Kondisi Aset</h2>
+                     <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">Kondisi Aset {filterTitle}</h2>
                      <div className="h-80 mx-auto flex justify-center">
                         <Bar 
                             data={kondisiChartData}
@@ -152,3 +176,4 @@ const AsetDashboard = () => {
 };
 
 export default AsetDashboard;
+

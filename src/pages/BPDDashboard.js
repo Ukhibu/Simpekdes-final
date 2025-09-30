@@ -114,8 +114,6 @@ const BPDDashboard = () => {
 
     return (
         <div className="space-y-8">
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Dashboard BPD</h1>
-            
             {/* Kartu Statistik */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard 

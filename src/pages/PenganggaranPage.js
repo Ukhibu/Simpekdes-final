@@ -8,13 +8,30 @@ import InputField from '../components/common/InputField';
 import Modal from '../components/common/Modal';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import Button from '../components/common/Button';
-import { FiPlus, FiEdit, FiTrash2 } from 'react-icons/fi';
-import { DESA_LIST, BIDANG_BELANJA, KATEGORI_PENDAPATAN } from '../utils/constants';
+import { FiPlus, FiEdit, FiTrash2, FiTrendingUp, FiTrendingDown, FiDollarSign } from 'react-icons/fi';
+import { DESA_LIST, KATEGORI_PENDAPATAN, KATEGORI_BELANJA } from '../utils/constants';
+
+// Komponen Kartu Statistik
+const StatCard = ({ title, value, icon, colorClass }) => (
+    <div className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-md flex items-center gap-4">
+        <div className={`p-3 rounded-full text-white ${colorClass}`}>
+            {icon}
+        </div>
+        <div>
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+        </div>
+    </div>
+);
 
 const PenganggaranPage = () => {
     const { currentUser } = useAuth();
     const { showNotification } = useNotification();
+    
+    // State untuk data dari Firestore
     const [anggaranList, setAnggaranList] = useState([]);
+    const [transaksiList, setTransaksiList] = useState([]);
+    
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedAnggaran, setSelectedAnggaran] = useState(null);
@@ -24,35 +41,73 @@ const PenganggaranPage = () => {
     const [itemToDelete, setItemToDelete] = useState(null);
     const [filterTahun, setFilterTahun] = useState(new Date().getFullYear());
 
+    // Mengambil data Anggaran dan Realisasi (Transaksi) dari Firestore
     useEffect(() => {
         if (!currentUser || !currentUser.desa) {
             setLoading(false);
             return;
         }
 
-        const q = query(
-            collection(db, "anggaran"),
+        const baseQuery = (collectionName) => query(
+            collection(db, collectionName),
             where("desa", "==", currentUser.desa),
             where("tahunAnggaran", "==", Number(filterTahun))
         );
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setAnggaranList(list);
-            setLoading(false);
+        const unsubAnggaran = onSnapshot(baseQuery("anggaran"), (snapshot) => {
+            setAnggaranList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
 
-        return () => unsubscribe();
+        const unsubTransaksi = onSnapshot(baseQuery("keuangan"), (snapshot) => {
+            setTransaksiList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+
+        const timer = setTimeout(() => setLoading(false), 500); // Memberi waktu data untuk sinkron
+
+        return () => {
+            unsubAnggaran();
+            unsubTransaksi();
+            clearTimeout(timer);
+        };
     }, [currentUser, filterTahun]);
 
-    const { pendapatan, belanja } = useMemo(() => {
-        const pendapatan = anggaranList.filter(a => a.jenis === 'Pendapatan');
-        const belanja = BIDANG_BELANJA.map(bidangInfo => ({
-            ...bidangInfo,
-            items: anggaranList.filter(a => a.jenis === 'Belanja' && a.bidang === bidangInfo.bidang)
-        }));
-        return { pendapatan, belanja };
-    }, [anggaranList]);
+    // Mengolah data untuk ditampilkan di tabel dan kartu statistik
+    const { pendapatan, belanja, totalAnggaran, totalRealisasi, sisaAnggaran } = useMemo(() => {
+        const processData = (kategoriList, jenis) => {
+            const groupedByBidang = kategoriList.reduce((acc, kat) => {
+                if (!acc[kat.bidang]) acc[kat.bidang] = [];
+                const anggaranItems = anggaranList.filter(a => a.kategori === kat.nama && a.jenis === jenis);
+                if (anggaranItems.length > 0) {
+                    anggaranItems.forEach(item => {
+                        const realisasi = transaksiList
+                            .filter(t => t.kategori === item.kategori && t.jenis === jenis)
+                            .reduce((sum, t) => sum + t.jumlah, 0);
+                        acc[kat.bidang].push({ ...item, realisasi });
+                    });
+                }
+                return acc;
+            }, {});
+            return groupedByBidang;
+        };
+        
+        const pendapatanData = processData(KATEGORI_PENDAPATAN, 'Pendapatan');
+        const belanjaData = processData(KATEGORI_BELANJA, 'Belanja');
+
+        const totalAnggaranPendapatan = anggaranList.filter(a => a.jenis === 'Pendapatan').reduce((sum, a) => sum + a.jumlah, 0);
+        const totalRealisasiPendapatan = transaksiList.filter(t => t.jenis === 'Pendapatan').reduce((sum, t) => sum + t.jumlah, 0);
+        const totalAnggaranBelanja = anggaranList.filter(a => a.jenis === 'Belanja').reduce((sum, a) => sum + a.jumlah, 0);
+        const totalRealisasiBelanja = transaksiList.filter(t => t.jenis === 'Belanja').reduce((sum, t) => sum + t.jumlah, 0);
+
+        return {
+            pendapatan: pendapatanData,
+            belanja: belanjaData,
+            totalAnggaran: totalAnggaranPendapatan - totalAnggaranBelanja,
+            totalRealisasi: totalRealisasiPendapatan - totalRealisasiBelanja,
+            sisaAnggaran: (totalAnggaranPendapatan - totalAnggaranBelanja) - (totalRealisasiPendapatan - totalRealisasiBelanja)
+        };
+    }, [anggaranList, transaksiList]);
+    
+    const formatCurrency = (value) => `Rp ${new Intl.NumberFormat('id-ID').format(value || 0)}`;
 
     const handleOpenModal = (item = null) => {
         setSelectedAnggaran(item);
@@ -85,9 +140,12 @@ const PenganggaranPage = () => {
             updatedFormData.bidang = '';
         }
         
-        if (name === 'kategori' && formData.jenis === 'Belanja') {
-            const selectedBidang = BIDANG_BELANJA.find(b => b.nama === value);
-            updatedFormData.bidang = selectedBidang ? selectedBidang.bidang : '';
+        if (name === 'kategori') {
+            const allKategori = [...KATEGORI_PENDAPATAN, ...KATEGORI_BELANJA];
+            const selectedKat = allKategori.find(k => k.nama === value);
+            if (selectedKat) {
+                updatedFormData.bidang = selectedKat.bidang;
+            }
         }
 
         setFormData(updatedFormData);
@@ -102,6 +160,12 @@ const PenganggaranPage = () => {
                 jumlah: Number(formData.jumlah),
                 tahunAnggaran: Number(filterTahun)
             };
+            
+            if (!dataToSave.bidang || !dataToSave.kategori) {
+                showNotification("Kategori dan Bidang wajib diisi.", 'error');
+                setIsSubmitting(false);
+                return;
+            }
 
             if (selectedAnggaran) {
                 await updateDoc(doc(db, 'anggaran', selectedAnggaran.id), dataToSave);
@@ -138,53 +202,43 @@ const PenganggaranPage = () => {
         }
     };
 
-
-    const renderTable = (title, data, isBelanja = false) => (
-        <div>
-            <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">{title}</h3>
+    const kategoriOptions = formData.jenis === 'Pendapatan' ? KATEGORI_PENDAPATAN : KATEGORI_BELANJA;
+    
+    const renderTableSection = (title, data, colorClass) => (
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
+            <h3 className={`text-xl font-semibold ${colorClass} mb-4`}>{title}</h3>
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                    <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700 dark:text-gray-300">
+                    <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700">
                         <tr>
-                            <th className="px-6 py-3">Kategori / Nama Anggaran</th>
-                            <th className="px-6 py-3 text-right">Jumlah (Rp)</th>
-                            <th className="px-6 py-3 text-center">Aksi</th>
+                            <th className="px-4 py-3">Uraian</th>
+                            <th className="px-4 py-3 text-right">Anggaran (Rp)</th>
+                            <th className="px-4 py-3 text-right">Realisasi (Rp)</th>
+                            <th className="px-4 py-3 text-center">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {isBelanja ? (
-                            data.map((bidang, idx) => (
-                                <React.Fragment key={idx}>
-                                    <tr className="bg-gray-50 dark:bg-gray-700 font-bold">
-                                        <td colSpan="3" className="px-4 py-2 text-gray-800 dark:text-gray-200">{bidang.bidang}</td>
-                                    </tr>
-                                    {bidang.items.length > 0 ? bidang.items.map(item => (
-                                         <tr key={item.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700">
-                                             <td className="px-6 py-4 pl-8">{item.kategori}</td>
-                                             <td className="px-6 py-4 text-right">{Number(item.jumlah).toLocaleString('id-ID')}</td>
-                                             <td className="px-6 py-4 text-center flex justify-center gap-4">
-                                                 <button onClick={() => handleOpenModal(item)} className="text-blue-500 hover:text-blue-700"><FiEdit /></button>
-                                                 <button onClick={() => confirmDelete(item)} className="text-red-500 hover:text-red-700"><FiTrash2 /></button>
-                                             </td>
-                                         </tr>
-                                    )) : (
-                                        <tr><td colSpan="3" className="px-6 py-4 text-center text-gray-500 italic">Belum ada anggaran untuk bidang ini.</td></tr>
-                                    )}
-                                </React.Fragment>
-                            ))
-                        ) : (
-                             data.length > 0 ? data.map(item => (
-                                <tr key={item.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700">
-                                    <td className="px-6 py-4">{item.kategori}</td>
-                                    <td className="px-6 py-4 text-right">{Number(item.jumlah).toLocaleString('id-ID')}</td>
-                                    <td className="px-6 py-4 text-center flex justify-center gap-4">
-                                        <button onClick={() => handleOpenModal(item)} className="text-blue-500 hover:text-blue-700"><FiEdit /></button>
-                                        <button onClick={() => confirmDelete(item)} className="text-red-500 hover:text-red-700"><FiTrash2 /></button>
-                                    </td>
+                        {Object.keys(data).length > 0 ? Object.entries(data).map(([bidang, items]) => (
+                            <React.Fragment key={bidang}>
+                                <tr className="bg-gray-50 dark:bg-gray-700/50">
+                                    <td colSpan="4" className="px-4 py-2 font-bold text-gray-800 dark:text-gray-200">{bidang}</td>
                                 </tr>
-                            )) : (
-                                <tr><td colSpan="3" className="px-6 py-4 text-center text-gray-500 italic">Belum ada anggaran.</td></tr>
-                            )
+                                {items.map(item => (
+                                    <tr key={item.id} className="border-b dark:border-gray-700">
+                                        <td className="px-4 py-3 pl-8">{item.kategori}</td>
+                                        <td className="px-4 py-3 text-right">{formatCurrency(item.jumlah)}</td>
+                                        <td className="px-4 py-3 text-right">{formatCurrency(item.realisasi)}</td>
+                                        <td className="px-4 py-3 text-center">
+                                            <div className="flex justify-center gap-4">
+                                                <button onClick={() => handleOpenModal(item)} className="text-blue-500 hover:text-blue-700"><FiEdit /></button>
+                                                <button onClick={() => confirmDelete(item)} className="text-red-500 hover:text-red-700"><FiTrash2 /></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </React.Fragment>
+                        )) : (
+                            <tr><td colSpan="4" className="text-center py-6 italic text-gray-500">Belum ada data anggaran.</td></tr>
                         )}
                     </tbody>
                 </table>
@@ -193,7 +247,7 @@ const PenganggaranPage = () => {
     );
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-6">
             <div className="flex flex-wrap justify-between items-center gap-4">
                 <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Penganggaran APBDes</h1>
                 <div className="flex items-center gap-4">
@@ -203,10 +257,17 @@ const PenganggaranPage = () => {
             </div>
             
             {loading ? <Spinner /> : (
-                <div className="space-y-6">
-                    {renderTable("Anggaran Pendapatan", pendapatan)}
-                    {renderTable("Anggaran Belanja", belanja, true)}
-                </div>
+                <>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <StatCard title="Total Anggaran" value={formatCurrency(totalAnggaran)} icon={<FiDollarSign size={24} />} colorClass="bg-blue-500" />
+                        <StatCard title="Total Realisasi" value={formatCurrency(totalRealisasi)} icon={<FiTrendingUp size={24} />} colorClass="bg-yellow-500" />
+                        <StatCard title="Sisa Anggaran" value={formatCurrency(sisaAnggaran)} icon={<FiTrendingDown size={24} />} colorClass={sisaAnggaran >= 0 ? "bg-green-500" : "bg-red-500"} />
+                    </div>
+                    <div className="space-y-6">
+                        {renderTableSection("Anggaran Pendapatan", pendapatan, "text-green-600 dark:text-green-400")}
+                        {renderTableSection("Anggaran Belanja", belanja, "text-red-600 dark:text-red-400")}
+                    </div>
+                </>
             )}
 
             <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={selectedAnggaran ? "Edit Anggaran" : "Tambah Anggaran"}>
@@ -216,27 +277,17 @@ const PenganggaranPage = () => {
                         <option value="Belanja">Belanja</option>
                     </InputField>
 
-                    {formData.jenis === 'Pendapatan' ? (
-                        <InputField key="pendapatan-select" label="Kategori Pendapatan" name="kategori" type="select" value={formData.kategori || ''} onChange={handleFormChange} required>
-                            <option value="">Pilih Kategori</option>
-                            {KATEGORI_PENDAPATAN.map(k => <option key={k} value={k}>{k}</option>)}
-                        </InputField>
-                    ) : (
-                         <InputField key="belanja-select" label="Kategori Belanja" name="kategori" type="select" value={formData.kategori || ''} onChange={handleFormChange} required>
-                            <option value="">Pilih Kategori Belanja</option>
-                            {BIDANG_BELANJA.map((item, index) => (
-                                <option key={index} value={item.nama}>
-                                    {item.nama}
-                                </option>
-                            ))}
-                        </InputField>
-                    )}
+                    <InputField label="Kategori" name="kategori" type="select" value={formData.kategori || ''} onChange={handleFormChange} required>
+                        <option value="">-- Pilih Kategori --</option>
+                        {kategoriOptions.map(k => <option key={k.nama} value={k.nama}>{k.nama}</option>)}
+                    </InputField>
                     
+                    <InputField label="Bidang" name="bidang" type="text" value={formData.bidang || ''} onChange={handleFormChange} disabled placeholder="Akan terisi otomatis"/>
                     <InputField label="Jumlah (Rp)" name="jumlah" type="number" value={formData.jumlah || ''} onChange={handleFormChange} required />
 
-                    <div className="flex justify-end pt-4 border-t dark:border-gray-700">
-                        <Button type="button" variant="secondary" onClick={handleCloseModal} className="mr-2">Batal</Button>
-                        <Button type="submit" isLoading={isSubmitting}>{selectedAnggaran ? "Simpan Perubahan" : "Simpan"}</Button>
+                    <div className="flex justify-end pt-4 border-t dark:border-gray-700 gap-2">
+                        <Button type="button" variant="secondary" onClick={handleCloseModal} disabled={isSubmitting}>Batal</Button>
+                        <Button type="submit" variant="primary" isLoading={isSubmitting}>{selectedAnggaran ? "Simpan Perubahan" : "Simpan"}</Button>
                     </div>
                 </form>
             </Modal>
@@ -249,10 +300,8 @@ const PenganggaranPage = () => {
                 title="Konfirmasi Hapus Anggaran"
                 message={`Anda yakin ingin menghapus anggaran "${itemToDelete?.kategori}"?`}
             />
-
         </div>
     );
 };
 
 export default PenganggaranPage;
-

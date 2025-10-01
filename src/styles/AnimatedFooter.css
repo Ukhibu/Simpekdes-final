@@ -2,6 +2,7 @@
  * Perbaikan pada AnimatedFooter.css
  * - Menggunakan animasi gradien "glow-move" yang modern dan dinamis.
  * - Memastikan footer selalu terlihat baik di mode terang maupun gelap.
+ * - Memperbaiki penempatan agar tidak mengganggu konten utama.
  */
 .animated-footer {
   position: absolute;
@@ -12,6 +13,8 @@
   text-align: center;
   font-size: 0.8rem;
   z-index: 10;
+  /* Tambahkan sedikit latar belakang transparan untuk keterbacaan */
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0));
 }
 
 .footer-content {
@@ -28,7 +31,6 @@
   /*
    * Efek Teks Gradien Animasi (Glow Bergerak)
    * Teks dibuat transparan dan gradien di belakangnya dianimasikan.
-   * Ini memastikan teks selalu terlihat di berbagai latar belakang.
    */
   background-image: linear-gradient(
     -225deg,
@@ -41,14 +43,9 @@
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: glow-move 4s linear infinite;
+  animation: glow-move 5s linear infinite;
   font-weight: 500; /* Sedikit lebih tebal agar gradien terlihat */
   text-shadow: 0 0 5px rgba(0, 0, 0, 0.5); /* Shadow agar lebih terbaca di background terang */
-}
-
-/* Penyesuaian shadow untuk dark mode jika diperlukan */
-.dark .footer-content span {
-    text-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
 }
 
 .contact-info {
@@ -72,6 +69,7 @@
 @media (max-width: 768px) {
   .footer-content {
     flex-direction: column;
+    justify-content: center;
     gap: 0.5rem;
   }
 }

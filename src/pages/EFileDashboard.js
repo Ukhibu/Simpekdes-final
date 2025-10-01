@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { collection, query, onSnapshot, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/common/Spinner';
-import { FiFile, FiFolder, FiCheckSquare, FiFileText, FiArrowRight } from 'react-icons/fi';
+import { FiFile, FiFolder, FiCheckSquare, FiArrowRight, FiUsers, FiBriefcase, FiAward, FiHeart, FiHome } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
+import { useFirestoreCollection } from '../hooks/useFirestoreCollection';
 
+// Komponen Kartu Statistik
 const StatCard = ({ icon, title, value, colorClass }) => (
     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md flex items-center space-x-4">
         <div className={`p-3 rounded-full ${colorClass}`}>
@@ -18,69 +20,79 @@ const StatCard = ({ icon, title, value, colorClass }) => (
     </div>
 );
 
+// [BARU] Komponen Kartu Akses Cepat
+const QuickAccessCard = ({ icon, title, path, count, colorClass }) => {
+    const navigate = useNavigate();
+    return (
+        <div 
+            onClick={() => navigate(path)}
+            className="group bg-white dark:bg-gray-800 p-5 rounded-xl shadow-md hover:shadow-lg hover:border-blue-500 dark:hover:border-blue-500 border border-transparent transition-all duration-300 cursor-pointer flex justify-between items-center"
+        >
+            <div className="flex items-center space-x-4">
+                <div className={`p-3 rounded-full ${colorClass}`}>
+                    {icon}
+                </div>
+                <div>
+                    <h4 className="font-bold text-gray-800 dark:text-gray-100">{title}</h4>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{count} dokumen</p>
+                </div>
+            </div>
+            <FiArrowRight className="w-5 h-5 text-gray-400 dark:text-gray-500 group-hover:text-blue-500 transition-colors" />
+        </div>
+    );
+};
+
 
 const EFileDashboard = () => {
     const { currentUser } = useAuth();
-    const [skDocs, setSkDocs] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
+    // Menggunakan custom hook untuk mengambil data
+    const { data: skDocs, loading } = useFirestoreCollection('efile');
     const navigate = useNavigate();
 
-    useEffect(() => {
-        if (!currentUser) {
-            setLoading(false);
-            return;
-        };
+    // Kalkulasi statistik dan data untuk kartu
+    const { stats, skCounts } = useMemo(() => {
+        const data = currentUser.role === 'admin_desa' 
+            ? skDocs.filter(doc => doc.desa === currentUser.desa)
+            : skDocs;
 
-        let q;
-        const collectionRef = collection(db, "efile"); 
-        
-        if (currentUser.role === 'admin_kecamatan') {
-            q = query(collectionRef);
-        } else if (currentUser.role === 'admin_desa' && currentUser.desa) {
-            q = query(collectionRef, where("desa", "==", currentUser.desa));
-        } else {
-            setLoading(false);
-            setError("Tidak dapat memuat data karena peran atau data desa tidak valid.");
-            return;
-        }
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            setSkDocs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            setLoading(false);
-            setError('');
-        }, (err) => {
-            console.error("Firebase Snapshot Error:", err);
-            setError("Gagal memuat data. Periksa koneksi atau hak akses Anda.");
-            setLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, [currentUser]);
-
-    const stats = useMemo(() => {
-        const totalDokumen = skDocs.length;
-        // --- FIX: Mengganti placeholder dengan kalkulasi dinamis ---
-        const dokumenTerverifikasi = skDocs.filter(doc => doc.status === 'terverifikasi').length;
+        const totalDokumen = data.length;
+        const dokumenTerverifikasi = data.filter(doc => doc.status === 'terverifikasi').length;
         
         const folderDigunakan = currentUser.role === 'admin_kecamatan' 
-            ? new Set(skDocs.map(doc => doc.desa)).size
+            ? new Set(data.map(doc => doc.desa)).size
             : (totalDokumen > 0 ? 1 : 0);
 
-        return { totalDokumen, dokumenTerverifikasi, folderDigunakan };
-    }, [skDocs, currentUser.role]);
-    
-    const handleNavigateToManage = () => {
-        navigate('/app/efile/manage');
-    };
+        // [BARU] Menghitung jumlah SK per tipe
+        const counts = {
+            perangkat: data.filter(d => d.skType === 'perangkat').length,
+            bpd: data.filter(d => d.skType === 'bpd').length,
+            lpm: data.filter(d => d.skType === 'lpm').length,
+            pkk: data.filter(d => d.skType === 'pkk').length,
+            karang_taruna: data.filter(d => d.skType === 'karang_taruna').length,
+            rt_rw: data.filter(d => d.skType === 'rt_rw').length,
+        };
+
+        return { 
+            stats: { totalDokumen, dokumenTerverifikasi, folderDigunakan },
+            skCounts: counts
+        };
+    }, [skDocs, currentUser]);
 
     if (loading) return <Spinner />;
+
+    // [BARU] Daftar untuk kartu akses cepat
+    const quickAccessItems = [
+        { icon: <FiUsers className="w-5 h-5 text-white" />, title: "SK Perangkat Desa", path: "/app/data-sk/perangkat", count: skCounts.perangkat, color: "bg-blue-500" },
+        { icon: <FiBriefcase className="w-5 h-5 text-white" />, title: "SK BPD", path: "/app/data-sk/bpd", count: skCounts.bpd, color: "bg-green-500" },
+        { icon: <FiAward className="w-5 h-5 text-white" />, title: "SK LPM", path: "/app/data-sk/lpm", count: skCounts.lpm, color: "bg-indigo-500" },
+        { icon: <FiHeart className="w-5 h-5 text-white" />, title: "SK PKK", path: "/app/data-sk/pkk", count: skCounts.pkk, color: "bg-pink-500" },
+        { icon: <FiUsers className="w-5 h-5 text-white" />, title: "SK Karang Taruna", path: "/app/data-sk/karang_taruna", count: skCounts.karang_taruna, color: "bg-purple-500" },
+        { icon: <FiHome className="w-5 h-5 text-white" />, title: "SK RT/RW", path: "/app/data-sk/rt_rw", count: skCounts.rt_rw, color: "bg-yellow-500" },
+    ];
 
     return (
         <div className="space-y-8">
             
-            {error && <p className="text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-lg">{error}</p>}
-
             {/* Kartu Statistik */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <StatCard 
@@ -105,30 +117,24 @@ const EFileDashboard = () => {
                  )}
             </div>
 
-            {/* Kartu Navigasi ke Manajemen SK */}
-            <div 
-              onClick={handleNavigateToManage}
-              className="group bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md hover:shadow-lg hover:bg-blue-50 dark:hover:bg-blue-900/40 transition-all duration-300 cursor-pointer"
-            >
-                <div className="flex justify-between items-center">
-                    <div className="flex items-center space-x-4">
-                        <div className="p-3 bg-blue-100 dark:bg-blue-800/50 rounded-full">
-                            <FiFileText className="w-7 h-7 text-blue-600 dark:text-blue-300" />
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Manajemen SK</h2>
-                            <p className="text-gray-600 dark:text-gray-300">
-                                Lihat, unggah, dan kelola semua dokumen Surat Keputusan.
-                            </p>
-                        </div>
-                    </div>
-                    <FiArrowRight className="w-6 h-6 text-gray-400 dark:text-gray-500 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors" />
+            {/* [PERBAIKAN] Kartu navigasi diganti dengan grid akses cepat */}
+            <div>
+                <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">Akses Cepat Data SK</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {quickAccessItems.map(item => (
+                        <QuickAccessCard 
+                            key={item.path}
+                            icon={item.icon}
+                            title={item.title}
+                            path={item.path}
+                            count={item.count}
+                            colorClass={item.color}
+                        />
+                    ))}
                 </div>
             </div>
-
         </div>
     );
 };
 
 export default EFileDashboard;
-

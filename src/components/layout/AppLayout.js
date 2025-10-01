@@ -3,9 +3,9 @@ import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
 
-// Fungsi ini menentukan judul halaman dan modul mana yang aktif
+// [PERBAIKAN] Fungsi ini diperbarui untuk mengenali semua rute, termasuk E-File sebagai modul terpisah
 const getPageContext = (pathname) => {
-    // Modul Organisasi Desa (termasuk semua sub-modulnya)
+    // Modul Organisasi Desa
     if (
         pathname.startsWith('/app/bpd') ||
         pathname.startsWith('/app/lpm') ||
@@ -37,6 +37,7 @@ const getPageContext = (pathname) => {
         }
     }
 
+    // Modul Keuangan
     if (pathname.startsWith('/app/keuangan')) {
         switch (pathname) {
             case '/app/keuangan': return { module: 'keuangan', title: 'Dashboard Keuangan Desa' };
@@ -47,21 +48,32 @@ const getPageContext = (pathname) => {
         }
     }
     
+    // Modul Aset
     if (pathname.startsWith('/app/aset')) {
         switch(pathname) {
             case '/app/aset': return { module: 'aset', title: 'Dashboard Aset Desa' };
             case '/app/aset/manajemen': return { module: 'aset', title: 'Manajemen Aset (KIB)' };
-            // --- Logika Baru ---
             case '/app/aset/peta': return { module: 'aset', title: 'Peta Aset Desa' };
             default: return { module: 'aset', title: 'Manajemen Aset Desa' };
         }
     }
 
-    if (pathname.startsWith('/app/efile')) {
-        if (pathname === '/app/efile') return { module: 'efile', title: 'Dashboard E-File' };
-        return { module: 'efile', title: 'Manajemen SK' };
+    // [BARU] Modul E-File / Arsip Digital
+    if (pathname.startsWith('/app/efile') || pathname.startsWith('/app/manajemen-sk') || pathname.startsWith('/app/data-sk')) {
+        const titleMap = {
+            '/app/efile': 'Dashboard Arsip Digital',
+            '/app/manajemen-sk': 'Manajemen Unggah SK',
+            '/app/data-sk/perangkat': 'Data SK Perangkat Desa',
+            '/app/data-sk/bpd': 'Data SK BPD',
+            '/app/data-sk/lpm': 'Data SK LPM',
+            '/app/data-sk/pkk': 'Data SK PKK',
+            '/app/data-sk/karang_taruna': 'Data SK Karang Taruna',
+            '/app/data-sk/rt_rw': 'Data SK RT/RW',
+        };
+        return { module: 'efile', title: titleMap[pathname] || 'Arsip Digital' };
     }
     
+    // Modul Pemerintahan (Default)
     switch (pathname) {
         case '/app': return { module: 'perangkat', title: 'Dashboard' };
         case '/app/perangkat': return { module: 'perangkat', title: 'Manajemen Data Perangkat' };
@@ -74,7 +86,7 @@ const getPageContext = (pathname) => {
     }
 };
 
-const AppLayout = () => {
+const AppLayout = ({ children }) => {
     const location = useLocation();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const { module, subModule, title } = getPageContext(location.pathname);

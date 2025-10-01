@@ -19,9 +19,12 @@ import RekapitulasiAparatur from './pages/RekapitulasiAparatur';
 import LaporanPage from './pages/LaporanPage';
 import ManajemenAdmin from './pages/ManajemenAdmin';
 import PengaturanAplikasi from './pages/PengaturanAplikasi';
-import EFileDashboard from './pages/EFileDashboard';
-import EFilePage from './pages/EFilePage';
 import KalenderKegiatanPage from './pages/KalenderKegiatanPage';
+
+// [PERBAIKAN] Halaman Modul E-File yang baru
+import EFileDashboard from './pages/EFileDashboard';
+import ManajemenSK from './pages/ManajemenSK';
+import DataSK from './pages/DataSK';
 
 // Modul Keuangan
 import KeuanganDashboard from './pages/KeuanganDashboard';
@@ -32,7 +35,7 @@ import LaporanRealisasiPage from './pages/LaporanRealisasiPage';
 // Modul Aset
 import AsetDashboard from './pages/AsetDashboard';
 import AsetDesa from './pages/AsetDesa';
-import PetaAsetPage from './pages/PetaAsetPage'; // <-- Impor baru
+import PetaAsetPage from './pages/PetaAsetPage';
 
 // Halaman Modul Organisasi Desa
 import OrganisasiDesaHub from './pages/OrganisasiDesaHub';
@@ -85,6 +88,7 @@ function App() {
                 <Route path="pengaturan" element={<PengaturanAplikasi />} />
                 <Route path="laporan" element={<LaporanPage />} />
                 
+                {/* Organisasi Desa */}
                 <Route path="bpd" element={<BPDDashboard />} />
                 <Route path="bpd/data" element={<BPDPage />} />
                 <Route path="bpd/berita-acara" element={<BeritaAcaraBPDPage />} />
@@ -99,16 +103,22 @@ function App() {
                 <Route path="karang-taruna/kegiatan" element={<KarangTarunaKegiatanPage />} />
                 <Route path="rt-rw" element={<RtRwDashboard />} />
                 <Route path="rt-rw/data" element={<RtRwPage />} />
+                
+                {/* [PERBAIKAN] Rute Baru untuk Modul E-File Mandiri */}
                 <Route path="efile" element={<EFileDashboard />} />
-                <Route path="efile/manage" element={<EFilePage />} />
+                <Route path="manajemen-sk" element={<ManajemenSK />} />
+                <Route path="data-sk/:skType" element={<DataSK />} />
+
+                {/* Keuangan */}
                 <Route path="keuangan" element={<KeuanganDashboard />} />
                 <Route path="keuangan/penganggaran" element={<PenganggaranPage />} />
                 <Route path="keuangan/penatausahaan" element={<PenatausahaanPage />} />
                 <Route path="keuangan/laporan" element={<LaporanRealisasiPage />} />
                 
+                {/* Aset */}
                 <Route path="aset" element={<AsetDashboard />} />
                 <Route path="aset/manajemen" element={<AsetDesa />} />
-                <Route path="aset/peta" element={<PetaAsetPage />} /> {/* <-- Rute baru */}
+                <Route path="aset/peta" element={<PetaAsetPage />} />
 
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

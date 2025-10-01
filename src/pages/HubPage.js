@@ -11,6 +11,8 @@ import {
 } from 'react-icons/fi';
 import '../styles/HubPage.css';
 import AnimatedFooter from '../components/common/AnimatedFooter';
+// [PERBAIKAN] Impor komponen partikel yang baru dan teroptimasi
+import ParticleBackground from '../components/common/ParticleBackground';
 
 const HubPage = () => {
     const { currentUser, loading: authLoading } = useAuth();
@@ -21,72 +23,7 @@ const HubPage = () => {
     const [isMenuLocked, setIsMenuLocked] = useState(false);
     const [isTitleVisible, setIsTitleVisible] = useState(true);
 
-    // Efek untuk memuat dan menginisialisasi particles.js
-    useEffect(() => {
-        const scriptId = 'particles-js-script';
-        
-        // Cek jika script sudah ada untuk menghindari duplikasi saat hot-reloading
-        if (document.getElementById(scriptId)) return;
-
-        const script = document.createElement('script');
-        script.id = scriptId;
-        script.src = "https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js";
-        script.async = true;
-        script.onload = () => {
-            if (window.particlesJS) {
-                window.particlesJS('particles-js-container', {
-                    "particles": {
-                        "number": {
-                            "value": 120,
-                            "density": { "enable": true, "value_area": 800 }
-                        },
-                        "color": { "value": "#ffffff" },
-                        "shape": { "type": "circle" },
-                        "opacity": {
-                            "value": 0.5,
-                            "random": true,
-                            "anim": { "enable": true, "speed": 1, "opacity_min": 0.1, "sync": false }
-                        },
-                        "size": { "value": 2.5, "random": true },
-                        "line_linked": {
-                            "enable": true, "distance": 150, "color": "#ffffff", "opacity": 0.2, "width": 1
-                        },
-                        "move": {
-                            "enable": true, "speed": 1.5, "direction": "none", "random": true,
-                            "straight": false, "out_mode": "out", "bounce": false
-                        }
-                    },
-                    "interactivity": {
-                        "detect_on": "canvas",
-                        "events": {
-                            "onhover": { "enable": true, "mode": "repulse" },
-                            "onclick": { "enable": true, "mode": "push" },
-                            "resize": true
-                        },
-                        "modes": {
-                            "repulse": { "distance": 100, "duration": 0.4 },
-                            "push": { "particles_nb": 4 }
-                        }
-                    },
-                    "retina_detect": true
-                });
-            }
-        };
-        document.body.appendChild(script);
-
-        // Fungsi cleanup untuk menghapus script dan canvas saat komponen dilepas
-        return () => {
-            if (document.body.contains(script)) {
-                document.body.removeChild(script);
-            }
-            // Hancurkan instance particles.js untuk membersihkan event listeners dan loop animasi
-            if (window.pJSDom && window.pJSDom.length > 0) {
-                window.pJSDom[0].pJS.fn.vendors.destroypJS();
-                window.pJSDom = [];
-            }
-        };
-    }, []);
-
+    // [PERBAIKAN] Logika particles.js yang lama dihapus
 
     const handleLogout = async () => {
         try {
@@ -132,13 +69,13 @@ const HubPage = () => {
 
     return (
         <div className="hub-container" onClick={handleBackdropClick}>
-            {/* Lapisan Latar Belakang */}
             <div className="hub-background-layers">
                 <div 
                     className="background-image" 
                     style={{ backgroundImage: `url(${branding.hubBackgroundUrl})` }}
                 />
-                <div id="particles-js-container" className="particle-canvas"></div>
+                {/* [PERBAIKAN] Menggunakan komponen ParticleBackground */}
+                <ParticleBackground />
             </div>
 
             <header className="hub-header">
@@ -181,3 +118,4 @@ const HubPage = () => {
 };
 
 export default HubPage;
+

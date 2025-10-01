@@ -12,7 +12,8 @@
 }
 
 /* --- Canvas Partikel --- */
-#particle-canvas {
+/* [PERBAIKAN] Mengganti ID menjadi class */
+.particle-canvas {
     position: fixed;
     top: 0;
     left: 0;
@@ -94,7 +95,6 @@
 
 .menu-grid {
     display: grid;
-    /* PERBAIKAN: Tata letak grid yang responsif */
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 2rem;
     width: 100%;
@@ -112,12 +112,12 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    aspect-ratio: 1 / 1; /* Membuat item menjadi lingkaran sempurna */
+    aspect-ratio: 1 / 1;
     background-color: rgba(30, 41, 59, 0.7);
-    border: 2px solid #334155; /* slate-700 */
+    border: 2px solid #334155;
     border-radius: 50%;
     text-decoration: none;
-    color: #cbd5e1; /* slate-300 */
+    color: #cbd5e1;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
@@ -129,7 +129,7 @@
 .menu-item-circle:hover {
     transform: translateY(-8px) scale(1.05);
     background-color: rgba(51, 65, 85, 0.9);
-    border-color: #0ea5e9; /* sky-500 */
+    border-color: #0ea5e9;
     color: #ffffff;
     box-shadow: 0 0 25px rgba(14, 165, 233, 0.5);
 }
@@ -157,7 +157,6 @@
 
 .instruction-text {
     font-size: 0.875rem;
-    color: #64748b; /* slate-500 */
+    color: #64748b;
     margin-bottom: 1rem;
 }
-

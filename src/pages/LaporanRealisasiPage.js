@@ -1,297 +1,299 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
-import { collection, query, where, onSnapshot, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, getDocs, doc, getDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import Spinner from '../components/common/Spinner';
-import InputField from '../components/common/InputField';
-import Button from '../components/common/Button';
-import { FiDownload } from 'react-icons/fi';
 import { DESA_LIST, BIDANG_BELANJA, KATEGORI_PENDAPATAN } from '../utils/constants';
-import ExcelJS from 'exceljs';
-import { saveAs } from 'file-saver';
+import { FiDownload, FiFilter } from 'react-icons/fi';
+import Spinner from '../components/common/Spinner';
+import Button from '../components/common/Button';
+import InputField from '../components/common/InputField';
+import { generateRealisasiXLSX } from '../utils/generateRealisasiXLSX';
 
-const LaporanRealisasiPage = () => {
-    const { currentUser } = useAuth();
-    const [anggaranList, setAnggaranList] = useState([]);
-    const [transaksiList, setTransaksiList] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [filterTahun, setFilterTahun] = useState(new Date().getFullYear());
-    const [filterDesa, setFilterDesa] = useState(currentUser.role === 'admin_desa' ? currentUser.desa : 'all');
-    
-    const [allPerangkat, setAllPerangkat] = useState([]);
-    const [exportConfig, setExportConfig] = useState(null);
+// --- Helper Function ---
+const formatRupiah = (number) => {
+    return new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+    }).format(number || 0);
+};
 
-    useEffect(() => {
-        const fetchData = async () => {
-            if (!currentUser || (currentUser.role === 'admin_kecamatan' && filterDesa === 'all')) {
-                setAnggaranList([]);
-                setTransaksiList([]);
-                setLoading(false);
-                return;
-            }
+// --- Komponen Pratinjau ---
+const LaporanRealisasiPreview = ({ data, desa, tahun }) => {
+    if (!data || (Object.keys(data.pendapatan).length === 0 && Object.keys(data.belanja).length === 0)) {
+        return <p className="text-center text-gray-500 dark:text-gray-400 mt-8">Tidak ada data untuk ditampilkan pada {desa} tahun {tahun}.</p>;
+    }
 
-            setLoading(true);
-            const desa = currentUser.role === 'admin_desa' ? currentUser.desa : filterDesa;
-            const tahun = Number(filterTahun);
+    let totalAnggaranPendapatan = 0;
+    let totalRealisasiPendapatan = 0;
+    let totalAnggaranBelanja = 0;
+    let totalRealisasiBelanja = 0;
 
-            const anggaranQuery = query(
-                collection(db, "anggaran"),
-                where("desa", "==", desa),
-                where("tahunAnggaran", "==", tahun)
-            );
-            const transaksiQuery = query(
-                collection(db, "keuangan"),
-                where("desa", "==", desa),
-                where("tahunAnggaran", "==", tahun)
-            );
+    const renderSection = (title, sectionData, isBelanja = false) => {
+        let sectionAnggaran = 0;
+        let sectionRealisasi = 0;
 
-            const unsubAnggaran = onSnapshot(anggaranQuery, snapshot => {
-                setAnggaranList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            });
-            const unsubTransaksi = onSnapshot(transaksiQuery, snapshot => {
-                setTransaksiList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            });
-
-            try {
-                const exportRef = doc(db, 'settings', 'exportConfig');
-                const exportSnap = await getDoc(exportRef);
-                if (exportSnap.exists()) setExportConfig(exportSnap.data());
-
-                const perangkatQuery = query(collection(db, 'perangkat'));
-                const perangkatSnap = await getDocs(perangkatQuery);
-                setAllPerangkat(perangkatSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-            } catch (error) {
-                console.error("Gagal mengambil data ekspor:", error);
-            }
-
-            setLoading(false);
-            return () => {
-                unsubAnggaran();
-                unsubTransaksi();
-            };
-        };
-        fetchData();
-    }, [currentUser, filterTahun, filterDesa]);
-
-    const laporanData = useMemo(() => {
-        const data = { pendapatan: [], belanja: [] };
-
-        // --- PERBAIKAN: Gunakan kategori.nama bukan seluruh objek ---
-        KATEGORI_PENDAPATAN.forEach(kategori => {
-            const anggaran = anggaranList.find(a => a.kategori === kategori.nama && a.jenis === 'Pendapatan');
-            const realisasi = transaksiList
-                .filter(t => t.kategori === kategori.nama && t.jenis === 'Pemasukan')
-                .reduce((sum, t) => sum + Number(t.jumlah), 0);
-            data.pendapatan.push({ kategori: kategori.nama, anggaran: anggaran?.jumlah || 0, realisasi });
-        });
-        
-        BIDANG_BELANJA.forEach(item => {
-             const anggaran = anggaranList.find(a => a.kategori === item.nama && a.jenis === 'Belanja');
-             const realisasi = transaksiList
-                .filter(t => t.kategori === item.nama && t.jenis === 'Pengeluaran')
-                .reduce((sum, t) => sum + Number(t.jumlah), 0);
-            data.belanja.push({ kategori: item.nama, bidang: item.bidang, anggaran: anggaran?.jumlah || 0, realisasi });
-        });
-
-        return data;
-    }, [anggaranList, transaksiList]);
-
-    const handleExport = async () => {
-        if (filterDesa === 'all') {
-            alert("Silakan pilih desa terlebih dahulu untuk mengekspor laporan.");
-            return;
-        }
-
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Laporan Realisasi');
-
-        const titleStyle = { font: { name: 'Arial', size: 14, bold: true }, alignment: { horizontal: 'center' } };
-        const headerStyle = { font: { bold: true }, alignment: { horizontal: 'center' }, border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: {style: 'thin'}, right: {style: 'thin'} } };
-        const cellStyle = { border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: {style: 'thin'}, right: {style: 'thin'} } };
-        const numberStyle = { ...cellStyle, numFmt: '"Rp"#,##0.00;[Red]-"Rp"#,##0.00' };
-        const boldStyle = { font: { bold: true } };
-
-        worksheet.mergeCells('A1:F1');
-        worksheet.getCell('A1').value = `LAPORAN REALISASI ANGGARAN PENDAPATAN DAN BELANJA DESA`;
-        worksheet.getCell('A1').style = titleStyle;
-        worksheet.mergeCells('A2:F2');
-        worksheet.getCell('A2').value = `DESA ${filterDesa.toUpperCase()} TAHUN ANGGARAN ${filterTahun}`;
-        worksheet.getCell('A2').alignment = { horizontal: 'center' };
-        
-        let currentRow = 4;
-        worksheet.getRow(currentRow).values = ['KODE REKENING', 'URAIAN', 'ANGGARAN (Rp)', 'REALISASI (Rp)', 'LEBIH / KURANG (Rp)', 'PERSENTASE (%)'];
-        worksheet.getRow(currentRow).eachCell(cell => cell.style = headerStyle);
-        currentRow++;
-
-        worksheet.getCell(`B${currentRow}`).value = 'PENDAPATAN';
-        worksheet.getCell(`B${currentRow}`).font = { bold: true };
-        let totalAnggaranPendapatan = 0;
-        let totalRealisasiPendapatan = 0;
-
-        laporanData.pendapatan.forEach(item => {
-            totalAnggaranPendapatan += item.anggaran;
-            totalRealisasiPendapatan += item.realisasi;
-            const selisih = item.realisasi - item.anggaran;
-            const persentase = item.anggaran > 0 ? (item.realisasi / item.anggaran) : 0;
-            worksheet.getRow(currentRow).values = [null, `  ${item.kategori}`, item.anggaran, item.realisasi, selisih, persentase];
-            worksheet.getRow(currentRow).getCell('C').style = numberStyle;
-            worksheet.getRow(currentRow).getCell('D').style = numberStyle;
-            worksheet.getRow(currentRow).getCell('E').style = numberStyle;
-            worksheet.getRow(currentRow).getCell('F').style = {...cellStyle, numFmt: '0.00%'};
-            worksheet.getRow(currentRow).getCell('B').style = cellStyle;
-            currentRow++;
-        });
-        
-        worksheet.getRow(currentRow).values = [null, 'JUMLAH PENDAPATAN', totalAnggaranPendapatan, totalRealisasiPendapatan, totalRealisasiPendapatan - totalAnggaranPendapatan];
-        worksheet.getRow(currentRow).eachCell(cell => cell.style = {...cellStyle, ...boldStyle});
-        worksheet.getRow(currentRow).getCell('C').style = {...numberStyle, ...boldStyle};
-        worksheet.getRow(currentRow).getCell('D').style = {...numberStyle, ...boldStyle};
-        worksheet.getRow(currentRow).getCell('E').style = {...numberStyle, ...boldStyle};
-        currentRow+=2;
-
-        worksheet.getCell(`B${currentRow}`).value = 'BELANJA';
-        worksheet.getCell(`B${currentRow}`).font = { bold: true };
-        let totalAnggaranBelanja = 0;
-        let totalRealisasiBelanja = 0;
-        
-        const belanjaByBidang = BIDANG_BELANJA.reduce((acc, curr) => {
-            const items = laporanData.belanja.filter(b => b.bidang === curr.bidang);
-            if (items.some(i => i.anggaran > 0 || i.realisasi > 0)) {
-                acc[curr.bidang] = items;
-            }
-            return acc;
-        }, {});
-
-        Object.keys(belanjaByBidang).forEach(bidang => {
-            worksheet.getRow(currentRow).values = [null, bidang];
-            worksheet.getRow(currentRow).getCell('B').style = {...cellStyle, font: {italic: true}};
-            currentRow++;
+        const rows = Object.entries(sectionData).flatMap(([bidang, items]) => {
+            if (items.length === 0) return [];
             
-            belanjaByBidang[bidang].forEach(item => {
-                totalAnggaranBelanja += item.anggaran;
-                totalRealisasiBelanja += item.realisasi;
-                const selisih = item.realisasi - item.anggaran;
-                const persentase = item.anggaran > 0 ? (item.realisasi / item.anggaran) : 0;
-                worksheet.getRow(currentRow).values = [null, `  ${item.kategori}`, item.anggaran, item.realisasi, selisih, persentase];
-                worksheet.getRow(currentRow).getCell('C').style = numberStyle;
-                worksheet.getRow(currentRow).getCell('D').style = numberStyle;
-                worksheet.getRow(currentRow).getCell('E').style = numberStyle;
-                worksheet.getRow(currentRow).getCell('F').style = {...cellStyle, numFmt: '0.00%'};
-                worksheet.getRow(currentRow).getCell('B').style = cellStyle;
-                currentRow++;
-            });
+            const bidangAnggaran = items.reduce((acc, item) => acc + item.anggaran, 0);
+            const bidangRealisasi = items.reduce((acc, item) => acc + item.realisasi, 0);
+
+            sectionAnggaran += bidangAnggaran;
+            sectionRealisasi += bidangRealisasi;
+
+            return [
+                <tr key={bidang} className="bg-gray-50 dark:bg-gray-700">
+                    <td colSpan="5" className="px-4 py-2 font-bold text-gray-800 dark:text-gray-200">{bidang}</td>
+                </tr>,
+                ...items.map((item, index) => {
+                    const sisa = item.anggaran - item.realisasi;
+                    const persentase = item.anggaran > 0 ? (item.realisasi / item.anggaran) * 100 : 0;
+                    return (
+                        <tr key={`${bidang}-${index}`} className="border-b dark:border-gray-700">
+                            <td className="pl-8 pr-4 py-2">{item.kategori}</td>
+                            <td className="px-4 py-2 text-right">{formatRupiah(item.anggaran)}</td>
+                            <td className="px-4 py-2 text-right">{formatRupiah(item.realisasi)}</td>
+                            <td className="px-4 py-2 text-right">{formatRupiah(sisa)}</td>
+                            <td className="px-4 py-2 text-center">{persentase.toFixed(2)}%</td>
+                        </tr>
+                    );
+                })
+            ];
         });
-        
-        worksheet.getRow(currentRow).values = [null, 'JUMLAH BELANJA', totalAnggaranBelanja, totalRealisasiBelanja, totalRealisasiBelanja - totalAnggaranBelanja];
-        worksheet.getRow(currentRow).eachCell(cell => cell.style = {...cellStyle, ...boldStyle});
-        worksheet.getRow(currentRow).getCell('C').style = {...numberStyle, ...boldStyle};
-        worksheet.getRow(currentRow).getCell('D').style = {...numberStyle, ...boldStyle};
-        worksheet.getRow(currentRow).getCell('E').style = {...numberStyle, ...boldStyle};
-        currentRow++;
 
-        const surplusDefisitAnggaran = totalAnggaranPendapatan - totalAnggaranBelanja;
-        const surplusDefisitRealisasi = totalRealisasiPendapatan - totalRealisasiBelanja;
-        worksheet.getRow(currentRow).values = [null, 'SURPLUS / (DEFISIT)', surplusDefisitAnggaran, surplusDefisitRealisasi, surplusDefisitRealisasi - surplusDefisitAnggaran];
-        worksheet.getRow(currentRow).eachCell(cell => cell.style = {...cellStyle, ...boldStyle});
-        worksheet.getRow(currentRow).getCell('C').style = {...numberStyle, ...boldStyle};
-        worksheet.getRow(currentRow).getCell('D').style = {...numberStyle, ...boldStyle};
-        worksheet.getRow(currentRow).getCell('E').style = {...numberStyle, ...boldStyle};
-        currentRow+=3;
-
-        const signerCol = 'E';
-        const kades = allPerangkat.find(p => p.desa === filterDesa && p.jabatan?.toLowerCase() === 'kepala desa');
-        worksheet.getCell(`${signerCol}${currentRow}`).value = `${filterDesa}, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`;
-        worksheet.getCell(`${signerCol}${currentRow + 1}`).value = 'Kepala Desa';
-        worksheet.getCell(`${signerCol}${currentRow + 5}`).value = (kades?.nama || '(....................................)').toUpperCase();
-        worksheet.getCell(`${signerCol}${currentRow + 5}`).font = { bold: true, underline: true };
-        for (let i = 0; i < 6; i++) {
-            worksheet.getCell(`${signerCol}${currentRow + i}`).alignment = { horizontal: 'center' };
+        if (isBelanja) {
+            totalAnggaranBelanja += sectionAnggaran;
+            totalRealisasiBelanja += sectionRealisasi;
+        } else {
+            totalAnggaranPendapatan += sectionAnggaran;
+            totalRealisasiPendapatan += sectionRealisasi;
         }
 
-        worksheet.columns = [{width: 15}, {width: 40}, {width: 20}, {width: 20}, {width: 20}, {width: 15}];
-        
-        const buffer = await workbook.xlsx.writeBuffer();
-        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        const fileName = `Laporan_Realisasi_${filterDesa}_${filterTahun}.xlsx`;
-        saveAs(blob, fileName);
-    };
-
-    const renderTableSection = (title, data, isBelanja = false) => {
-        const totalAnggaran = data.reduce((sum, item) => sum + (item.anggaran || 0), 0);
-        const totalRealisasi = data.reduce((sum, item) => sum + (item.realisasi || 0), 0);
+        const totalSisa = sectionAnggaran - sectionRealisasi;
+        const totalPersentase = sectionAnggaran > 0 ? (sectionRealisasi / sectionAnggaran) * 100 : 0;
 
         return (
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
-                <h3 className="text-lg font-semibold mb-2">{title}</h3>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700">
-                            <tr>
-                                <th className="px-4 py-2">Uraian</th>
-                                <th className="px-4 py-2 text-right">Anggaran (Rp)</th>
-                                <th className="px-4 py-2 text-right">Realisasi (Rp)</th>
-                                <th className="px-4 py-2 text-right">%</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {data.map((item, index) => {
-                                const persentase = item.anggaran > 0 ? (item.realisasi / item.anggaran) * 100 : 0;
-                                return (
-                                    <tr key={index} className="border-b dark:border-gray-700">
-                                        <td className="px-4 py-2">{item.kategori}</td>
-                                        <td className="px-4 py-2 text-right">{item.anggaran.toLocaleString('id-ID')}</td>
-                                        <td className="px-4 py-2 text-right">{item.realisasi.toLocaleString('id-ID')}</td>
-                                        <td className="px-4 py-2 text-right">{persentase.toFixed(2)}%</td>
-                                    </tr>
-                                )
-                            })}
-                        </tbody>
-                        <tfoot className="font-bold bg-gray-50 dark:bg-gray-700">
-                            <tr>
-                                <td className="px-4 py-2">TOTAL</td>
-                                <td className="px-4 py-2 text-right">{totalAnggaran.toLocaleString('id-ID')}</td>
-                                <td className="px-4 py-2 text-right">{totalRealisasi.toLocaleString('id-ID')}</td>
-                                <td className="px-4 py-2 text-right">
-                                    {totalAnggaran > 0 ? ((totalRealisasi / totalAnggaran) * 100).toFixed(2) : '0.00'}%
-                                </td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            </div>
+            <>
+                <tr className="bg-gray-100 dark:bg-gray-800 sticky top-0">
+                    <th colSpan="5" className="px-4 py-2 text-left font-bold text-lg text-gray-900 dark:text-white">{title}</th>
+                </tr>
+                {rows}
+                <tr className="bg-gray-200 dark:bg-gray-600 font-bold">
+                    <td className="px-4 py-2">JUMLAH {title}</td>
+                    <td className="px-4 py-2 text-right">{formatRupiah(sectionAnggaran)}</td>
+                    <td className="px-4 py-2 text-right">{formatRupiah(sectionRealisasi)}</td>
+                    <td className="px-4 py-2 text-right">{formatRupiah(totalSisa)}</td>
+                    <td className="px-4 py-2 text-center">{totalPersentase.toFixed(2)}%</td>
+                </tr>
+            </>
         );
     };
     
-    if (loading) return <div className="min-h-screen flex items-center justify-center"><Spinner /></div>;
+    // Panggil renderSection untuk mengisi totalAnggaran dan totalRealisasi
+    renderSection('PENDAPATAN', data.pendapatan, false);
+    renderSection('BELANJA', data.belanja, true);
+
+    const surplusDefisitAnggaran = totalAnggaranPendapatan - totalAnggaranBelanja;
+    const surplusDefisitRealisasi = totalRealisasiPendapatan - totalRealisasiBelanja;
+    const surplusSisa = surplusDefisitAnggaran - surplusDefisitRealisasi;
+    const surplusPersentase = surplusDefisitAnggaran !== 0 ? (surplusDefisitRealisasi / surplusDefisitAnggaran) * 100 : 0;
+
+
+    return (
+        <div className="overflow-x-auto max-h-[60vh] mt-6 relative border rounded-lg dark:border-gray-700">
+            <table className="w-full text-sm text-left text-gray-600 dark:text-gray-400">
+                <thead className="text-xs text-gray-700 uppercase bg-gray-200 dark:bg-gray-700 dark:text-gray-300 sticky top-0 z-10">
+                    <tr>
+                        <th className="px-4 py-3 w-2/5">Uraian</th>
+                        <th className="px-4 py-3 text-right">Anggaran</th>
+                        <th className="px-4 py-3 text-right">Realisasi</th>
+                        <th className="px-4 py-3 text-right">Lebih/(Kurang)</th>
+                        <th className="px-4 py-3 text-center">%</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {renderSection('PENDAPATAN', data.pendapatan)}
+                    <tr className="h-4"></tr>
+                    {renderSection('BELANJA', data.belanja, true)}
+                     <tr className="h-4"></tr>
+                    <tr className="bg-gray-800 dark:bg-black text-white font-bold text-base">
+                        <td className="px-4 py-3">SURPLUS / (DEFISIT)</td>
+                        <td className="px-4 py-3 text-right">{formatRupiah(surplusDefisitAnggaran)}</td>
+                        <td className="px-4 py-3 text-right">{formatRupiah(surplusDefisitRealisasi)}</td>
+                        <td className="px-4 py-3 text-right">{formatRupiah(surplusSisa)}</td>
+                        <td className="px-4 py-3 text-center">{surplusPersentase.toFixed(2)}%</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
+
+const LaporanRealisasiPage = () => {
+    const { currentUser } = useAuth();
+    const [loading, setLoading] = useState(true);
+    const [penganggaran, setPenganggaran] = useState([]);
+    const [penatausahaan, setPenatausahaan] = useState([]);
+    const [allPerangkat, setAllPerangkat] = useState([]);
+    const [exportConfig, setExportConfig] = useState(null);
+    const [selectedDesa, setSelectedDesa] = useState('all');
+    const [selectedTahun, setSelectedTahun] = useState(new Date().getFullYear());
+
+    useEffect(() => {
+        if (!currentUser) return;
+
+        setLoading(true);
+        const fetchData = async () => {
+            try {
+                const [penganggaranSnapshot, penatausahaanSnapshot, perangkatSnapshot, configDoc] = await Promise.all([
+                    getDocs(collection(db, 'penganggaran')),
+                    getDocs(collection(db, 'penatausahaan')),
+                    getDocs(collection(db, 'perangkat')),
+                    getDoc(doc(db, 'settings', 'exportConfig'))
+                ]);
+
+                setPenganggaran(penganggaranSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                setPenatausahaan(penatausahaanSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                setAllPerangkat(perangkatSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                
+                if (configDoc.exists()) {
+                    setExportConfig(configDoc.data());
+                }
+
+            } catch (error) {
+                console.error("Gagal memuat data laporan:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+        
+        if (currentUser.role === 'admin_desa') {
+            setSelectedDesa(currentUser.desa);
+        }
+
+    }, [currentUser]);
+
+    const laporanData = useMemo(() => {
+        const dataByDesa = {};
+        const desaListToProcess = selectedDesa === 'all' ? DESA_LIST : [selectedDesa];
+
+        desaListToProcess.forEach(desa => {
+            const anggaranDesa = penganggaran.filter(p => p.desa === desa && p.tahun === selectedTahun);
+            
+            const realisasiDesa = penatausahaan.filter(p => {
+                if (p.desa !== desa) return false;
+                let itemDate;
+                if (p.tanggal && typeof p.tanggal.toDate === 'function') {
+                    itemDate = p.tanggal.toDate();
+                } else if (p.tanggal) {
+                    itemDate = new Date(p.tanggal);
+                } else {
+                    return false;
+                }
+                return !isNaN(itemDate.getTime()) && itemDate.getFullYear() === selectedTahun;
+            });
+
+            const data = { pendapatan: {}, belanja: {} };
+
+            // Gabungkan semua kategori dari konstanta dan data aktual
+            const allKategoriAnggaran = new Map(anggaranDesa.map(item => [item.kategori, item]));
+            const allKategoriRealisasi = penatausahaan.map(item => item.kategori);
+            const allUniqueKategoriNames = [...new Set([...KATEGORI_PENDAPATAN.map(k => k.nama), ...allKategoriAnggaran.keys(), ...allKategoriRealisasi])];
+            
+            const kategoriDetails = new Map(KATEGORI_PENDAPATAN.map(k => [k.nama, { bidang: k.bidang, jenis: k.jenis }]));
+
+            allUniqueKategoriNames.forEach(katNama => {
+                const details = kategoriDetails.get(katNama);
+                if (!details) return;
+
+                const anggaran = anggaranDesa.find(a => a.jenis === details.jenis && a.kategori === katNama)?.jumlah || 0;
+                const realisasi = realisasiDesa.filter(r => r.jenis === details.jenis && r.kategori === katNama).reduce((acc, curr) => acc + curr.jumlah, 0);
+
+                if (anggaran > 0 || realisasi > 0) {
+                    const targetSection = details.jenis === 'Pendapatan' ? data.pendapatan : data.belanja;
+                    if (!targetSection[details.bidang]) {
+                        targetSection[details.bidang] = [];
+                    }
+                    targetSection[details.bidang].push({ kategori: katNama, anggaran, realisasi });
+                }
+            });
+            
+            dataByDesa[desa] = data;
+        });
+        
+        return dataByDesa;
+    }, [penganggaran, penatausahaan, selectedTahun, selectedDesa]);
+    
+    const handleExport = () => {
+        if (loading) {
+            alert("Data masih dimuat, mohon tunggu sebentar.");
+            return;
+        }
+        
+        const dataToExport = laporanData[selectedDesa];
+        if (!dataToExport) {
+            alert("Tidak ada data untuk desa dan tahun yang dipilih.");
+            return;
+        }
+
+        generateRealisasiXLSX({
+            laporanData: dataToExport,
+            tahun: selectedTahun,
+            desa: selectedDesa,
+            exportConfig,
+            allPerangkat
+        });
+    };
+
+    const tahunOptions = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i);
 
     return (
         <div className="space-y-6">
-             <div className="flex flex-wrap justify-between items-center gap-4">
-                <h1 className="text-2xl font-bold">Laporan Realisasi Anggaran</h1>
-                <div className="flex items-center gap-4">
-                    <InputField label="Tahun" type="number" value={filterTahun} onChange={e => setFilterTahun(e.target.value)} />
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md flex flex-wrap items-center justify-between gap-4">
+                <h1 className="text-xl font-semibold text-gray-800 dark:text-white">Laporan Realisasi APBDes</h1>
+                <div className="flex items-center gap-4 flex-wrap">
                     {currentUser.role === 'admin_kecamatan' && (
-                        <InputField label="Desa" type="select" value={filterDesa} onChange={e => setFilterDesa(e.target.value)}>
-                            <option value="all">Pilih Desa</option>
-                            {DESA_LIST.map(d => <option key={d} value={d}>{d}</option>)}
+                        <InputField
+                            type="select"
+                            value={selectedDesa}
+                            onChange={(e) => setSelectedDesa(e.target.value)}
+                            icon={<FiFilter />}
+                        >
+                            <option value="all" disabled>Pilih Desa</option>
+                            {DESA_LIST.map(desa => <option key={desa} value={desa}>{desa}</option>)}
                         </InputField>
                     )}
-                    <Button onClick={handleExport} variant="success" className="self-end" disabled={filterDesa === 'all'}>
-                        <FiDownload/> Ekspor XLSX
+                     <InputField
+                        type="select"
+                        value={selectedTahun}
+                        onChange={(e) => setSelectedTahun(parseInt(e.target.value, 10))}
+                        icon={<FiFilter />}
+                    >
+                        {tahunOptions.map(tahun => <option key={tahun} value={tahun}>{tahun}</option>)}
+                    </InputField>
+                    <Button onClick={handleExport} variant="success" disabled={loading || selectedDesa === 'all'}>
+                        <FiDownload className="mr-2" /> {loading ? 'Memuat...' : 'Ekspor Laporan'}
                     </Button>
                 </div>
             </div>
-
-            {filterDesa === 'all' ? (
-                <div className="text-center py-10 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                    <p className="text-gray-500">Silakan pilih desa untuk menampilkan laporan.</p>
-                </div>
-            ) : (
-                 <div className="space-y-4">
-                    {renderTableSection("Pendapatan", laporanData.pendapatan)}
-                    {renderTableSection("Belanja", laporanData.belanja, true)}
-                 </div>
-            )}
+            
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
+                {loading ? (
+                    <div className="flex justify-center items-center h-64"><Spinner /></div>
+                ) : selectedDesa === 'all' ? (
+                     <div className="text-center text-gray-500 dark:text-gray-400">
+                        <h2 className="text-lg font-bold mb-4">Silakan Pilih Desa</h2>
+                        <p>Pilih salah satu desa dari daftar untuk melihat pratinjau laporan realisasi.</p>
+                    </div>
+                ) : (
+                    <LaporanRealisasiPreview data={laporanData[selectedDesa]} desa={selectedDesa} tahun={selectedTahun} />
+                )}
+            </div>
         </div>
     );
 };

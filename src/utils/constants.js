@@ -74,12 +74,12 @@ export const BPD_CONFIG = {
         { name: 'periode', label: 'Periode', type: 'text', placeholder: 'Contoh: 2024-2029' },
         { name: 'no_sk_bupati', label: 'No. SK Bupati', type: 'text' },
     ],
+    tableColumns: ['nama', 'jabatan', 'periode', 'no_sk_bupati'],
     completenessCriteria: ['nama', 'jabatan', 'periode', 'no_sk_bupati', 'tgl_sk_bupati', 'tgl_pelantikan'],
     hierarchy: [
-        { jabatan: "Ketua", level: 0 },
-        { jabatan: "Wakil Ketua", level: 1 },
-        { jabatan: "Sekretaris", level: 1 },
-        { jabatan: "Anggota", level: 2 },
+        { title: 'Pimpinan', keywords: ['Ketua', 'Wakil Ketua'] },
+        { title: 'Sekretaris', keywords: ['Sekretaris'] },
+        { title: 'Anggota', keywords: ['Anggota'] },
     ]
 };
 
@@ -93,12 +93,13 @@ export const LPM_CONFIG = {
         { name: 'periode', label: 'Periode Jabatan', type: 'text', placeholder: 'Contoh: 2024-2029' },
         { name: 'no_sk', label: 'Nomor SK', type: 'text' },
     ],
+    tableColumns: ['nama', 'jabatan', 'periode', 'no_sk'],
     completenessCriteria: ['nama', 'jabatan', 'periode', 'no_sk'],
     hierarchy: [
-        { jabatan: "Ketua", level: 0 },
-        { jabatan: "Sekretaris", level: 1 },
-        { jabatan: "Bendahara", level: 1 },
-        { jabatan: "Anggota", level: 2 },
+        { title: 'Pimpinan', keywords: ['Ketua', 'Wakil Ketua'] },
+        { title: 'Sekretaris & Bendahara', keywords: ['Sekretaris', 'Bendahara'] },
+        { title: 'Seksi', keywords: ['Seksi', 'Sie'] },
+        { title: 'Anggota', keywords: ['Anggota'] },
     ]
 };
 
@@ -112,17 +113,13 @@ export const PKK_CONFIG = {
         { name: 'periode', label: 'Periode', type: 'text' },
         { name: 'no_sk', label: 'Nomor SK', type: 'text' },
     ],
+    tableColumns: ['nama', 'jabatan', 'periode', 'no_sk'],
     completenessCriteria: ['nama', 'jabatan', 'periode'],
     hierarchy: [
-        { jabatan: "Ketua", level: 0 },
-        { jabatan: "Wakil Ketua", level: 1 },
-        { jabatan: "Sekretaris", level: 1 },
-        { jabatan: "Bendahara", level: 1 },
-        { jabatan: "Ketua POKJA I", level: 2 },
-        { jabatan: "Ketua POKJA II", level: 2 },
-        { jabatan: "Ketua POKJA III", level: 2 },
-        { jabatan: "Ketua POKJA IV", level: 2 },
-        { jabatan: "Anggota", level: 3 },
+        { title: 'Pimpinan', keywords: ['Ketua', 'Wakil Ketua'] },
+        { title: 'Sekretaris & Bendahara', keywords: ['Sekretaris', 'Bendahara'] },
+        { title: 'Ketua POKJA', keywords: ['POKJA'] },
+        { title: 'Anggota', keywords: ['Anggota'] },
     ]
 };
 
@@ -134,7 +131,8 @@ export const PKK_PROGRAM_CONFIG = {
         { name: 'pokja', label: 'POKJA', type: 'select', options: ["POKJA I", "POKJA II", "POKJA III", "POKJA IV", "Sekretariat"], required: true },
         { name: 'tujuan', label: 'Tujuan Kegiatan', type: 'textarea' },
         { name: 'sasaran', label: 'Sasaran', type: 'text' },
-    ]
+    ],
+    tableColumns: ['nama_program', 'pokja', 'tujuan', 'sasaran'],
 };
 
 export const KARANG_TARUNA_CONFIG = {
@@ -147,14 +145,13 @@ export const KARANG_TARUNA_CONFIG = {
         { name: 'periode', label: 'Periode', type: 'text' },
         { name: 'no_hp', label: 'No. HP / WA', type: 'tel' },
     ],
+    tableColumns: ['nama', 'jabatan', 'periode', 'no_hp'],
     completenessCriteria: ['nama', 'jabatan', 'periode'],
     hierarchy: [
-        { jabatan: "Ketua", level: 0 },
-        { jabatan: "Wakil Ketua", level: 1 },
-        { jabatan: "Sekretaris", level: 1 },
-        { jabatan: "Bendahara", level: 1 },
-        { jabatan: "Seksi", level: 2 }, // Menggunakan kata kunci umum
-        { jabatan: "Anggota", level: 3 },
+        { title: 'Pimpinan', keywords: ['Ketua', 'Wakil Ketua'] },
+        { title: 'Sekretaris & Bendahara', keywords: ['Sekretaris', 'Bendahara'] },
+        { title: 'Seksi', keywords: ['Seksi', 'Sie'] },
+        { title: 'Anggota', keywords: ['Anggota'] },
     ]
 };
 
@@ -166,7 +163,8 @@ export const KARANG_TARUNA_KEGIATAN_CONFIG = {
         { name: 'tanggal', label: 'Tanggal Pelaksanaan', type: 'date' },
         { name: 'deskripsi', label: 'Deskripsi Singkat', type: 'textarea' },
         { name: 'penanggung_jawab', label: 'Penanggung Jawab', type: 'text' },
-    ]
+    ],
+    tableColumns: ['nama_kegiatan', 'tanggal', 'penanggung_jawab'],
 };
 
 export const RT_RW_CONFIG = {
@@ -177,12 +175,14 @@ export const RT_RW_CONFIG = {
         { name: 'nama', label: 'Nama Lengkap Ketua', type: 'text', required: true },
         { name: 'jabatan', label: 'Jabatan', type: 'select', options: ["Ketua RT", "Ketua RW"], required: true },
         { name: 'nomor', label: 'Nomor RT/RW', type: 'text', placeholder: 'Contoh: 001/003', required: true },
+        { name: 'dusun', label: 'Dusun / Dukuh', type: 'text', placeholder: 'Contoh: Krajan' },
         { name: 'periode', label: 'Periode', type: 'text' },
     ],
+    tableColumns: ['nama', 'jabatan', 'nomor', 'dusun'],
     completenessCriteria: ['nama', 'jabatan', 'nomor', 'periode', 'no_sk'],
     hierarchy: [
-        { jabatan: "Ketua RW", level: 0 },
-        { jabatan: "Ketua RT", level: 1 },
+        { title: 'Ketua RW', keywords: ['Ketua RW'] },
+        { title: 'Ketua RT', keywords: ['Ketua RT'] },
     ]
 };
 

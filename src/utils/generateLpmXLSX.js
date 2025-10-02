@@ -1,0 +1,204 @@
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+import { DESA_LIST } from './constants';
+
+/**
+ * Fungsi utilitas untuk memformat tanggal dengan aman untuk Excel.
+ * @param {*} dateField - Nilai tanggal yang bisa berupa Timestamp Firestore, string, atau Date.
+ * @returns {Date|null} Objek Date yang valid atau null.
+ */
+const formatDateForExcel = (dateField) => {
+    if (!dateField) return null;
+    try {
+        const date = dateField.toDate ? dateField.toDate() : new Date(dateField);
+        if (isNaN(date.getTime())) return null;
+
+        // Mengoreksi zona waktu agar tanggal di Excel tidak bergeser
+        const userTimezoneOffset = date.getTimezoneOffset() * 60000;
+        return new Date(date.getTime() + userTimezoneOffset);
+    } catch (error) {
+        return null;
+    }
+};
+
+/**
+ * Membuat file XLSX khusus untuk data LPM sesuai format yang diminta.
+ * @param {object} exportData - Data yang dibutuhkan untuk ekspor.
+ */
+export const generateLpmXLSX = async (exportData) => {
+    const {
+        dataToExport,
+        role,
+        desa,
+        exportConfig,
+        allPerangkat
+    } = exportData;
+
+    if (!dataToExport || dataToExport.length === 0) {
+        alert("Tidak ada data untuk diekspor.");
+        return;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Data LPM');
+    const currentYear = new Date().getFullYear();
+
+    // --- PENGATURAN HALAMAN & CETAK ---
+    worksheet.pageSetup = {
+        orientation: 'landscape',
+        paperSize: 9, // A4
+        fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+        margins: { left: 0.5, right: 0.5, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 },
+    };
+
+    // --- DEFINISI STYLES ---
+    const titleStyle = { font: { name: 'Arial', size: 14, bold: true }, alignment: { horizontal: 'center' } };
+    const headerStyle = { font: { name: 'Arial', size: 10, bold: true }, alignment: { horizontal: 'center', vertical: 'middle', wrapText: true }, border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } } };
+    const cellStyle = { font: { name: 'Arial', size: 9 }, border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }, alignment: { vertical: 'middle' } };
+    const centerCellStyle = { ...cellStyle, alignment: { ...cellStyle.alignment, horizontal: 'center' } };
+    const totalRowStyle = { ...cellStyle, font: { ...cellStyle.font, bold: true }, alignment: { ...cellStyle.alignment, horizontal: 'center' } };
+
+    let currentRow = 1;
+    const TOTAL_COLUMNS = 22;
+
+    // --- JUDUL ---
+    const mainTitle = role === 'admin_kecamatan'
+        ? `DATA LEMBAGA PEMBERDAYAAN MASYARAKAT (LPM) SE-KECAMATAN PUNGGELAN`
+        : `DATA LEMBAGA PEMBERDAYAAN MASYARAKAT (LPM) DESA ${desa.toUpperCase()}`;
+    
+    worksheet.mergeCells(currentRow, 1, currentRow, TOTAL_COLUMNS);
+    worksheet.getCell(currentRow, 1).value = mainTitle;
+    worksheet.getCell(currentRow, 1).style = titleStyle;
+    currentRow++;
+
+    worksheet.mergeCells(currentRow, 1, currentRow, TOTAL_COLUMNS);
+    worksheet.getCell(currentRow, 1).value = `TAHUN ${currentYear}`;
+    worksheet.getCell(currentRow, 1).style = titleStyle;
+    currentRow += 2;
+
+    // --- HEADER TABEL ---
+    const headerRow1 = worksheet.getRow(currentRow);
+    const headerRow2 = worksheet.getRow(currentRow + 1);
+
+    headerRow1.values = ["NO", "N A M A", "Jenis Kelamin", null, "Jumlah", "J A B A T A N", "TEMPAT, TGL LAHIR", null, "PENDIDIKAN", null, null, null, null, null, null, null, "Jumlah", "NO SK", "TANGGAL PELANTIKAN", "Masa Bakti", "Akhir /PURNA TUGAS", "No. HP / WA"];
+    headerRow2.values = [null, null, 'L', 'P', null, null, "TEMPAT LAHIR", "TANGGAL LAHIR", 'SD', 'SMP', 'SLTA', 'D1', 'D2', 'D3', 'S1', 'S2', null, null, null, null, null, null];
+
+    worksheet.mergeCells(`A${currentRow}:A${currentRow + 1}`);
+    worksheet.mergeCells(`B${currentRow}:B${currentRow + 1}`);
+    worksheet.mergeCells(`C${currentRow}:D${currentRow}`);
+    worksheet.mergeCells(`E${currentRow}:E${currentRow + 1}`);
+    worksheet.mergeCells(`F${currentRow}:F${currentRow + 1}`);
+    worksheet.mergeCells(`G${currentRow}:H${currentRow}`);
+    worksheet.mergeCells(`I${currentRow}:P${currentRow}`);
+    worksheet.mergeCells(`Q${currentRow}:Q${currentRow + 1}`);
+    worksheet.mergeCells(`R${currentRow}:R${currentRow + 1}`);
+    worksheet.mergeCells(`S${currentRow}:S${currentRow + 1}`);
+    worksheet.mergeCells(`T${currentRow}:T${currentRow + 1}`);
+    worksheet.mergeCells(`U${currentRow}:U${currentRow + 1}`);
+    worksheet.mergeCells(`V${currentRow}:V${currentRow + 1}`);
+    
+    [headerRow1, headerRow2].forEach(row => {
+        row.height = 20;
+        row.eachCell({ includeEmpty: true }, cell => cell.style = headerStyle);
+    });
+    
+    currentRow += 2;
+    const firstDataRow = currentRow;
+
+    // --- ISI DATA ---
+    const pendidikanMap = { 'SD': 9, 'SLTP': 10, 'SLTA': 11, 'D1': 12, 'D2': 13, 'D3': 14, 'S1': 15, 'S2': 16 };
+    const sortedData = [...dataToExport].sort((a, b) => (a.nama || '').localeCompare(b.nama || ''));
+    
+    sortedData.forEach((item, index) => {
+        const rowData = new Array(TOTAL_COLUMNS).fill(null);
+        rowData[0] = index + 1;
+        rowData[1] = item.nama || '';
+        rowData[2] = item.jenis_kelamin === 'L' ? 1 : null;
+        rowData[3] = item.jenis_kelamin === 'P' ? 1 : null;
+        rowData[4] = (item.jenis_kelamin === 'L' || item.jenis_kelamin === 'P') ? 1 : 0;
+        rowData[5] = item.jabatan || '';
+        rowData[6] = item.tempat_lahir || '';
+        rowData[7] = formatDateForExcel(item.tgl_lahir);
+        
+        const pendidikanCol = pendidikanMap[item.pendidikan];
+        if (pendidikanCol) rowData[pendidikanCol - 1] = 1;
+
+        rowData[16] = pendidikanCol ? 1 : 0; // Jumlah Pendidikan
+        rowData[17] = item.no_sk || '';
+        rowData[18] = formatDateForExcel(item.tgl_pelantikan);
+        rowData[19] = item.masa_bakti ? parseInt(item.masa_bakti, 10) : null;
+        rowData[20] = formatDateForExcel(item.akhir_jabatan);
+        rowData[21] = item.no_hp || '';
+        
+        const row = worksheet.addRow(rowData);
+        row.height = 20;
+        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+            cell.style = (colNumber === 2 || colNumber === 6 || colNumber > 17) ? cellStyle : centerCellStyle;
+            if (colNumber === 8 || colNumber === 19 || colNumber === 21) {
+                 cell.numFmt = 'dd/mm/yyyy';
+            }
+        });
+    });
+
+    currentRow += sortedData.length;
+    const lastDataRow = currentRow - 1;
+
+    // --- BARIS JUMLAH ---
+    const totalRow = worksheet.addRow([]);
+    totalRow.getCell(1).value = 'J U M L A H';
+    worksheet.mergeCells(`A${currentRow}:B${currentRow}`);
+    
+    const sumCols = ['C', 'D', 'E', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q'];
+    sumCols.forEach(col => {
+        totalRow.getCell(col).value = { formula: `SUM(${col}${firstDataRow}:${col}${lastDataRow})` };
+    });
+    totalRow.eachCell({ includeEmpty: true }, cell => cell.style = totalRowStyle);
+    currentRow += 3;
+
+    // --- BLOK TANDA TANGAN ---
+    const addSignatureBlock = (signer, startCol) => {
+        worksheet.getCell(currentRow, startCol).value = `${signer.location}, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`;
+        worksheet.getCell(currentRow + 1, startCol).value = signer.jabatan;
+        worksheet.getCell(currentRow + 5, startCol).value = (signer.nama || '(....................................)').toUpperCase();
+        worksheet.getCell(currentRow + 5, startCol).font = { name: 'Arial', size: 10, bold: true, underline: true };
+        if (signer.nip) {
+            worksheet.getCell(currentRow + 6, startCol).value = `NIP. ${signer.nip}`;
+        }
+        for (let i = 0; i <= 6; i++) {
+            worksheet.getCell(currentRow + i, startCol).alignment = { horizontal: 'center' };
+        }
+    };
+    
+    if (role === 'admin_kecamatan' && desa === 'all') {
+        addSignatureBlock({
+            location: 'Punggelan',
+            jabatan: exportConfig?.jabatanPenandaTangan || 'Camat Punggelan',
+            nama: exportConfig?.namaPenandaTangan,
+            nip: exportConfig?.nipPenandaTangan
+        }, 18); // Kolom R
+    } else {
+        const kades = allPerangkat.find(p => p.desa === desa && p.jabatan?.toLowerCase() === 'kepala desa');
+        addSignatureBlock({
+            location: desa,
+            jabatan: 'Kepala Desa',
+            nama: kades?.nama
+        }, 18); // Kolom R
+    }
+
+
+    // --- LEBAR KOLOM ---
+    worksheet.columns = [
+        { width: 4 }, { width: 25 }, { width: 4 }, { width: 4 }, { width: 7 }, 
+        { width: 25 }, { width: 20 }, { width: 15 }, 
+        { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, // Pendidikan
+        { width: 7 }, { width: 25 }, { width: 15 }, { width: 10 }, { width: 15 }, { width: 18 }
+    ];
+
+    // --- SIMPAN FILE ---
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const fileName = role === 'admin_kecamatan' && desa === 'all'
+        ? `Data_LPM_Kecamatan_Punggelan_${currentYear}.xlsx`
+        : `Data_LPM_Desa_${desa}_${currentYear}.xlsx`;
+    saveAs(blob, fileName);
+};

@@ -13,8 +13,8 @@ import { FiSearch, FiFilter, FiPlus, FiEdit, FiTrash2, FiEye, FiUpload, FiDownlo
 import { DESA_LIST } from '../../utils/constants';
 import * as XLSX from 'xlsx';
 import { generateOrganisasiXLSX } from '../../utils/generateOrganisasiXLSX';
-import { createNotificationForAdmins } from '../../utils/notificationService'; // <-- Impor baru
-import { useSearchParams } from 'react-router-dom'; // <-- Impor baru
+import { createNotificationForAdmins } from '../../utils/notificationService';
+import { useSearchParams } from 'react-router-dom';
 
 const OrganisasiCrudPage = ({ config, allPerangkat = [] }) => {
     const { currentUser } = useAuth();
@@ -31,8 +31,8 @@ const OrganisasiCrudPage = ({ config, allPerangkat = [] }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterDesa, setFilterDesa] = useState('all');
     const [exportConfig, setExportConfig] = useState(null);
-    const [searchParams] = useSearchParams(); // <-- Tambahkan ini
-    const [highlightedRow, setHighlightedRow] = useState(null); // <-- Tambahkan ini
+    const [searchParams] = useSearchParams();
+    const [highlightedRow, setHighlightedRow] = useState(null);
 
     useEffect(() => {
         const highlightId = searchParams.get('highlight');
@@ -136,7 +136,6 @@ const OrganisasiCrudPage = ({ config, allPerangkat = [] }) => {
                 showNotification(`${config.title} berhasil ditambahkan!`, 'success');
             }
 
-            // Pemicu Notifikasi untuk Admin Kecamatan
             if (currentUser.role === 'admin_desa' && docId) {
                 const action = selectedItem ? 'memperbarui' : 'menambahkan';
                 const message = `Admin Desa ${currentUser.desa} telah ${action} data ${config.title}: "${formData.nama}".`;
@@ -230,10 +229,20 @@ const OrganisasiCrudPage = ({ config, allPerangkat = [] }) => {
 
     const handleExportXLSX = () => {
         if (filteredData.length === 0) {
-            showNotification("Tidak ada data untuk diekspor.", 'warning');
+            showNotification("Tidak ada data untuk diekspor.", "warning");
             return;
         }
-        generateOrganisasiXLSX(filteredData, config, currentUser, allPerangkat, exportConfig);
+        
+        const exportDetails = {
+            config,
+            dataToExport: filteredData,
+            role: currentUser.role,
+            desa: currentUser.role === 'admin_desa' ? currentUser.desa : filterDesa,
+            exportConfig,
+            allPerangkat,
+        };
+        
+        generateOrganisasiXLSX(exportDetails);
     };
     
     const getModalTitle = () => {
@@ -269,9 +278,10 @@ const OrganisasiCrudPage = ({ config, allPerangkat = [] }) => {
                     <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
                         <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700">
                             <tr>
-                                {config.formFields.slice(0, 4).map(field => (
-                                    <th key={field.name} className="px-6 py-3">{field.label}</th>
-                                ))}
+                                {(config.tableColumns || config.formFields.slice(0, 4).map(f => f.name)).map(fieldName => {
+                                    const field = config.formFields.find(f => f.name === fieldName);
+                                    return field ? <th key={field.name} className="px-6 py-3">{field.label}</th> : null;
+                                })}
                                 <th className="px-6 py-3">Aksi</th>
                             </tr>
                         </thead>
@@ -280,8 +290,8 @@ const OrganisasiCrudPage = ({ config, allPerangkat = [] }) => {
                                 <tr><td colSpan={5} className="text-center py-4"><Spinner /></td></tr>
                             ) : filteredData.length > 0 ? filteredData.map(item => (
                                 <tr key={item.id} className={`bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 ${highlightedRow === item.id ? 'highlight-row' : ''}`}>
-                                    {config.formFields.slice(0, 4).map(field => (
-                                        <td key={field.name} className="px-6 py-4">{item[field.name] || '-'}</td>
+                                    {(config.tableColumns || config.formFields.slice(0, 4).map(f => f.name)).map(fieldName => (
+                                        <td key={fieldName} className="px-6 py-4">{item[fieldName] || '-'}</td>
                                     ))}
                                     <td className="px-6 py-4 flex items-center space-x-3">
                                         <button onClick={() => handleOpenModal('view', item)} className="text-green-500 hover:text-green-700" title="Lihat Detail"><FiEye /></button>
@@ -290,7 +300,7 @@ const OrganisasiCrudPage = ({ config, allPerangkat = [] }) => {
                                     </td>
                                 </tr>
                             )) : (
-                                <tr><td colSpan={5} className="text-center py-10 text-gray-500">Data tidak ditemukan.</td></tr>
+                                <tr><td colSpan={(config.tableColumns || config.formFields.slice(0, 4)).length + 1} className="text-center py-10 text-gray-500">Data tidak ditemukan.</td></tr>
                             )}
                         </tbody>
                     </table>

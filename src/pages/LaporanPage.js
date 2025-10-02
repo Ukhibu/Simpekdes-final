@@ -12,11 +12,10 @@ import {
     generateRekapRtRwPDF
 } from '../utils/reportGenerators';
 import { FiDownload, FiBarChart2 } from 'react-icons/fi';
-import { formatDate } from '../utils/dateFormatter';
 
 const DESA_LIST = [ "Punggelan", "Petuguran", "Karangsari", "Jembangan", "Tanjungtirta", "Sawangan", "Bondolharjo", "Danakerta", "Badakarya", "Tribuana", "Sambong", "Klapa", "Kecepit", "Mlaya", "Sidarata", "Purwasana", "Tlaga" ];
 
-// --- Objek Konfigurasi untuk setiap jenis laporan ---
+// Objek Konfigurasi untuk setiap jenis laporan
 const reportConfigs = {
   demografi_perangkat: { label: 'Demografi Usia Perangkat', collection: 'perangkat', dateField: 'tgl_pelantikan', dateLabel: 'Tgl Pelantikan', type: 'demografi' },
   demografi_bpd: { label: 'Demografi Usia BPD', collection: 'bpd', dateField: 'tgl_pelantikan', dateLabel: 'Tgl Pelantikan', type: 'demografi' },
@@ -31,6 +30,14 @@ const reportConfigs = {
 };
 
 // --- Fungsi Bantuan ---
+const formatDate = (date) => {
+    if (!date) return '';
+    const d = date instanceof Date ? date : new Date(date);
+    if(isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+};
+const safeFormatDate = (dateField) => dateField ? formatDate(dateField.toDate ? dateField.toDate() : dateField) : '-';
+const formatCurrency = (number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(number || 0);
 const getAge = (item) => {
     const dateString = item.tgl_lahir;
     if (!dateString) return '-';
@@ -42,11 +49,9 @@ const getAge = (item) => {
     if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
     return age;
 };
-const formatCurrency = (number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(number || 0);
-const safeFormatDate = (dateField) => dateField ? formatDate(dateField.toDate ? dateField.toDate() : dateField) : '-';
 
 // --- Komponen Tabel Pratinjau ---
-const DemografiPreviewTable = ({ data, showDesa, title }) => (
+const DemografiPreviewTable = ({ data, showDesa }) => (
   <table className="w-full text-sm">
     <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700">
       <tr>
@@ -91,8 +96,9 @@ const KeuanganPreviewTable = ({ data, showDesa }) => (
             {showDesa && <td className="px-4 py-2">{item.desa}</td>}
             <td className="px-4 py-2">{safeFormatDate(item.tanggal)}</td>
             <td className="px-4 py-2">{item.uraian}</td>
-            <td className="px-4 py-2 text-right">{item.jenis === 'Pemasukan' ? formatCurrency(item.jumlah) : '-'}</td>
-            <td className="px-4 py-2 text-right">{item.jenis === 'Pengeluaran' ? formatCurrency(item.jumlah) : '-'}</td>
+            {/* [PERBAIKAN] Menggunakan "Pendapatan" dan "Belanja" */}
+            <td className="px-4 py-2 text-right">{item.jenis === 'Pendapatan' ? formatCurrency(item.jumlah) : '-'}</td>
+            <td className="px-4 py-2 text-right">{item.jenis === 'Belanja' ? formatCurrency(item.jumlah) : '-'}</td>
           </tr>
         ))}
       </tbody>
@@ -118,7 +124,7 @@ const AsetPreviewTable = ({ data, showDesa }) => (
             <td className="px-4 py-2">{item.namaAset}</td>
             <td className="px-4 py-2">{item.kategori}</td>
             <td className="px-4 py-2">{safeFormatDate(item.tanggalPerolehan)}</td>
-            <td className="px-4 py-2 text-right">{formatCurrency(item.nilaiAset)}</td>
+            <td className="px-4 py-2 text-right">{formatCurrency(Number(item.nilaiAset))}</td>
           </tr>
         ))}
       </tbody>
@@ -190,29 +196,45 @@ const LaporanPage = () => {
     const [reportData, setReportData] = useState(null);
     const [filters, setFilters] = useState({ desa: 'all', startDate: '', endDate: '' });
     const [exportConfig, setExportConfig] = useState(null);
+    const [allPerangkat, setAllPerangkat] = useState([]);
+    const [isDataReady, setIsDataReady] = useState(false);
 
     useEffect(() => {
         if (currentUser.role === 'admin_desa') {
             setFilters(prev => ({ ...prev, desa: currentUser.desa }));
         }
-        const fetchConfig = async () => {
-            const docRef = doc(db, 'settings', 'exportConfig');
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) setExportConfig(docSnap.data());
+        const fetchPrerequisites = async () => {
+            setIsDataReady(false);
+            try {
+                // Fetch export config for signatures
+                const exportRef = doc(db, 'settings', 'exportConfig');
+                const exportSnap = await getDoc(exportRef);
+                if (exportSnap.exists()) setExportConfig(exportSnap.data());
+
+                // Fetch all perangkat data for finding 'Kepala Desa'
+                const perangkatQuery = query(collection(db, 'perangkat'));
+                const perangkatSnap = await getDocs(perangkatQuery);
+                const perangkatList = perangkatSnap.docs.map(d => d.data());
+                setAllPerangkat(perangkatList);
+
+            } catch (error) {
+                console.error("Gagal memuat data prasyarat untuk laporan:", error);
+            } finally {
+                setIsDataReady(true);
+            }
         };
-        fetchConfig();
+        fetchPrerequisites();
     }, [currentUser]);
     
     useEffect(() => {
         setReportData(null);
-    }, [reportType, filters.desa]);
+    }, [reportType, filters.desa, filters.startDate, filters.endDate]);
 
     const handleFilterChange = (e) => setFilters({ ...filters, [e.target.name]: e.target.value });
 
     const handleGenerateReport = async () => {
         setLoading(true);
         setReportData(null);
-
         const config = reportConfigs[reportType];
         if (!config) {
             alert("Jenis laporan tidak valid.");
@@ -279,19 +301,19 @@ const LaporanPage = () => {
         
         switch (config.type) {
             case 'demografi':
-                generateDemografiPDF(reportData, desaFilter, exportConfig, config.label);
+                generateDemografiPDF(reportData, desaFilter, exportConfig, config.label, allPerangkat);
                 break;
             case 'keuangan':
-                generateKeuanganPDF(reportData, desaFilter, exportConfig);
+                generateKeuanganPDF(reportData, desaFilter, exportConfig, allPerangkat);
                 break;
             case 'aset':
-                generateAsetPDF(reportData, desaFilter, exportConfig);
+                generateAsetPDF(reportData, desaFilter, exportConfig, allPerangkat);
                 break;
             case 'rekap_rt_rw':
-                generateRekapRtRwPDF(reportData, exportConfig);
+                generateRekapRtRwPDF(reportData, exportConfig, allPerangkat);
                 break;
             case 'agregat':
-                generateRekapLembagaPDF(reportData, exportConfig);
+                generateRekapLembagaPDF(reportData, exportConfig, allPerangkat);
                 break;
             default:
                 alert('Jenis laporan ini tidak didukung untuk diunduh.');
@@ -309,7 +331,7 @@ const LaporanPage = () => {
         
         switch (config.type) {
             case 'demografi':
-                return <DemografiPreviewTable data={reportData} showDesa={showDesa} title={config.label} />;
+                return <DemografiPreviewTable data={reportData} showDesa={showDesa} />;
             case 'keuangan':
                 return <KeuanganPreviewTable data={reportData} showDesa={showDesa} />;
             case 'aset':
@@ -360,9 +382,9 @@ const LaporanPage = () => {
                 </div>
             </div>
 
-            {loading && <Spinner />}
+            {(loading || !isDataReady) && <Spinner />}
 
-            {reportData && (
+            {reportData && isDataReady && (
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
                     <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                         <div>

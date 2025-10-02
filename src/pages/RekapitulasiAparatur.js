@@ -4,7 +4,7 @@ import { db } from '../firebase';
 import Spinner from '../components/common/Spinner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { FiEdit, FiSave } from 'react-icons/fi';
+import { FiEdit, FiSave, FiDownload } from 'react-icons/fi';
 
 // Daftar Desa sesuai urutan di dokumen
 const DESA_LIST = [
@@ -17,8 +17,7 @@ const DESA_LIST = [
 const JABATAN_REKAP = {
     kades: "Kepala Desa",
     sekdes: "Sekretaris Desa",
-    perangkatSiltap: ["Kaur", "Kasi", "Kadus"],
-    perangkatNonSiltap: []
+    perangkatSiltap: ["Kaur", "Kasi", "Kadus", "Staf"], // Staf juga dianggap perangkat
 };
 
 
@@ -64,11 +63,35 @@ const RekapitulasiAparatur = () => {
         if (loading) return [];
         return DESA_LIST.map(desa => {
             const perangkatDesa = allPerangkat.filter(p => p.desa && p.desa.toUpperCase() === desa);
-            const kades = perangkatDesa.filter(p => p.jabatan && p.jabatan.toLowerCase() === JABATAN_REKAP.kades.toLowerCase()).length;
-            const sekdes = perangkatDesa.filter(p => p.jabatan && p.jabatan.toLowerCase() === JABATAN_REKAP.sekdes.toLowerCase()).length;
-            const perangkatSiltap = perangkatDesa.filter(p => p.jabatan && JABATAN_REKAP.perangkatSiltap.some(j => p.jabatan.toLowerCase().includes(j.toLowerCase()))).length;
-            const perangkatNonSiltap = perangkatDesa.length - kades - sekdes - perangkatSiltap;
-            return { desa, kades, sekdes, perangkatSiltap, perangkatNonSiltap, total: perangkatDesa.length };
+            
+            // [PERBAIKAN] Perangkat aktif adalah yang punya nama, jabatan, dan belum purna tugas.
+            const activePerangkat = perangkatDesa.filter(p => 
+                p.nama &&
+                p.jabatan && 
+                (!p.akhir_jabatan || new Date(p.akhir_jabatan) >= new Date())
+            );
+
+            // Hitung jumlah Kades, Sekdes, dan Perangkat Lainnya dari daftar yang AKTIF
+            const kades = activePerangkat.filter(p => p.jabatan.toLowerCase() === JABATAN_REKAP.kades.toLowerCase() || p.jabatan.toLowerCase() === 'pj. kepala desa').length;
+            const sekdes = activePerangkat.filter(p => p.jabatan.toLowerCase() === JABATAN_REKAP.sekdes.toLowerCase()).length;
+            const perangkatSiltap = activePerangkat.filter(p => 
+                p.jabatan.toLowerCase() !== JABATAN_REKAP.kades.toLowerCase() && 
+                p.jabatan.toLowerCase() !== 'pj. kepala desa' &&
+                p.jabatan.toLowerCase() !== JABATAN_REKAP.sekdes.toLowerCase()
+            ).length;
+
+            // [PERBAIKAN] Jabatan Belum Diisi adalah selisih dari total entri dikurangi perangkat yang aktif.
+            // Ini secara otomatis mencakup jabatan yang kosong, purna tugas, dan yang dikosongkan via aksi.
+            const jabatanKosong = perangkatDesa.length - activePerangkat.length;
+            
+            return { 
+                desa, 
+                kades, 
+                sekdes, 
+                perangkatSiltap, 
+                jabatanKosong,
+                total: perangkatDesa.length 
+            };
         });
     }, [allPerangkat, loading]);
 
@@ -77,9 +100,9 @@ const RekapitulasiAparatur = () => {
             kades: acc.kades + curr.kades,
             sekdes: acc.sekdes + curr.sekdes,
             perangkatSiltap: acc.perangkatSiltap + curr.perangkatSiltap,
-            perangkatNonSiltap: acc.perangkatNonSiltap + curr.perangkatNonSiltap,
+            jabatanKosong: acc.jabatanKosong + curr.jabatanKosong,
             total: acc.total + curr.total,
-        }), { kades: 0, sekdes: 0, perangkatSiltap: 0, perangkatNonSiltap: 0, total: 0 });
+        }), { kades: 0, sekdes: 0, perangkatSiltap: 0, jabatanKosong: 0, total: 0 });
     }, [rekapData]);
 
     const handleSaveConfig = async () => {
@@ -104,9 +127,13 @@ const RekapitulasiAparatur = () => {
         doc.setFont('helvetica', 'bold');
         doc.text("JUMLAH APARATUR PEMERINTAH DESA", doc.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
         doc.text("SE KECAMATAN PUNGGELAN KABUPATEN BANJARNEGARA", doc.internal.pageSize.getWidth() / 2, 22, { align: 'center' });
-        const tableColumn = ["NO", "NAMA DESA", "Kades", "Sekdes", "Perangkat yg menerima Siltap", "Jumlah Perangkat non Siltap", "JUMLAH TOTAL"];
-        const tableRows = rekapData.map((item, index) => [index + 1, item.desa, item.kades, item.sekdes, item.perangkatSiltap, item.perangkatNonSiltap, item.total]);
-        const totalRow = ["", "JUMLAH", totalKeseluruhan.kades, totalKeseluruhan.sekdes, totalKeseluruhan.perangkatSiltap, totalKeseluruhan.perangkatNonSiltap, totalKeseluruhan.total];
+        
+        const tableColumn = ["NO", "NAMA DESA", "Kades", "Sekdes", "Perangkat Lainnya", "Jabatan Belum Diisi", "JUMLAH TOTAL"];
+        
+        const tableRows = rekapData.map((item, index) => [index + 1, item.desa, item.kades, item.sekdes, item.perangkatSiltap, item.jabatanKosong, item.total]);
+        
+        const totalRow = ["", "JUMLAH", totalKeseluruhan.kades, totalKeseluruhan.sekdes, totalKeseluruhan.perangkatSiltap, totalKeseluruhan.jabatanKosong, totalKeseluruhan.total];
+        
         tableRows.push(totalRow);
         autoTable(doc, { 
             head: [tableColumn], 
@@ -120,7 +147,7 @@ const RekapitulasiAparatur = () => {
                 }
             }
         });
-        const finalY = doc.lastAutoTable.finalY + 20;
+        const finalY = (doc).lastAutoTable.finalY + 20;
         doc.setFontSize(12);
         doc.setFont('helvetica', 'normal');
         doc.text(`Punggelan, ${getFormattedDate()}`, doc.internal.pageSize.getWidth() - 20, finalY, { align: 'right' });
@@ -140,8 +167,8 @@ const RekapitulasiAparatur = () => {
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md transition-colors duration-300">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Rekapitulasi Jumlah Aparatur Desa</h2>
-                    <button onClick={handleExportPDF} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
-                        Ekspor ke PDF
+                    <button onClick={handleExportPDF} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2">
+                       <FiDownload/> Ekspor ke PDF
                     </button>
                 </div>
                 <div className="overflow-x-auto">
@@ -156,8 +183,8 @@ const RekapitulasiAparatur = () => {
                             <tr>
                                 <th className="border border-gray-300 dark:border-gray-600 p-2">Kades</th>
                                 <th className="border border-gray-300 dark:border-gray-600 p-2">Sekdes</th>
-                                <th className="border border-gray-300 dark:border-gray-600 p-2">Perangkat yg menerima Siltap</th>
-                                <th className="border border-gray-300 dark:border-gray-600 p-2">Jumlah Perangkat non Siltap</th>
+                                <th className="border border-gray-300 dark:border-gray-600 p-2">Perangkat Lainnya</th>
+                                <th className="border border-gray-300 dark:border-gray-600 p-2">Jabatan Belum Diisi</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -168,7 +195,7 @@ const RekapitulasiAparatur = () => {
                                     <td className="border border-gray-300 dark:border-gray-600 p-2">{item.kades}</td>
                                     <td className="border border-gray-300 dark:border-gray-600 p-2">{item.sekdes}</td>
                                     <td className="border border-gray-300 dark:border-gray-600 p-2">{item.perangkatSiltap}</td>
-                                    <td className="border border-gray-300 dark:border-gray-600 p-2">{item.perangkatNonSiltap}</td>
+                                    <td className="border border-gray-300 dark:border-gray-600 p-2">{item.jabatanKosong}</td>
                                     <td className="border border-gray-300 dark:border-gray-600 p-2 font-bold">{item.total}</td>
                                 </tr>
                             ))}
@@ -179,7 +206,7 @@ const RekapitulasiAparatur = () => {
                                 <td className="border border-gray-300 dark:border-gray-600 p-2">{totalKeseluruhan.kades}</td>
                                 <td className="border border-gray-300 dark:border-gray-600 p-2">{totalKeseluruhan.sekdes}</td>
                                 <td className="border border-gray-300 dark:border-gray-600 p-2">{totalKeseluruhan.perangkatSiltap}</td>
-                                <td className="border border-gray-300 dark:border-gray-600 p-2">{totalKeseluruhan.perangkatNonSiltap}</td>
+                                <td className="border border-gray-300 dark:border-gray-600 p-2">{totalKeseluruhan.jabatanKosong}</td>
                                 <td className="border border-gray-300 dark:border-gray-600 p-2">{totalKeseluruhan.total}</td>
                             </tr>
                         </tfoot>
@@ -225,3 +252,4 @@ const RekapitulasiAparatur = () => {
 };
 
 export default RekapitulasiAparatur;
+

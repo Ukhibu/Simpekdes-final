@@ -1,26 +1,9 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { DESA_LIST } from './constants'; // <-- BARIS INI DIPERBAIKI
+import { DESA_LIST } from './constants';
 
 /**
- * Fungsi utilitas untuk memformat tanggal dengan aman untuk Excel.
- * @param {*} dateField - Nilai tanggal yang bisa berupa Timestamp Firestore, string, atau Date.
- * @returns {Date|null} Objek Date yang valid atau null.
- */
-const formatDateForExcel = (dateField) => {
-    if (!dateField) return null;
-    try {
-        const date = dateField.toDate ? dateField.toDate() : new Date(dateField);
-        if (isNaN(date.getTime())) return null;
-        const userTimezoneOffset = date.getTimezoneOffset() * 60000;
-        return new Date(date.getTime() + userTimezoneOffset);
-    } catch (error) {
-        return null;
-    }
-};
-
-/**
- * Membuat file XLSX untuk data organisasi desa (LPM, PKK, dll.).
+ * Membuat file XLSX generik untuk data organisasi desa (LPM, PKK, dll.).
  * @param {object} exportData - Objek berisi semua data dan konfigurasi untuk ekspor.
  */
 export const generateOrganisasiXLSX = async (exportData) => {
@@ -49,9 +32,7 @@ export const generateOrganisasiXLSX = async (exportData) => {
         fitToPage: true,
         fitToWidth: 1,
         fitToHeight: 0,
-        margins: {
-            left: 0.7, right: 0.7, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3
-        },
+        margins: { left: 0.7, right: 0.7, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 },
         horizontalCentered: true,
     };
 
@@ -66,7 +47,8 @@ export const generateOrganisasiXLSX = async (exportData) => {
     const addHeader = (startRow) => {
         const headerRow = worksheet.getRow(startRow);
         const headers = ['NO', ...config.formFields.map(f => f.label.toUpperCase())];
-        if (role === 'admin_kecamatan') headers.splice(1, 0, 'DESA');
+        if (role === 'admin_kecamatan' && desa === 'all') headers.splice(1, 0, 'DESA');
+        
         headerRow.values = headers;
         headerRow.eachCell({ includeEmpty: true }, cell => cell.style = tableHeaderStyle);
         headerRow.height = 25;
@@ -76,8 +58,14 @@ export const generateOrganisasiXLSX = async (exportData) => {
     const addDataRows = (data, startRow) => {
         data.forEach((item, index) => {
             const row = worksheet.getRow(startRow + index);
-            const rowData = [index + 1, ...config.formFields.map(f => item[f.name] || '')];
-            if (role === 'admin_kecamatan') rowData.splice(1, 0, item.desa || '');
+            let rowData = [index + 1];
+            if (role === 'admin_kecamatan' && desa === 'all') {
+                rowData.push(item.desa || '');
+            }
+            config.formFields.forEach(f => {
+                rowData.push(item[f.name] || '');
+            });
+            
             row.values = rowData;
             row.height = 20;
             row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
@@ -89,8 +77,9 @@ export const generateOrganisasiXLSX = async (exportData) => {
     };
 
     const addSignatureBlock = (startRow, signer) => {
-        const sigColStart = worksheet.columns.length - 2; // Mulai dari 2 kolom sebelum akhir
+        const sigColStart = worksheet.columns.length - 2;
         const sigColEnd = worksheet.columns.length;
+        
         worksheet.mergeCells(startRow, sigColStart, startRow, sigColEnd);
         worksheet.getCell(startRow, sigColStart).value = `${signer.location}, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`;
         worksheet.mergeCells(startRow + 1, sigColStart, startRow + 1, sigColEnd);
@@ -110,35 +99,34 @@ export const generateOrganisasiXLSX = async (exportData) => {
             worksheet.getCell(startRow + 7, sigColStart).value = `NIP. ${signer.nip}`;
         }
         
-        // Center alignment for signature block
         for(let i = 0; i <= 7; i++) {
              const row = worksheet.getRow(startRow + i);
-             const cell = row.getCell(sigColStart);
-             cell.alignment = { ...cell.alignment, horizontal: 'center' };
-             if(i > 1 && i < 5) row.height = 15;
+             if (row) {
+                const cell = row.getCell(sigColStart);
+                cell.alignment = { ...cell.alignment, horizontal: 'center' };
+                if(i > 1 && i < 5) row.height = 15;
+             }
         }
     };
 
-    // --- Logika Pembuatan Laporan ---
     let currentRow = 1;
+    const numColumns = config.formFields.length + 1 + (role === 'admin_kecamatan' && desa === 'all' ? 1 : 0);
 
-    // Judul Utama
-    const mainTitle = role === 'admin_kecamatan'
+    const mainTitle = desa === 'all'
         ? `DATA ${config.title.toUpperCase()} SE-KECAMATAN PUNGGELAN`
         : `DATA ${config.title.toUpperCase()} DESA ${desa.toUpperCase()}`;
     
-    worksheet.mergeCells(currentRow, 1, currentRow, config.formFields.length + (role === 'admin_kecamatan' ? 2 : 1));
+    worksheet.mergeCells(currentRow, 1, currentRow, numColumns);
     worksheet.getCell(currentRow, 1).value = mainTitle;
     worksheet.getCell(currentRow, 1).style = titleStyle;
     currentRow++;
     
-    worksheet.mergeCells(currentRow, 1, currentRow, config.formFields.length + (role === 'admin_kecamatan' ? 2 : 1));
+    worksheet.mergeCells(currentRow, 1, currentRow, numColumns);
     worksheet.getCell(currentRow, 1).value = `TAHUN ${currentYear}`;
     worksheet.getCell(currentRow, 1).style = subTitleStyle;
     currentRow += 2;
 
-    // Logika untuk Admin Kecamatan (laporan per desa)
-    if (role === 'admin_kecamatan') {
+    if (role === 'admin_kecamatan' && desa === 'all') {
         const dataByDesa = DESA_LIST.reduce((acc, namaDesa) => {
             const desaData = dataToExport.filter(item => item.desa === namaDesa);
             if (desaData.length > 0) acc[namaDesa] = desaData;
@@ -150,17 +138,16 @@ export const generateOrganisasiXLSX = async (exportData) => {
                  worksheet.getRow(currentRow).addPageBreak();
                  currentRow += 2;
             }
-            worksheet.mergeCells(currentRow, 1, currentRow, config.formFields.length + 2);
+            worksheet.mergeCells(currentRow, 1, currentRow, numColumns);
             worksheet.getCell(currentRow, 1).value = `Desa ${namaDesa.toUpperCase()}`;
             worksheet.getCell(currentRow, 1).style = desaHeaderStyle;
             currentRow++;
             
             currentRow = addHeader(currentRow);
             currentRow = addDataRows(dataByDesa[namaDesa], currentRow);
-            currentRow += 2; // Spacing
+            currentRow += 2;
         });
         
-        // Tanda tangan Camat di akhir
         addSignatureBlock(currentRow, {
             location: 'Punggelan',
             jabatan: exportConfig?.jabatanPenandaTangan || 'Camat Punggelan',
@@ -169,12 +156,11 @@ export const generateOrganisasiXLSX = async (exportData) => {
             nip: exportConfig?.nipPenandaTangan
         });
 
-    } else { // Logika untuk Admin Desa (satu laporan)
+    } else {
         currentRow = addHeader(currentRow);
         currentRow = addDataRows(dataToExport, currentRow);
         
-        // Tanda tangan Kepala Desa
-        const kades = allPerangkat.find(p => p.desa === desa && p.jabatan?.toLowerCase() === 'kepala desa');
+        const kades = allPerangkat.find(p => p.desa === desa && p.jabatan?.toLowerCase().includes('kepala desa'));
         addSignatureBlock(currentRow + 2, {
             location: desa,
             jabatan: 'Kepala Desa',
@@ -182,25 +168,27 @@ export const generateOrganisasiXLSX = async (exportData) => {
         });
     }
     
-    // Atur Lebar Kolom
     worksheet.columns.forEach((column, i) => {
-        let maxLength = 0;
-        column.eachCell({ includeEmpty: true }, (cell) => {
-            let columnLength = cell.value ? cell.value.toString().length : 10;
-            if (columnLength > maxLength) {
-                maxLength = columnLength;
-            }
-        });
-        column.width = maxLength < 15 ? 15 : maxLength + 2;
+        if (i === 0) {
+            column.width = 5;
+        } else if (i === 1 && role === 'admin_kecamatan' && desa === 'all') {
+            column.width = 20;
+        } else {
+            let maxLength = 0;
+            column.eachCell({ includeEmpty: true }, (cell) => {
+                let columnLength = cell.value ? cell.value.toString().length : 10;
+                if (columnLength > maxLength) {
+                    maxLength = columnLength;
+                }
+            });
+            column.width = maxLength < 20 ? 20 : maxLength + 2;
+        }
     });
-    worksheet.getColumn(1).width = 5; // Kolom "NO"
 
-    // Simpan file
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const fileName = role === 'admin_kecamatan' 
+    const fileName = desa === 'all'
         ? `Data_${config.collectionName}_Kec_Punggelan_${currentYear}.xlsx`
         : `Data_${config.collectionName}_Desa_${desa}_${currentYear}.xlsx`;
     saveAs(blob, fileName);
 };
-

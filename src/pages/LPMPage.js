@@ -1,18 +1,23 @@
 import React from 'react';
 import OrganisasiCrudPage from '../components/common/OrganisasiCrudPage';
 import { LPM_CONFIG } from '../utils/constants';
-import { useFirestoreCollection } from '../hooks/useFirestoreCollection';
-import Spinner from '../components/common/Spinner';
+import { generateLpmXLSX } from '../utils/generateLpmXLSX';
 
 const LPMPage = () => {
-    // Ambil data perangkat untuk tanda tangan Kepala Desa saat ekspor
-    const { data: allPerangkat, loading: perangkatLoading } = useFirestoreCollection('perangkat');
-    
-    if (perangkatLoading) {
-        return <div className="flex justify-center items-center h-full"><Spinner size="lg" /></div>;
-    }
+  // PERBAIKAN: Menambahkan properti 'subModule' ke dalam konfigurasi
+  // untuk memperbaiki galat saat membuat link notifikasi.
+  const lpmConfigWithSubmodule = {
+    ...LPM_CONFIG,
+    subModule: 'lpm', // Properti 'subModule' ini diperlukan oleh OrganisasiCrudPage
+  };
 
-    return <OrganisasiCrudPage config={LPM_CONFIG} allPerangkat={allPerangkat} />;
+  return (
+    <OrganisasiCrudPage 
+      config={lpmConfigWithSubmodule} 
+      customExportFunction={generateLpmXLSX}
+    />
+  );
 };
 
 export default LPMPage;
+

@@ -9,8 +9,8 @@ import Spinner from '../components/common/Spinner';
 import InputField from '../components/common/InputField';
 import { FiPlus, FiEdit, FiTrash2, FiFilter, FiSearch } from 'react-icons/fi';
 import { DESA_LIST, KATEGORI_PENDAPATAN, KATEGORI_BELANJA } from '../utils/constants';
+import '../styles/AnimatedDeleteButton.css'; // Impor CSS untuk tombol animasi
 
-// Ganti nama komponen dari KeuanganDesa menjadi PenatausahaanPage
 const PenatausahaanPage = () => {
     const { currentUser } = useAuth();
     const { showNotification } = useNotification();
@@ -26,6 +26,7 @@ const PenatausahaanPage = () => {
     const [filterTahun, setFilterTahun] = useState(new Date().getFullYear());
     const [filterDesa, setFilterDesa] = useState(currentUser.role === 'admin_kecamatan' ? 'all' : currentUser.desa);
     const [searchTerm, setSearchTerm] = useState('');
+    const [animatingDeleteId, setAnimatingDeleteId] = useState(null);
 
     useEffect(() => {
         if (!currentUser) return;
@@ -77,13 +78,11 @@ const PenatausahaanPage = () => {
         const { name, value } = e.target;
         const newFormData = { ...formData, [name]: value };
 
-        // Reset kategori jika jenis transaksi berubah
         if (name === 'jenis') {
             newFormData.kategori = '';
             newFormData.bidang = '';
         }
 
-        // Set bidang otomatis saat kategori dipilih
         if (name === 'kategori') {
             const allKategori = [...KATEGORI_PENDAPATAN, ...KATEGORI_BELANJA];
             const selectedKat = allKategori.find(k => k.nama === value);
@@ -127,17 +126,27 @@ const PenatausahaanPage = () => {
 
     const executeDelete = async () => {
         if (!transactionToDelete) return;
+
         setIsSubmitting(true);
-        try {
-            await deleteDoc(doc(db, 'keuangan', transactionToDelete.id));
-            showNotification("Transaksi berhasil dihapus.", 'success');
-        } catch (error) {
-            showNotification(`Gagal menghapus transaksi: ${error.message}`, 'error');
-        } finally {
-            setIsSubmitting(false);
-            setIsDeleteConfirmOpen(false);
-            setTransactionToDelete(null);
-        }
+        setIsDeleteConfirmOpen(false);
+        setAnimatingDeleteId(transactionToDelete.id);
+
+        // Tunggu animasi selesai sebagian sebelum menghapus data
+        setTimeout(async () => {
+            try {
+                await deleteDoc(doc(db, 'keuangan', transactionToDelete.id));
+                showNotification("Transaksi berhasil dihapus.", 'success');
+            } catch (error) {
+                showNotification(`Gagal menghapus transaksi: ${error.message}`, 'error');
+            } finally {
+                // Beri waktu untuk animasi checkmark selesai
+                setTimeout(() => {
+                    setIsSubmitting(false);
+                    setTransactionToDelete(null);
+                    setAnimatingDeleteId(null);
+                }, 1800);
+            }
+        }, 1500);
     };
     
     const kategoriOptions = formData.jenis === 'Pendapatan' ? KATEGORI_PENDAPATAN : KATEGORI_BELANJA;
@@ -171,10 +180,10 @@ const PenatausahaanPage = () => {
                             <tr>
                                 <th className="px-6 py-3">Tanggal</th>
                                 <th className="px-6 py-3">Uraian</th>
-                                <th className="px-6 py-3">Kategori</th>
+                                {currentUser.role === 'admin_kecamatan' && <th className="px-6 py-3">Desa</th>}
                                 <th className="px-6 py-3">Jenis</th>
                                 <th className="px-6 py-3 text-right">Jumlah (Rp)</th>
-                                {currentUser.role === 'admin_desa' && <th className="px-6 py-3">Aksi</th>}
+                                <th className="px-6 py-3 text-center">Aksi</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -183,19 +192,42 @@ const PenatausahaanPage = () => {
                                 <tr key={t.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700">
                                     <td className="px-6 py-4">{t.tanggal}</td>
                                     <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{t.uraian}</td>
-                                    <td className="px-6 py-4">{t.kategori}</td>
+                                    {currentUser.role === 'admin_kecamatan' && <td className="px-6 py-4">{t.desa}</td>}
                                     <td className="px-6 py-4">
                                         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${t.jenis === 'Pendapatan' ? 'bg-green-100 text-green-800 dark:bg-green-900/50' : 'bg-red-100 text-red-800 dark:bg-red-900/50'}`}>
                                             {t.jenis}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 font-bold text-right">{Number(t.jumlah).toLocaleString('id-ID')}</td>
-                                    {currentUser.role === 'admin_desa' && (
-                                        <td className="px-6 py-4 flex items-center justify-end space-x-2">
-                                            <button onClick={() => handleOpenModal(t)} className="text-blue-500 hover:text-blue-700"><FiEdit /></button>
-                                            <button onClick={() => confirmDelete(t)} className="text-red-500 hover:text-red-700"><FiTrash2 /></button>
-                                        </td>
-                                    )}
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center justify-center space-x-2">
+                                            {currentUser.role === 'admin_desa' && (
+                                                <button onClick={() => handleOpenModal(t)} className="text-blue-500 hover:text-blue-700" title="Edit">
+                                                    <FiEdit />
+                                                </button>
+                                            )}
+                                            {(currentUser.role === 'admin_desa' || currentUser.role === 'admin_kecamatan') && (
+                                                <button 
+                                                    className={`button ${animatingDeleteId === t.id ? 'delete' : ''}`}
+                                                    onClick={() => confirmDelete(t)}
+                                                    disabled={isSubmitting}
+                                                    title="Hapus"
+                                                >
+                                                    <div className="trash">
+                                                        <div className="top">
+                                                            <div className="paper"></div>
+                                                        </div>
+                                                        <div className="box"></div>
+                                                        <div className="check">
+                                                            <svg viewBox="0 0 8 6">
+                                                                <polyline points="1 3.4 2.71428571 5 7 1"></polyline>
+                                                            </svg>
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            )}
+                                        </div>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
@@ -209,14 +241,14 @@ const PenatausahaanPage = () => {
                         <option value="Belanja">Belanja</option>
                         <option value="Pendapatan">Pendapatan</option>
                     </InputField>
-                    <InputField label="Kategori" name="kategori" type="select" value={formData.kategori} onChange={handleFormChange}>
-                        <option value="">Pilih Kategori</option>
+                    <InputField label="Kategori" name="kategori" type="select" value={formData.kategori || ''} onChange={handleFormChange} required>
+                        <option value="">-- Pilih Kategori --</option>
                         {kategoriOptions.map(k => <option key={k.nama} value={k.nama}>{k.nama}</option>)}
                     </InputField>
-                    <InputField label="Uraian" name="uraian" type="text" value={formData.uraian} onChange={handleFormChange} required />
-                    <InputField label="Jumlah (Rp)" name="jumlah" type="number" value={formData.jumlah} onChange={handleFormChange} required />
-                    <InputField label="Tanggal Transaksi" name="tanggal" type="date" value={formData.tanggal} onChange={handleFormChange} required />
-                    <InputField label="Tahun Anggaran" name="tahunAnggaran" type="number" value={formData.tahunAnggaran} onChange={handleFormChange} required />
+                    <InputField label="Uraian" name="uraian" type="text" value={formData.uraian || ''} onChange={handleFormChange} required />
+                    <InputField label="Jumlah (Rp)" name="jumlah" type="number" value={formData.jumlah || ''} onChange={handleFormChange} required />
+                    <InputField label="Tanggal Transaksi" name="tanggal" type="date" value={formData.tanggal || ''} onChange={handleFormChange} required />
+                    <InputField label="Tahun Anggaran" name="tahunAnggaran" type="number" value={formData.tahunAnggaran || ''} onChange={handleFormChange} required />
                     <div className="flex justify-end pt-4 border-t dark:border-gray-700">
                         <button type="button" onClick={handleCloseModal} className="px-4 py-2 mr-2 bg-gray-300 dark:bg-gray-600 rounded-lg">Batal</button>
                         <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg" disabled={isSubmitting}>{isSubmitting ? <Spinner size="sm"/> : "Simpan"}</button>

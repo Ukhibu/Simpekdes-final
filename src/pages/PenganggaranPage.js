@@ -9,7 +9,7 @@ import Modal from '../components/common/Modal';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import Button from '../components/common/Button';
 import { FiPlus, FiEdit, FiTrash2, FiTrendingUp, FiTrendingDown, FiDollarSign } from 'react-icons/fi';
-import { DESA_LIST, KATEGORI_PENDAPATAN, KATEGORI_BELANJA } from '../utils/constants';
+import { KATEGORI_PENDAPATAN, KATEGORI_BELANJA } from '../utils/constants';
 
 // Komponen Kartu Statistik
 const StatCard = ({ title, value, icon, colorClass }) => (
@@ -48,17 +48,11 @@ const PenganggaranPage = () => {
             return;
         }
 
-        const baseQuery = (collectionName) => query(
-            collection(db, collectionName),
-            where("desa", "==", currentUser.desa),
-            where("tahunAnggaran", "==", Number(filterTahun))
-        );
-
-        const unsubAnggaran = onSnapshot(baseQuery("anggaran"), (snapshot) => {
+        const unsubAnggaran = onSnapshot(query(collection(db, 'penganggaran'), where("desa", "==", currentUser.desa)), (snapshot) => {
             setAnggaranList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
-
-        const unsubTransaksi = onSnapshot(baseQuery("keuangan"), (snapshot) => {
+        
+        const unsubTransaksi = onSnapshot(query(collection(db, 'penatausahaan'), where("desa", "==", currentUser.desa)), (snapshot) => {
             setTransaksiList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
 
@@ -69,34 +63,43 @@ const PenganggaranPage = () => {
             unsubTransaksi();
             clearTimeout(timer);
         };
-    }, [currentUser, filterTahun]);
+    }, [currentUser]);
 
     // Mengolah data untuk ditampilkan di tabel dan kartu statistik
     const { pendapatan, belanja, totalAnggaran, totalRealisasi, sisaAnggaran } = useMemo(() => {
+        
+        const anggaranTahunIni = anggaranList.filter(a => a.tahun === Number(filterTahun));
+        const transaksiTahunIni = transaksiList.filter(t => {
+            const tDate = t.tanggal?.toDate ? t.tanggal.toDate() : new Date(t.tanggal);
+            return !isNaN(tDate) && tDate.getFullYear() === Number(filterTahun);
+        });
+
         const processData = (kategoriList, jenis) => {
-            const groupedByBidang = kategoriList.reduce((acc, kat) => {
-                if (!acc[kat.bidang]) acc[kat.bidang] = [];
-                const anggaranItems = anggaranList.filter(a => a.kategori === kat.nama && a.jenis === jenis);
+            const groupedByBidang = {};
+            
+            kategoriList.forEach(kat => {
+                const anggaranItems = anggaranTahunIni.filter(a => a.kategori === kat.nama && a.jenis === jenis);
                 if (anggaranItems.length > 0) {
+                    if (!groupedByBidang[kat.bidang]) groupedByBidang[kat.bidang] = [];
+                    
                     anggaranItems.forEach(item => {
-                        const realisasi = transaksiList
+                        const realisasi = transaksiTahunIni
                             .filter(t => t.kategori === item.kategori && t.jenis === jenis)
                             .reduce((sum, t) => sum + t.jumlah, 0);
-                        acc[kat.bidang].push({ ...item, realisasi });
+                        groupedByBidang[kat.bidang].push({ ...item, realisasi });
                     });
                 }
-                return acc;
-            }, {});
+            });
             return groupedByBidang;
         };
         
         const pendapatanData = processData(KATEGORI_PENDAPATAN, 'Pendapatan');
         const belanjaData = processData(KATEGORI_BELANJA, 'Belanja');
 
-        const totalAnggaranPendapatan = anggaranList.filter(a => a.jenis === 'Pendapatan').reduce((sum, a) => sum + a.jumlah, 0);
-        const totalRealisasiPendapatan = transaksiList.filter(t => t.jenis === 'Pendapatan').reduce((sum, t) => sum + t.jumlah, 0);
-        const totalAnggaranBelanja = anggaranList.filter(a => a.jenis === 'Belanja').reduce((sum, a) => sum + a.jumlah, 0);
-        const totalRealisasiBelanja = transaksiList.filter(t => t.jenis === 'Belanja').reduce((sum, t) => sum + t.jumlah, 0);
+        const totalAnggaranPendapatan = anggaranTahunIni.filter(a => a.jenis === 'Pendapatan').reduce((sum, a) => sum + a.jumlah, 0);
+        const totalRealisasiPendapatan = transaksiTahunIni.filter(t => t.jenis === 'Pendapatan').reduce((sum, t) => sum + t.jumlah, 0);
+        const totalAnggaranBelanja = anggaranTahunIni.filter(a => a.jenis === 'Belanja').reduce((sum, a) => sum + a.jumlah, 0);
+        const totalRealisasiBelanja = transaksiTahunIni.filter(t => t.jenis === 'Belanja').reduce((sum, t) => sum + t.jumlah, 0);
 
         return {
             pendapatan: pendapatanData,
@@ -105,7 +108,7 @@ const PenganggaranPage = () => {
             totalRealisasi: totalRealisasiPendapatan - totalRealisasiBelanja,
             sisaAnggaran: (totalAnggaranPendapatan - totalAnggaranBelanja) - (totalRealisasiPendapatan - totalRealisasiBelanja)
         };
-    }, [anggaranList, transaksiList]);
+    }, [anggaranList, transaksiList, filterTahun]);
     
     const formatCurrency = (value) => `Rp ${new Intl.NumberFormat('id-ID').format(value || 0)}`;
 
@@ -117,8 +120,12 @@ const PenganggaranPage = () => {
             setFormData({
                 jenis: 'Belanja',
                 desa: currentUser.desa,
-                tahunAnggaran: filterTahun,
-                jumlah: 0
+                tahun: filterTahun,
+                jumlah: 0,
+                kategori: '',
+                bidang: '',
+                kode_rekening: '',
+                uraian: ''
             });
         }
         setIsModalOpen(true);
@@ -138,6 +145,8 @@ const PenganggaranPage = () => {
         if (name === 'jenis') {
             updatedFormData.kategori = '';
             updatedFormData.bidang = '';
+            updatedFormData.kode_rekening = '';
+            updatedFormData.uraian = '';
         }
         
         if (name === 'kategori') {
@@ -145,6 +154,12 @@ const PenganggaranPage = () => {
             const selectedKat = allKategori.find(k => k.nama === value);
             if (selectedKat) {
                 updatedFormData.bidang = selectedKat.bidang;
+                updatedFormData.kode_rekening = selectedKat.kode_rekening;
+                updatedFormData.uraian = selectedKat.nama;
+            } else {
+                updatedFormData.bidang = '';
+                updatedFormData.kode_rekening = '';
+                updatedFormData.uraian = '';
             }
         }
 
@@ -155,23 +170,30 @@ const PenganggaranPage = () => {
         e.preventDefault();
         setIsSubmitting(true);
         try {
-            const dataToSave = {
-                ...formData,
-                jumlah: Number(formData.jumlah),
-                tahunAnggaran: Number(filterTahun)
-            };
-            
-            if (!dataToSave.bidang || !dataToSave.kategori) {
-                showNotification("Kategori dan Bidang wajib diisi.", 'error');
+            const allKategori = [...KATEGORI_PENDAPATAN, ...KATEGORI_BELANJA];
+            const selectedKat = allKategori.find(k => k.nama === formData.kategori);
+
+            if (!formData.kategori || !selectedKat) {
+                showNotification("Kategori wajib dipilih dan valid.", 'error');
                 setIsSubmitting(false);
                 return;
             }
 
+            const dataToSave = {
+                ...formData,
+                jumlah: Number(formData.jumlah) || 0,
+                tahun: Number(filterTahun),
+                desa: currentUser.desa,
+                bidang: selectedKat.bidang || '',
+                kode_rekening: selectedKat.kode_rekening || '',
+                uraian: selectedKat.nama || '',
+            };
+
             if (selectedAnggaran) {
-                await updateDoc(doc(db, 'anggaran', selectedAnggaran.id), dataToSave);
+                await updateDoc(doc(db, 'penganggaran', selectedAnggaran.id), dataToSave);
                 showNotification('Anggaran berhasil diperbarui', 'success');
             } else {
-                await addDoc(collection(db, 'anggaran'), dataToSave);
+                await addDoc(collection(db, 'penganggaran'), dataToSave);
                 showNotification('Anggaran berhasil ditambahkan', 'success');
             }
             handleCloseModal();
@@ -191,7 +213,7 @@ const PenganggaranPage = () => {
         if (!itemToDelete) return;
         setIsSubmitting(true);
         try {
-            await deleteDoc(doc(db, 'anggaran', itemToDelete.id));
+            await deleteDoc(doc(db, 'penganggaran', itemToDelete.id));
             showNotification('Anggaran berhasil dihapus', 'success');
         } catch (error) {
             showNotification(`Gagal menghapus: ${error.message}`, 'error');
@@ -203,6 +225,7 @@ const PenganggaranPage = () => {
     };
 
     const kategoriOptions = formData.jenis === 'Pendapatan' ? KATEGORI_PENDAPATAN : KATEGORI_BELANJA;
+    const tahunOptions = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i);
     
     const renderTableSection = (title, data, colorClass) => (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
@@ -225,13 +248,13 @@ const PenganggaranPage = () => {
                                 </tr>
                                 {items.map(item => (
                                     <tr key={item.id} className="border-b dark:border-gray-700">
-                                        <td className="px-4 py-3 pl-8">{item.kategori}</td>
+                                        <td className="px-4 py-3 pl-8">{item.uraian}</td>
                                         <td className="px-4 py-3 text-right">{formatCurrency(item.jumlah)}</td>
                                         <td className="px-4 py-3 text-right">{formatCurrency(item.realisasi)}</td>
                                         <td className="px-4 py-3 text-center">
                                             <div className="flex justify-center gap-4">
-                                                <button onClick={() => handleOpenModal(item)} className="text-blue-500 hover:text-blue-700"><FiEdit /></button>
-                                                <button onClick={() => confirmDelete(item)} className="text-red-500 hover:text-red-700"><FiTrash2 /></button>
+                                                <button onClick={() => handleOpenModal(item)} className="text-blue-500 hover:text-blue-700" title="Edit"><FiEdit /></button>
+                                                <button onClick={() => confirmDelete(item)} className="text-red-500 hover:text-red-700" title="Hapus"><FiTrash2 /></button>
                                             </div>
                                         </td>
                                     </tr>
@@ -251,12 +274,14 @@ const PenganggaranPage = () => {
             <div className="flex flex-wrap justify-between items-center gap-4">
                 <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Penganggaran APBDes</h1>
                 <div className="flex items-center gap-4">
-                    <InputField label="Tahun Anggaran" type="number" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)} />
+                     <InputField label="Tahun Anggaran" name="tahun" type="select" value={filterTahun} onChange={(e) => setFilterTahun(Number(e.target.value))}>
+                        {tahunOptions.map(tahun => <option key={tahun} value={tahun}>{tahun}</option>)}
+                    </InputField>
                     <Button onClick={() => handleOpenModal()} variant="primary" className="self-end"><FiPlus/> Tambah Anggaran</Button>
                 </div>
             </div>
             
-            {loading ? <Spinner /> : (
+            {loading ? <div className="flex justify-center p-8"><Spinner /></div> : (
                 <>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <StatCard title="Total Anggaran" value={formatCurrency(totalAnggaran)} icon={<FiDollarSign size={24} />} colorClass="bg-blue-500" />
@@ -282,7 +307,8 @@ const PenganggaranPage = () => {
                         {kategoriOptions.map(k => <option key={k.nama} value={k.nama}>{k.nama}</option>)}
                     </InputField>
                     
-                    <InputField label="Bidang" name="bidang" type="text" value={formData.bidang || ''} onChange={handleFormChange} disabled placeholder="Akan terisi otomatis"/>
+                    <InputField label="Bidang" name="bidang" type="text" value={formData.bidang || ''} disabled placeholder="Akan terisi otomatis"/>
+                    <InputField label="Kode Rekening" name="kode_rekening" type="text" value={formData.kode_rekening || ''} disabled placeholder="Akan terisi otomatis"/>
                     <InputField label="Jumlah (Rp)" name="jumlah" type="number" value={formData.jumlah || ''} onChange={handleFormChange} required />
 
                     <div className="flex justify-end pt-4 border-t dark:border-gray-700 gap-2">
@@ -305,3 +331,4 @@ const PenganggaranPage = () => {
 };
 
 export default PenganggaranPage;
+

@@ -63,6 +63,23 @@ service cloud.firestore {
                       (validatePerangkatData(request.resource.data) || validateJabatanKosongUpdate(request.resource.data, resource.data));
       allow delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
     }
+
+    // --- [PERBAIKAN] Aturan untuk anggaran dan sub-koleksi realisasinya ---
+    match /anggaran_tahunan/{anggaranId} {
+      allow read, update, delete: if isSignedIn() &&
+                      (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
+      allow create: if isSignedIn() &&
+                      (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
+
+      // [BARU] Aturan untuk sub-koleksi realisasi
+      match /realisasi/{realisasiId} {
+        allow read, write: if isSignedIn() &&
+                            (
+                              isUserRole('admin_kecamatan') ||
+                              (isUserRole('admin_desa') && get(/databases/$(database)/documents/anggaran_tahunan/$(anggaranId)).data.desa == getUserDesa())
+                            );
+      }
+    }
     
     match /bpd/{docId} {
       allow read: if isSignedIn();
@@ -106,18 +123,6 @@ service cloud.firestore {
       allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
     }
     
-    match /keuangan/{docId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
-      allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
-    }
-
-    match /anggaran/{docId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
-      allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
-    }
-    
     match /aset/{docId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
@@ -147,3 +152,4 @@ service cloud.firestore {
     }
   }
 }
+

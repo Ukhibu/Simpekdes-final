@@ -8,126 +8,55 @@ import InputField from '../components/common/InputField';
 import Modal from '../components/common/Modal';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import Button from '../components/common/Button';
-import { FiPlus, FiEdit, FiTrash2, FiTrendingUp, FiTrendingDown, FiDollarSign } from 'react-icons/fi';
-import { KATEGORI_PENDAPATAN, KATEGORI_BELANJA } from '../utils/constants';
-
-// Komponen Kartu Statistik
-const StatCard = ({ title, value, icon, colorClass }) => (
-    <div className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-md flex items-center gap-4">
-        <div className={`p-3 rounded-full text-white ${colorClass}`}>
-            {icon}
-        </div>
-        <div>
-            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-        </div>
-    </div>
-);
+import { FiPlus, FiEdit, FiTrash2, FiSend, FiCheckSquare, FiLock } from 'react-icons/fi';
+import { KATEGORI_PENDAPATAN, KATEGORI_BELANJA, DESA_LIST } from '../utils/constants';
 
 const PenganggaranPage = () => {
     const { currentUser } = useAuth();
     const { showNotification } = useNotification();
     
-    // State untuk data dari Firestore
     const [anggaranList, setAnggaranList] = useState([]);
-    const [transaksiList, setTransaksiList] = useState([]);
-    
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedAnggaran, setSelectedAnggaran] = useState(null);
     const [formData, setFormData] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-    const [itemToDelete, setItemToDelete] = useState(null);
+    const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+    const [itemToProcess, setItemToProcess] = useState(null);
+    const [actionType, setActionType] = useState('');
     const [filterTahun, setFilterTahun] = useState(new Date().getFullYear());
+    // [BARU] State untuk filter desa oleh Admin Kecamatan
+    const [filterDesa, setFilterDesa] = useState(currentUser.role === 'admin_kecamatan' ? DESA_LIST[0] : currentUser.desa);
 
-    // Mengambil data Anggaran dan Realisasi (Transaksi) dari Firestore
     useEffect(() => {
-        if (!currentUser || !currentUser.desa) {
-            setLoading(false);
-            return;
-        }
+        setLoading(true);
+        const q = query(
+            collection(db, 'anggaran_tahunan'), 
+            where("desa", "==", filterDesa),
+            where("tahun", "==", Number(filterTahun))
+        );
 
-        const unsubAnggaran = onSnapshot(query(collection(db, 'penganggaran'), where("desa", "==", currentUser.desa)), (snapshot) => {
+        const unsubscribe = onSnapshot(q, (snapshot) => {
             setAnggaranList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        });
-        
-        const unsubTransaksi = onSnapshot(query(collection(db, 'penatausahaan'), where("desa", "==", currentUser.desa)), (snapshot) => {
-            setTransaksiList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            setLoading(false);
         });
 
-        const timer = setTimeout(() => setLoading(false), 500); // Memberi waktu data untuk sinkron
+        return () => unsubscribe();
+    }, [filterDesa, filterTahun]);
 
-        return () => {
-            unsubAnggaran();
-            unsubTransaksi();
-            clearTimeout(timer);
-        };
-    }, [currentUser]);
-
-    // Mengolah data untuk ditampilkan di tabel dan kartu statistik
-    const { pendapatan, belanja, totalAnggaran, totalRealisasi, sisaAnggaran } = useMemo(() => {
-        
-        const anggaranTahunIni = anggaranList.filter(a => a.tahun === Number(filterTahun));
-        const transaksiTahunIni = transaksiList.filter(t => {
-            const tDate = t.tanggal?.toDate ? t.tanggal.toDate() : new Date(t.tanggal);
-            return !isNaN(tDate) && tDate.getFullYear() === Number(filterTahun);
-        });
-
-        const processData = (kategoriList, jenis) => {
-            const groupedByBidang = {};
-            
-            kategoriList.forEach(kat => {
-                const anggaranItems = anggaranTahunIni.filter(a => a.kategori === kat.nama && a.jenis === jenis);
-                if (anggaranItems.length > 0) {
-                    if (!groupedByBidang[kat.bidang]) groupedByBidang[kat.bidang] = [];
-                    
-                    anggaranItems.forEach(item => {
-                        const realisasi = transaksiTahunIni
-                            .filter(t => t.kategori === item.kategori && t.jenis === jenis)
-                            .reduce((sum, t) => sum + t.jumlah, 0);
-                        groupedByBidang[kat.bidang].push({ ...item, realisasi });
-                    });
-                }
-            });
-            return groupedByBidang;
-        };
-        
-        const pendapatanData = processData(KATEGORI_PENDAPATAN, 'Pendapatan');
-        const belanjaData = processData(KATEGORI_BELANJA, 'Belanja');
-
-        const totalAnggaranPendapatan = anggaranTahunIni.filter(a => a.jenis === 'Pendapatan').reduce((sum, a) => sum + a.jumlah, 0);
-        const totalRealisasiPendapatan = transaksiTahunIni.filter(t => t.jenis === 'Pendapatan').reduce((sum, t) => sum + t.jumlah, 0);
-        const totalAnggaranBelanja = anggaranTahunIni.filter(a => a.jenis === 'Belanja').reduce((sum, a) => sum + a.jumlah, 0);
-        const totalRealisasiBelanja = transaksiTahunIni.filter(t => t.jenis === 'Belanja').reduce((sum, t) => sum + t.jumlah, 0);
-
-        return {
-            pendapatan: pendapatanData,
-            belanja: belanjaData,
-            totalAnggaran: totalAnggaranPendapatan - totalAnggaranBelanja,
-            totalRealisasi: totalRealisasiPendapatan - totalRealisasiBelanja,
-            sisaAnggaran: (totalAnggaranPendapatan - totalAnggaranBelanja) - (totalRealisasiPendapatan - totalRealisasiBelanja)
-        };
-    }, [anggaranList, transaksiList, filterTahun]);
+    const { pendapatan, belanja, totalAnggaranPendapatan, totalAnggaranBelanja } = useMemo(() => {
+        const p = anggaranList.filter(a => a.jenis === 'Pendapatan');
+        const b = anggaranList.filter(a => a.jenis === 'Belanja');
+        const totalP = p.reduce((sum, a) => sum + a.jumlah, 0);
+        const totalB = b.reduce((sum, a) => sum + a.jumlah, 0);
+        return { pendapatan: p, belanja: b, totalAnggaranPendapatan: totalP, totalAnggaranBelanja: totalB };
+    }, [anggaranList]);
     
     const formatCurrency = (value) => `Rp ${new Intl.NumberFormat('id-ID').format(value || 0)}`;
 
     const handleOpenModal = (item = null) => {
         setSelectedAnggaran(item);
-        if (item) {
-            setFormData(item);
-        } else {
-            setFormData({
-                jenis: 'Belanja',
-                desa: currentUser.desa,
-                tahun: filterTahun,
-                jumlah: 0,
-                kategori: '',
-                bidang: '',
-                kode_rekening: '',
-                uraian: ''
-            });
-        }
+        setFormData(item || { jenis: 'Belanja', desa: currentUser.desa, tahun: filterTahun, jumlah: 0, status: 'Draft' });
         setIsModalOpen(true);
     };
 
@@ -142,27 +71,18 @@ const PenganggaranPage = () => {
         const { name, value } = e.target;
         let updatedFormData = { ...formData, [name]: value };
 
-        if (name === 'jenis') {
-            updatedFormData.kategori = '';
-            updatedFormData.bidang = '';
-            updatedFormData.kode_rekening = '';
-            updatedFormData.uraian = '';
-        }
-        
         if (name === 'kategori') {
             const allKategori = [...KATEGORI_PENDAPATAN, ...KATEGORI_BELANJA];
             const selectedKat = allKategori.find(k => k.nama === value);
             if (selectedKat) {
-                updatedFormData.bidang = selectedKat.bidang;
-                updatedFormData.kode_rekening = selectedKat.kode_rekening;
-                updatedFormData.uraian = selectedKat.nama;
-            } else {
-                updatedFormData.bidang = '';
-                updatedFormData.kode_rekening = '';
-                updatedFormData.uraian = '';
+                updatedFormData = {
+                    ...updatedFormData,
+                    bidang: selectedKat.bidang,
+                    kode_rekening: selectedKat.kode_rekening,
+                    uraian: selectedKat.nama,
+                };
             }
         }
-
         setFormData(updatedFormData);
     };
 
@@ -187,13 +107,14 @@ const PenganggaranPage = () => {
                 bidang: selectedKat.bidang || '',
                 kode_rekening: selectedKat.kode_rekening || '',
                 uraian: selectedKat.nama || '',
+                status: 'Draft' // Selalu kembali ke draft saat disimpan
             };
 
             if (selectedAnggaran) {
-                await updateDoc(doc(db, 'penganggaran', selectedAnggaran.id), dataToSave);
+                await updateDoc(doc(db, 'anggaran_tahunan', selectedAnggaran.id), dataToSave);
                 showNotification('Anggaran berhasil diperbarui', 'success');
             } else {
-                await addDoc(collection(db, 'penganggaran'), dataToSave);
+                await addDoc(collection(db, 'anggaran_tahunan'), dataToSave);
                 showNotification('Anggaran berhasil ditambahkan', 'success');
             }
             handleCloseModal();
@@ -204,23 +125,31 @@ const PenganggaranPage = () => {
         }
     };
     
-    const confirmDelete = (item) => {
-        setItemToDelete(item);
-        setIsDeleteConfirmOpen(true);
+    const handleAction = (item, type) => {
+        setItemToProcess(item);
+        setActionType(type);
+        setIsConfirmOpen(true);
     };
 
-    const executeDelete = async () => {
-        if (!itemToDelete) return;
+    const executeAction = async () => {
+        if (!itemToProcess || !actionType) return;
         setIsSubmitting(true);
         try {
-            await deleteDoc(doc(db, 'penganggaran', itemToDelete.id));
-            showNotification('Anggaran berhasil dihapus', 'success');
+            const docRef = doc(db, 'anggaran_tahunan', itemToProcess.id);
+            if (actionType === 'delete') {
+                await deleteDoc(docRef);
+                showNotification('Anggaran berhasil dihapus', 'success');
+            } else {
+                const newStatus = actionType === 'ajukan' ? 'Diajukan' : 'Disahkan';
+                await updateDoc(docRef, { status: newStatus });
+                showNotification(`Anggaran berhasil ${newStatus.toLowerCase()}`, 'success');
+            }
         } catch (error) {
-            showNotification(`Gagal menghapus: ${error.message}`, 'error');
+            showNotification(`Gagal: ${error.message}`, 'error');
         } finally {
             setIsSubmitting(false);
-            setIsDeleteConfirmOpen(false);
-            setItemToDelete(null);
+            setIsConfirmOpen(false);
+            setItemToProcess(null);
         }
     };
 
@@ -231,37 +160,41 @@ const PenganggaranPage = () => {
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
             <h3 className={`text-xl font-semibold ${colorClass} mb-4`}>{title}</h3>
             <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+                <table className="w-full text-sm">
                     <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700">
                         <tr>
+                            <th className="px-4 py-3">Kode Rekening</th>
                             <th className="px-4 py-3">Uraian</th>
-                            <th className="px-4 py-3 text-right">Anggaran (Rp)</th>
-                            <th className="px-4 py-3 text-right">Realisasi (Rp)</th>
+                            <th className="px-4 py-3 text-right">Jumlah (Rp)</th>
+                            <th className="px-4 py-3 text-center">Status</th>
                             <th className="px-4 py-3 text-center">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {Object.keys(data).length > 0 ? Object.entries(data).map(([bidang, items]) => (
-                            <React.Fragment key={bidang}>
-                                <tr className="bg-gray-50 dark:bg-gray-700/50">
-                                    <td colSpan="4" className="px-4 py-2 font-bold text-gray-800 dark:text-gray-200">{bidang}</td>
-                                </tr>
-                                {items.map(item => (
-                                    <tr key={item.id} className="border-b dark:border-gray-700">
-                                        <td className="px-4 py-3 pl-8">{item.uraian}</td>
-                                        <td className="px-4 py-3 text-right">{formatCurrency(item.jumlah)}</td>
-                                        <td className="px-4 py-3 text-right">{formatCurrency(item.realisasi)}</td>
-                                        <td className="px-4 py-3 text-center">
-                                            <div className="flex justify-center gap-4">
-                                                <button onClick={() => handleOpenModal(item)} className="text-blue-500 hover:text-blue-700" title="Edit"><FiEdit /></button>
-                                                <button onClick={() => confirmDelete(item)} className="text-red-500 hover:text-red-700" title="Hapus"><FiTrash2 /></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </React.Fragment>
+                        {data.length > 0 ? data.map(item => (
+                            <tr key={item.id} className="border-b dark:border-gray-700">
+                                <td className="px-4 py-3">{item.kode_rekening}</td>
+                                <td className="px-4 py-3">{item.uraian}</td>
+                                <td className="px-4 py-3 text-right">{formatCurrency(item.jumlah)}</td>
+                                <td className="px-4 py-3 text-center">{item.status}</td>
+                                <td className="px-4 py-3 text-center">
+                                    <div className="flex justify-center gap-2">
+                                        {item.status === 'Draft' && currentUser.role === 'admin_desa' && (
+                                            <>
+                                                <Button size="sm" variant="success" onClick={() => handleAction(item, 'ajukan')}><FiSend/></Button>
+                                                <Button size="sm" variant="primary" onClick={() => handleOpenModal(item)}><FiEdit/></Button>
+                                                <Button size="sm" variant="danger" onClick={() => handleAction(item, 'delete')}><FiTrash2/></Button>
+                                            </>
+                                        )}
+                                        {currentUser.role === 'admin_kecamatan' && item.status === 'Diajukan' && (
+                                            <Button size="sm" variant="success" onClick={() => handleAction(item, 'sahkan')}><FiCheckSquare/></Button>
+                                        )}
+                                        {item.status === 'Disahkan' && <FiLock className="text-gray-500 mx-auto" />}
+                                    </div>
+                                </td>
+                            </tr>
                         )) : (
-                            <tr><td colSpan="4" className="text-center py-6 italic text-gray-500">Belum ada data anggaran.</td></tr>
+                            <tr><td colSpan="5" className="text-center py-6 italic text-gray-500">Belum ada data.</td></tr>
                         )}
                     </tbody>
                 </table>
@@ -271,27 +204,42 @@ const PenganggaranPage = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-wrap justify-between items-center gap-4">
+            <div className="flex justify-between items-center">
                 <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Penganggaran APBDes</h1>
                 <div className="flex items-center gap-4">
-                     <InputField label="Tahun Anggaran" name="tahun" type="select" value={filterTahun} onChange={(e) => setFilterTahun(Number(e.target.value))}>
-                        {tahunOptions.map(tahun => <option key={tahun} value={tahun}>{tahun}</option>)}
+                     <InputField label="Tahun" type="select" value={filterTahun} onChange={(e) => setFilterTahun(Number(e.target.value))}>
+                        {tahunOptions.map(th => <option key={th} value={th}>{th}</option>)}
                     </InputField>
-                    <Button onClick={() => handleOpenModal()} variant="primary" className="self-end"><FiPlus/> Tambah Anggaran</Button>
+                    {/* [BARU] Filter Desa untuk Admin Kecamatan */}
+                    {currentUser.role === 'admin_kecamatan' && (
+                        <InputField label="Desa" type="select" value={filterDesa} onChange={(e) => setFilterDesa(e.target.value)}>
+                             {DESA_LIST.map(d => <option key={d} value={d}>{d}</option>)}
+                        </InputField>
+                    )}
+                    {currentUser.role === 'admin_desa' && (
+                        <Button onClick={() => handleOpenModal()} variant="primary" className="self-end"><FiPlus/> Tambah</Button>
+                    )}
                 </div>
             </div>
             
-            {loading ? <div className="flex justify-center p-8"><Spinner /></div> : (
+            {loading ? <Spinner /> : (
                 <>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <StatCard title="Total Anggaran" value={formatCurrency(totalAnggaran)} icon={<FiDollarSign size={24} />} colorClass="bg-blue-500" />
-                        <StatCard title="Total Realisasi" value={formatCurrency(totalRealisasi)} icon={<FiTrendingUp size={24} />} colorClass="bg-yellow-500" />
-                        <StatCard title="Sisa Anggaran" value={formatCurrency(sisaAnggaran)} icon={<FiTrendingDown size={24} />} colorClass={sisaAnggaran >= 0 ? "bg-green-500" : "bg-red-500"} />
+                        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md text-center">
+                            <p className="text-sm text-green-600 dark:text-green-400 font-bold">Total Anggaran Pendapatan</p>
+                            <p className="text-2xl font-bold">{formatCurrency(totalAnggaranPendapatan)}</p>
+                        </div>
+                        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md text-center">
+                            <p className="text-sm text-red-600 dark:text-red-400 font-bold">Total Anggaran Belanja</p>
+                            <p className="text-2xl font-bold">{formatCurrency(totalAnggaranBelanja)}</p>
+                        </div>
+                        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md text-center">
+                            <p className="text-sm text-blue-600 dark:text-blue-400 font-bold">Surplus / (Defisit)</p>
+                            <p className="text-2xl font-bold">{formatCurrency(totalAnggaranPendapatan - totalAnggaranBelanja)}</p>
+                        </div>
                     </div>
-                    <div className="space-y-6">
-                        {renderTableSection("Anggaran Pendapatan", pendapatan, "text-green-600 dark:text-green-400")}
-                        {renderTableSection("Anggaran Belanja", belanja, "text-red-600 dark:text-red-400")}
-                    </div>
+                    {renderTableSection("Pendapatan", pendapatan, "text-green-600 dark:text-green-400")}
+                    {renderTableSection("Belanja", belanja, "text-red-600 dark:text-red-400")}
                 </>
             )}
 
@@ -301,30 +249,25 @@ const PenganggaranPage = () => {
                         <option value="Pendapatan">Pendapatan</option>
                         <option value="Belanja">Belanja</option>
                     </InputField>
-
                     <InputField label="Kategori" name="kategori" type="select" value={formData.kategori || ''} onChange={handleFormChange} required>
                         <option value="">-- Pilih Kategori --</option>
                         {kategoriOptions.map(k => <option key={k.nama} value={k.nama}>{k.nama}</option>)}
                     </InputField>
-                    
-                    <InputField label="Bidang" name="bidang" type="text" value={formData.bidang || ''} disabled placeholder="Akan terisi otomatis"/>
-                    <InputField label="Kode Rekening" name="kode_rekening" type="text" value={formData.kode_rekening || ''} disabled placeholder="Akan terisi otomatis"/>
                     <InputField label="Jumlah (Rp)" name="jumlah" type="number" value={formData.jumlah || ''} onChange={handleFormChange} required />
-
                     <div className="flex justify-end pt-4 border-t dark:border-gray-700 gap-2">
                         <Button type="button" variant="secondary" onClick={handleCloseModal} disabled={isSubmitting}>Batal</Button>
-                        <Button type="submit" variant="primary" isLoading={isSubmitting}>{selectedAnggaran ? "Simpan Perubahan" : "Simpan"}</Button>
+                        <Button type="submit" variant="primary" isLoading={isSubmitting}>Simpan</Button>
                     </div>
                 </form>
             </Modal>
             
             <ConfirmationModal
-                isOpen={isDeleteConfirmOpen}
-                onClose={() => setIsDeleteConfirmOpen(false)}
-                onConfirm={executeDelete}
+                isOpen={isConfirmOpen}
+                onClose={() => setIsConfirmOpen(false)}
+                onConfirm={executeAction}
                 isLoading={isSubmitting}
-                title="Konfirmasi Hapus Anggaran"
-                message={`Anda yakin ingin menghapus anggaran "${itemToDelete?.kategori}"?`}
+                title={`Konfirmasi ${actionType}`}
+                message={`Anda yakin ingin ${actionType} anggaran "${itemToProcess?.uraian}"?`}
             />
         </div>
     );

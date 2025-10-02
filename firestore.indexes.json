@@ -55,6 +55,23 @@
         { "fieldPath": "desa", "order": "ASCENDING" },
         { "fieldPath": "nama", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "anggaran_tahunan",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "desa", "order": "ASCENDING" },
+        { "fieldPath": "tahun", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "realisasi",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "parentDesa", "order": "ASCENDING" },
+        { "fieldPath": "tanggal", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -5,7 +5,7 @@ import { saveAs } from 'file-saver';
 const formatCurrency = (value) => (typeof value === 'number' ? value : 0);
 
 export const generateRealisasiXLSX = async ({ laporanData, tahun, desa, exportConfig, allPerangkat }) => {
-    if (!laporanData) {
+    if (!laporanData || laporanData.length === 0) {
         alert("Tidak ada data untuk diekspor.");
         return;
     }
@@ -53,67 +53,81 @@ export const generateRealisasiXLSX = async ({ laporanData, tahun, desa, exportCo
     headerRow.eachCell(cell => cell.style = headerStyle);
     headerRow.height = 30;
 
+    // --- KELOMPOKKAN DATA ---
+    const { pendapatan, belanja, totalAnggaranPendapatan, totalRealisasiPendapatan, totalAnggaranBelanja, totalRealisasiBelanja } = laporanData.reduce((acc, item) => {
+        const isPendapatan = item.jenis === 'Pendapatan';
+        const target = isPendapatan ? acc.pendapatan : acc.belanja;
+        if (!target[item.bidang]) target[item.bidang] = [];
+        target[item.bidang].push(item);
+        if (isPendapatan) {
+            acc.totalAnggaranPendapatan += item.jumlah;
+            acc.totalRealisasiPendapatan += item.totalRealisasi;
+        } else {
+            acc.totalAnggaranBelanja += item.jumlah;
+            acc.totalRealisasiBelanja += item.totalRealisasi;
+        }
+        return acc;
+    }, { pendapatan: {}, belanja: {}, totalAnggaranPendapatan: 0, totalRealisasiPendapatan: 0, totalAnggaranBelanja: 0, totalRealisasiBelanja: 0 });
+
     // --- FUNGSI UNTUK MENAMBAHKAN BAGIAN DATA ---
     const addDataSection = (title, data) => {
-        let sectionTotalAnggaran = 0;
-        let sectionTotalRealisasi = 0;
-
         const titleRow = worksheet.addRow([, title]);
         for (let i = 1; i <= totalColumns; i++) titleRow.getCell(i).style = boldTextStyle;
         
         Object.entries(data).forEach(([bidang, items]) => {
-            // **PERBAIKAN**: Hanya tampilkan bidang jika ada item di dalamnya
             if (items.length > 0) {
                 const bidangRow = worksheet.addRow([, bidang]);
                 for (let i = 1; i <= totalColumns; i++) bidangRow.getCell(i).style = { ...italicTextStyle, alignment: {...italicTextStyle.alignment, indent: 1} };
 
                 items.forEach(item => {
-                    const sisa = item.anggaran - item.realisasi;
-                    const persentase = item.anggaran > 0 ? item.realisasi / item.anggaran : 0;
+                    const sisa = item.jumlah - item.totalRealisasi;
+                    const persentase = item.jumlah > 0 ? item.totalRealisasi / item.jumlah : 0;
                     const itemRow = worksheet.addRow([
-                        , `    ${item.kategori}`,
-                        formatCurrency(item.anggaran),
-                        formatCurrency(item.realisasi),
+                        item.kode_rekening || '',
+                        `    ${item.uraian}`,
+                        formatCurrency(item.jumlah),
+                        formatCurrency(item.totalRealisasi),
                         formatCurrency(sisa),
                         persentase
                     ]);
 
-                    for (let i = 1; i <= totalColumns; i++) itemRow.getCell(i).style = baseCellStyle;
-                    itemRow.getCell(2).style = { ...textCellStyle, alignment: { ...textCellStyle.alignment, indent: 2 } };
-                    itemRow.getCell(3).style = currencyCellStyle;
-                    itemRow.getCell(4).style = currencyCellStyle;
-                    itemRow.getCell(5).style = currencyCellStyle;
-                    itemRow.getCell(6).style = percentCellStyle;
-
-                    sectionTotalAnggaran += item.anggaran;
-                    sectionTotalRealisasi += item.realisasi;
+                    itemRow.getCell('A').style = { ...baseCellStyle, alignment: { ...baseCellStyle.alignment, horizontal: 'left' } };
+                    itemRow.getCell('B').style = { ...textCellStyle, alignment: { ...textCellStyle.alignment, indent: 2 } };
+                    itemRow.getCell('C').style = currencyCellStyle;
+                    itemRow.getCell('D').style = currencyCellStyle;
+                    itemRow.getCell('E').style = currencyCellStyle;
+                    itemRow.getCell('F').style = percentCellStyle;
                 });
             }
         });
-
-        const sectionSisa = sectionTotalAnggaran - sectionTotalRealisasi;
-        const sectionPersentase = sectionTotalAnggaran > 0 ? sectionTotalRealisasi / sectionTotalAnggaran : 0;
-        const totalRow = worksheet.addRow([
-            , `JUMLAH ${title.toUpperCase()}`,
-            formatCurrency(sectionTotalAnggaran),
-            formatCurrency(sectionTotalRealisasi),
-            formatCurrency(sectionSisa),
-            sectionPersentase
-        ]);
-        
-        for (let i = 1; i <= totalColumns; i++) totalRow.getCell(i).style = totalRowStyle;
-        totalRow.getCell(3).style = totalCurrencyStyle;
-        totalRow.getCell(4).style = totalCurrencyStyle;
-        totalRow.getCell(5).style = totalCurrencyStyle;
-        totalRow.getCell(6).style = totalPercentStyle;
-        
-        return { anggaran: sectionTotalAnggaran, realisasi: sectionTotalRealisasi };
     };
 
     // --- RENDER BAGIAN PENDAPATAN & BELANJA ---
-    const { anggaran: totalAnggaranPendapatan, realisasi: totalRealisasiPendapatan } = addDataSection('PENDAPATAN', laporanData.pendapatan);
+    addDataSection('PENDAPATAN', pendapatan);
+    const totalPendapatanRow = worksheet.addRow([
+        '', 'JUMLAH PENDAPATAN',
+        formatCurrency(totalAnggaranPendapatan),
+        formatCurrency(totalRealisasiPendapatan),
+        formatCurrency(totalRealisasiPendapatan - totalAnggaranPendapatan),
+        totalAnggaranPendapatan > 0 ? totalRealisasiPendapatan / totalAnggaranPendapatan : 0
+    ]);
+    for (let i = 1; i <= totalColumns; i++) totalPendapatanRow.getCell(i).style = totalRowStyle;
+    ['C', 'D', 'E'].forEach(col => totalPendapatanRow.getCell(col).style = totalCurrencyStyle);
+    totalPendapatanRow.getCell('F').style = totalPercentStyle;
+    
     worksheet.addRow([]);
-    const { anggaran: totalAnggaranBelanja, realisasi: totalRealisasiBelanja } = addDataSection('BELANJA', laporanData.belanja);
+
+    addDataSection('BELANJA', belanja);
+    const totalBelanjaRow = worksheet.addRow([
+        '', 'JUMLAH BELANJA',
+        formatCurrency(totalAnggaranBelanja),
+        formatCurrency(totalRealisasiBelanja),
+        formatCurrency(totalAnggaranBelanja - totalRealisasiBelanja),
+        totalAnggaranBelanja > 0 ? totalRealisasiBelanja / totalAnggaranBelanja : 0
+    ]);
+     for (let i = 1; i <= totalColumns; i++) totalBelanjaRow.getCell(i).style = totalRowStyle;
+    ['C', 'D', 'E'].forEach(col => totalBelanjaRow.getCell(col).style = totalCurrencyStyle);
+    totalBelanjaRow.getCell('F').style = totalPercentStyle;
     worksheet.addRow([]);
 
     // --- RENDER BARIS SURPLUS/DEFISIT ---
@@ -122,18 +136,16 @@ export const generateRealisasiXLSX = async ({ laporanData, tahun, desa, exportCo
     const surplusSisa = surplusDefisitRealisasi - surplusDefisitAnggaran;
     const surplusPersentase = surplusDefisitAnggaran !== 0 ? surplusDefisitRealisasi / surplusDefisitAnggaran : 0;
     const surplusRow = worksheet.addRow([
-        , 'SURPLUS / (DEFISIT)',
+        '', 'SURPLUS / (DEFISIT)',
         formatCurrency(surplusDefisitAnggaran),
         formatCurrency(surplusDefisitRealisasi),
         formatCurrency(surplusSisa),
         surplusPersentase
     ]);
     for (let i = 1; i <= totalColumns; i++) surplusRow.getCell(i).style = totalRowStyle;
-    surplusRow.getCell(3).style = totalCurrencyStyle;
-    surplusRow.getCell(4).style = totalCurrencyStyle;
-    surplusRow.getCell(5).style = totalCurrencyStyle;
-    surplusRow.getCell(6).style = totalPercentStyle;
-    
+    ['C', 'D', 'E'].forEach(col => surplusRow.getCell(col).style = totalCurrencyStyle);
+    surplusRow.getCell('F').style = totalPercentStyle;
+
     // --- LEBAR KOLOM ---
     worksheet.columns = [ { width: 15 }, { width: 45 }, { width: 22 }, { width: 22 }, { width: 22 }, { width: 12 }];
 
@@ -147,7 +159,6 @@ export const generateRealisasiXLSX = async ({ laporanData, tahun, desa, exportCo
         const signatureStyle = { font: { name: 'Arial', size: 10 }, alignment: { horizontal: 'center' } };
         const nameStyle = { ...signatureStyle, font: { ...signatureStyle.font, bold: true, underline: true } };
 
-        // Mengetahui (Kiri)
         worksheet.getCell(`B${sigRowIndex}`).value = 'Mengetahui,';
         worksheet.getCell(`B${sigRowIndex}`).style = signatureStyle;
         worksheet.getCell(`B${sigRowIndex + 1}`).value = 'Kepala Desa';
@@ -155,7 +166,6 @@ export const generateRealisasiXLSX = async ({ laporanData, tahun, desa, exportCo
         worksheet.getCell(`B${sigRowIndex + 5}`).value = (kades?.nama || '(....................................)').toUpperCase();
         worksheet.getCell(`B${sigRowIndex + 5}`).style = nameStyle;
 
-        // Disusun oleh (Kanan)
         worksheet.getCell(`E${sigRowIndex}`).value = `${desa}, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`;
         worksheet.getCell(`E${sigRowIndex}`).style = signatureStyle;
         worksheet.getCell(`E${sigRowIndex + 1}`).value = 'Disusun oleh,';
@@ -166,10 +176,8 @@ export const generateRealisasiXLSX = async ({ laporanData, tahun, desa, exportCo
         worksheet.getCell(`E${sigRowIndex + 5}`).style = nameStyle;
     }
 
-
     // --- SIMPAN FILE ---
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     saveAs(blob, `Laporan_Realisasi_APBDes_${desa}_${tahun}.xlsx`);
 };
-

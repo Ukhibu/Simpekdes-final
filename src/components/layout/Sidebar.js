@@ -14,10 +14,8 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
     const { branding } = useBranding();
     const location = useLocation();
     
-    // State untuk mengontrol dropdown menu SK
     const [isSkMenuOpen, setIsSkMenuOpen] = useState(false);
 
-    // Efek untuk membuka dropdown secara otomatis jika path-nya aktif
     useEffect(() => {
         if (location.pathname.startsWith('/app/data-sk')) {
             setIsSkMenuOpen(true);
@@ -38,8 +36,6 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
             : 'text-gray-400 hover:bg-gray-600 hover:text-white'
         }`;
     
-    // --- MENU KOMPONEN ---
-
     const PerangkatMenu = () => (
         <>
             <div className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">Pemerintahan</div>
@@ -83,7 +79,6 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
                 <FiUpload className="w-5 h-5 mr-3" /><span>Manajemen SK</span>
             </NavLink>
             
-            {/* Menu Dropdown untuk Data SK */}
             <div>
                 <button 
                     onClick={() => setIsSkMenuOpen(!isSkMenuOpen)}
@@ -156,8 +151,9 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
     const KeuanganMenu = () => (
         <>
             <div className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">Keuangan Desa</div>
-             <NavLink to="/app/keuangan" end className={navLinkClasses}><FiGrid className="w-5 h-5 mr-3" /><span>Dashboard Keuangan</span></NavLink>
-            {currentUser?.role === 'admin_desa' && (<NavLink to="/app/keuangan/penganggaran" className={navLinkClasses}><FiClipboard className="w-5 h-5 mr-3" /><span>Penganggaran (APBDes)</span></NavLink>)}
+            <NavLink to="/app/keuangan" end className={navLinkClasses}><FiGrid className="w-5 h-5 mr-3" /><span>Dashboard Keuangan</span></NavLink>
+            {/* [PERBAIKAN] Hapus kondisi agar Admin Kecamatan bisa melihat menu ini */}
+            <NavLink to="/app/keuangan/penganggaran" className={navLinkClasses}><FiClipboard className="w-5 h-5 mr-3" /><span>Penganggaran (APBDes)</span></NavLink>
             <NavLink to="/app/keuangan/penatausahaan" className={navLinkClasses}><FiEdit className="w-5 h-5 mr-3" /><span>Penatausahaan (BKU)</span></NavLink>
             <NavLink to="/app/keuangan/laporan" className={navLinkClasses}><FiFileText className="w-5 h-5 mr-3" /><span>Laporan Realisasi</span></NavLink>
         </>
@@ -231,4 +227,3 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
 };
 
 export default Sidebar;
-

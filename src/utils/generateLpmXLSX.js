@@ -22,6 +22,7 @@ const formatDateForExcel = (dateField) => {
 };
 
 /**
+ * [PENULISAN ULANG TOTAL]
  * Membuat file XLSX khusus untuk data LPM sesuai format yang diminta.
  * @param {object} exportData - Data yang dibutuhkan untuk ekspor.
  */
@@ -43,7 +44,7 @@ export const generateLpmXLSX = async (exportData) => {
     const worksheet = workbook.addWorksheet('Data LPM');
     const currentYear = new Date().getFullYear();
 
-    // --- PENGATURAN HALAMAN & CETAK ---
+    // --- Pengaturan Halaman & Cetak ---
     worksheet.pageSetup = {
         orientation: 'landscape',
         paperSize: 9, // A4
@@ -51,7 +52,7 @@ export const generateLpmXLSX = async (exportData) => {
         margins: { left: 0.5, right: 0.5, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 },
     };
 
-    // --- DEFINISI STYLES ---
+    // --- Definisi Styles ---
     const titleStyle = { font: { name: 'Arial', size: 14, bold: true }, alignment: { horizontal: 'center' } };
     const headerStyle = { font: { name: 'Arial', size: 10, bold: true }, alignment: { horizontal: 'center', vertical: 'middle', wrapText: true }, border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } } };
     const cellStyle = { font: { name: 'Arial', size: 9 }, border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }, alignment: { vertical: 'middle' } };
@@ -61,8 +62,8 @@ export const generateLpmXLSX = async (exportData) => {
     let currentRow = 1;
     const TOTAL_COLUMNS = 22;
 
-    // --- JUDUL ---
-    const mainTitle = role === 'admin_kecamatan'
+    // --- Judul ---
+    const mainTitle = desa === 'all'
         ? `DATA LEMBAGA PEMBERDAYAAN MASYARAKAT (LPM) SE-KECAMATAN PUNGGELAN`
         : `DATA LEMBAGA PEMBERDAYAAN MASYARAKAT (LPM) DESA ${desa.toUpperCase()}`;
     
@@ -76,13 +77,14 @@ export const generateLpmXLSX = async (exportData) => {
     worksheet.getCell(currentRow, 1).style = titleStyle;
     currentRow += 2;
 
-    // --- HEADER TABEL ---
+    // --- Header Tabel ---
     const headerRow1 = worksheet.getRow(currentRow);
     const headerRow2 = worksheet.getRow(currentRow + 1);
 
     headerRow1.values = ["NO", "N A M A", "Jenis Kelamin", null, "Jumlah", "J A B A T A N", "TEMPAT, TGL LAHIR", null, "PENDIDIKAN", null, null, null, null, null, null, null, "Jumlah", "NO SK", "TANGGAL PELANTIKAN", "Masa Bakti", "Akhir /PURNA TUGAS", "No. HP / WA"];
     headerRow2.values = [null, null, 'L', 'P', null, null, "TEMPAT LAHIR", "TANGGAL LAHIR", 'SD', 'SMP', 'SLTA', 'D1', 'D2', 'D3', 'S1', 'S2', null, null, null, null, null, null];
-
+    
+    // Merge cells untuk header
     worksheet.mergeCells(`A${currentRow}:A${currentRow + 1}`);
     worksheet.mergeCells(`B${currentRow}:B${currentRow + 1}`);
     worksheet.mergeCells(`C${currentRow}:D${currentRow}`);
@@ -105,7 +107,7 @@ export const generateLpmXLSX = async (exportData) => {
     currentRow += 2;
     const firstDataRow = currentRow;
 
-    // --- ISI DATA ---
+    // --- Isi Data ---
     const pendidikanMap = { 'SD': 9, 'SLTP': 10, 'SLTA': 11, 'D1': 12, 'D2': 13, 'D3': 14, 'S1': 15, 'S2': 16 };
     const sortedData = [...dataToExport].sort((a, b) => (a.nama || '').localeCompare(b.nama || ''));
     
@@ -143,19 +145,22 @@ export const generateLpmXLSX = async (exportData) => {
     currentRow += sortedData.length;
     const lastDataRow = currentRow - 1;
 
-    // --- BARIS JUMLAH ---
-    const totalRow = worksheet.addRow([]);
-    totalRow.getCell(1).value = 'J U M L A H';
-    worksheet.mergeCells(`A${currentRow}:B${currentRow}`);
-    
-    const sumCols = ['C', 'D', 'E', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q'];
-    sumCols.forEach(col => {
-        totalRow.getCell(col).value = { formula: `SUM(${col}${firstDataRow}:${col}${lastDataRow})` };
-    });
-    totalRow.eachCell({ includeEmpty: true }, cell => cell.style = totalRowStyle);
-    currentRow += 3;
+    // --- Baris Jumlah ---
+    if (lastDataRow >= firstDataRow) {
+        const totalRow = worksheet.addRow([]);
+        totalRow.getCell(1).value = 'J U M L A H';
+        worksheet.mergeCells(`A${currentRow}:B${currentRow}`);
+        
+        const sumCols = ['C', 'D', 'E', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q'];
+        sumCols.forEach(col => {
+            totalRow.getCell(col).value = { formula: `SUM(${col}${firstDataRow}:${col}${lastDataRow})` };
+        });
+        totalRow.eachCell({ includeEmpty: true }, cell => cell.style = totalRowStyle);
+        currentRow += 3;
+    }
 
-    // --- BLOK TANDA TANGAN ---
+
+    // --- Blok Tanda Tangan Dinamis ---
     const addSignatureBlock = (signer, startCol) => {
         worksheet.getCell(currentRow, startCol).value = `${signer.location}, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`;
         worksheet.getCell(currentRow + 1, startCol).value = signer.jabatan;
@@ -169,7 +174,8 @@ export const generateLpmXLSX = async (exportData) => {
         }
     };
     
-    if (role === 'admin_kecamatan' && desa === 'all') {
+    if (desa === 'all') {
+        // Tanda tangan Camat untuk rekap kecamatan
         addSignatureBlock({
             location: 'Punggelan',
             jabatan: exportConfig?.jabatanPenandaTangan || 'Camat Punggelan',
@@ -177,27 +183,40 @@ export const generateLpmXLSX = async (exportData) => {
             nip: exportConfig?.nipPenandaTangan
         }, 18); // Kolom R
     } else {
-        const kades = allPerangkat.find(p => p.desa === desa && p.jabatan?.toLowerCase() === 'kepala desa');
+        // Tanda tangan Ketua LPM untuk laporan per desa
+        const ketuaLPM = dataToExport.find(p => p.jabatan && p.jabatan.toLowerCase() === 'ketua');
         addSignatureBlock({
             location: desa,
-            jabatan: 'Kepala Desa',
-            nama: kades?.nama
+            jabatan: `Ketua LPM Desa ${desa}`,
+            nama: ketuaLPM?.nama
         }, 18); // Kolom R
     }
 
 
-    // --- LEBAR KOLOM ---
+    // --- Lebar Kolom ---
     worksheet.columns = [
-        { width: 4 }, { width: 25 }, { width: 4 }, { width: 4 }, { width: 7 }, 
-        { width: 25 }, { width: 20 }, { width: 15 }, 
-        { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, // Pendidikan
-        { width: 7 }, { width: 25 }, { width: 15 }, { width: 10 }, { width: 15 }, { width: 18 }
+        { width: 4 },   // A: NO
+        { width: 25 },  // B: Nama
+        { width: 4 },   // C: L
+        { width: 4 },   // D: P
+        { width: 7 },   // E: Jumlah
+        { width: 25 },  // F: Jabatan
+        { width: 20 },  // G: Tempat Lahir
+        { width: 15 },  // H: Tgl Lahir
+        { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, // I-P: Pendidikan
+        { width: 4 }, { width: 4 }, { width: 4 },
+        { width: 7 },   // Q: Jumlah Pendidikan
+        { width: 25 },  // R: No SK
+        { width: 15 },  // S: Tgl Pelantikan
+        { width: 10 },  // T: Masa Bakti
+        { width: 15 },  // U: Akhir Jabatan
+        { width: 18 }   // V: No. HP
     ];
 
-    // --- SIMPAN FILE ---
+    // --- Simpan File ---
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const fileName = role === 'admin_kecamatan' && desa === 'all'
+    const fileName = desa === 'all'
         ? `Data_LPM_Kecamatan_Punggelan_${currentYear}.xlsx`
         : `Data_LPM_Desa_${desa}_${currentYear}.xlsx`;
     saveAs(blob, fileName);

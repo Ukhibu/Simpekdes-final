@@ -21,7 +21,7 @@ import ManajemenAdmin from './pages/ManajemenAdmin';
 import PengaturanAplikasi from './pages/PengaturanAplikasi';
 import KalenderKegiatanPage from './pages/KalenderKegiatanPage';
 
-// [PERBAIKAN] Halaman Modul E-File yang baru
+// Halaman Modul E-File
 import EFileDashboard from './pages/EFileDashboard';
 import ManajemenSK from './pages/ManajemenSK';
 import DataSK from './pages/DataSK';
@@ -45,6 +45,8 @@ import BeritaAcaraBPDPage from './pages/BeritaAcaraBPDPage';
 import PengaturanBPD from './pages/PengaturanBPD';
 import LPMDashboard from './pages/LPMDashboard';
 import LPMPage from './pages/LPMPage';
+// [PENAMBAHAN] Impor halaman baru untuk program kerja LPM
+import LPMProgramPage from './pages/LPMProgramPage';
 import PKKDashboard from './pages/PKKDashboard';
 import PKKPage from './pages/PKKPage';
 import PKKProgramPage from './pages/PKKProgramPage';
@@ -95,6 +97,8 @@ function App() {
                 <Route path="bpd/pengaturan" element={<PengaturanBPD />} />
                 <Route path="lpm" element={<LPMDashboard />} />
                 <Route path="lpm/data" element={<LPMPage />} />
+                {/* [PENAMBAHAN] Rute baru untuk program kerja LPM */}
+                <Route path="lpm/program" element={<LPMProgramPage />} />
                 <Route path="pkk" element={<PKKDashboard />} />
                 <Route path="pkk/data" element={<PKKPage />} />
                 <Route path="pkk/program" element={<PKKProgramPage />} />
@@ -104,7 +108,7 @@ function App() {
                 <Route path="rt-rw" element={<RtRwDashboard />} />
                 <Route path="rt-rw/data" element={<RtRwPage />} />
                 
-                {/* [PERBAIKAN] Rute Baru untuk Modul E-File Mandiri */}
+                {/* Modul E-File */}
                 <Route path="efile" element={<EFileDashboard />} />
                 <Route path="manajemen-sk" element={<ManajemenSK />} />
                 <Route path="data-sk/:skType" element={<DataSK />} />
@@ -131,4 +135,3 @@ function App() {
 }
 
 export default App;
-

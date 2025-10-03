@@ -4,6 +4,10 @@ export const DESA_LIST = [
     "Sambong", "Klapa", "Kecepit", "Mlaya", "Sidarata", "Purwasana", "Tlaga"
 ];
 
+// --- Daftar Bersama ---
+export const PENDIDIKAN_LIST = ["SD", "SLTP", "SLTA", "D1", "D2", "D3", "S1", "S2", "S3"];
+export const JENIS_KELAMIN_LIST = ["L", "P"];
+
 // --- Kategori Keuangan ---
 export const BIDANG_BELANJA = [
     "Penyelenggaraan Pemerintahan Desa",
@@ -13,44 +17,42 @@ export const BIDANG_BELANJA = [
     "Belanja Tak Terduga"
 ];
 
-// --- [DIPERBARUI] Menambahkan Kode Rekening ---
 export const KATEGORI_PENDAPATAN = [
-    { bidang: "Pendapatan Asli Desa (PAD)", nama: "Hasil Usaha Desa", kode_rekening: "4.1.1" },
-    { bidang: "Pendapatan Asli Desa (PAD)", nama: "Hasil Aset Desa", kode_rekening: "4.1.2" },
-    { bidang: "Pendapatan Asli Desa (PAD)", nama: "Swadaya, Partisipasi, dan Gotong Royong", kode_rekening: "4.1.3" },
-    { bidang: "Pendapatan Asli Desa (PAD)", nama: "Lain-lain PAD yang Sah", kode_rekening: "4.1.4" },
-    { bidang: "Dana Transfer", nama: "Dana Desa (DD)", kode_rekening: "4.2.1" },
-    { bidang: "Dana Transfer", nama: "Bagi Hasil Pajak dan Retribusi (BHPR)", kode_rekening: "4.2.2" },
-    { bidang: "Dana Transfer", nama: "Alokasi Dana Desa (ADD)", kode_rekening: "4.2.3" },
-    { bidang: "Dana Transfer", nama: "Bantuan Keuangan Provinsi", kode_rekening: "4.2.4" },
-    { bidang: "Dana Transfer", nama: "Bantuan Keuangan Kabupaten/Kota", kode_rekening: "4.2.5" },
-    { bidang: "Pendapatan Lain-lain", nama: "Hibah dan Sumbangan Pihak Ketiga", kode_rekening: "4.3.1" },
-    { bidang: "Pendapatan Lain-lain", nama: "Lain-lain Pendapatan Desa yang Sah", kode_rekening: "4.3.2" },
+    { bidang: "Pendapatan Asli Desa (PAD)", nama: "Hasil Usaha Desa", jenis: "Pendapatan", kode_rekening: "4.1.1" },
+    { bidang: "Pendapatan Asli Desa (PAD)", nama: "Hasil Aset Desa", jenis: "Pendapatan", kode_rekening: "4.1.2" },
+    { bidang: "Pendapatan Asli Desa (PAD)", nama: "Swadaya, Partisipasi, dan Gotong Royong", jenis: "Pendapatan", kode_rekening: "4.1.3" },
+    { bidang: "Pendapatan Asli Desa (PAD)", nama: "Lain-lain PAD yang Sah", jenis: "Pendapatan", kode_rekening: "4.1.4" },
+    { bidang: "Dana Transfer", nama: "Dana Desa (DD)", jenis: "Pendapatan", kode_rekening: "4.2.1" },
+    { bidang: "Dana Transfer", nama: "Bagi Hasil Pajak dan Retribusi (BHPR)", jenis: "Pendapatan", kode_rekening: "4.2.2" },
+    { bidang: "Dana Transfer", nama: "Alokasi Dana Desa (ADD)", jenis: "Pendapatan", kode_rekening: "4.2.3" },
+    { bidang: "Dana Transfer", nama: "Bantuan Keuangan Provinsi", jenis: "Pendapatan", kode_rekening: "4.2.4" },
+    { bidang: "Dana Transfer", nama: "Bantuan Keuangan Kabupaten/Kota", jenis: "Pendapatan", kode_rekening: "4.2.5" },
+    { bidang: "Pendapatan Lain-lain", nama: "Hibah dan Sumbangan Pihak Ketiga", jenis: "Pendapatan", kode_rekening: "4.3.1" },
+    { bidang: "Pendapatan Lain-lain", nama: "Lain-lain Pendapatan Desa yang Sah", jenis: "Pendapatan", kode_rekening: "4.3.9" },
 ];
 
 export const KATEGORI_BELANJA = [
-    { bidang: "Penyelenggaraan Pemerintahan Desa", nama: "Penghasilan Tetap dan Tunjangan", kode_rekening: "5.1.1" },
-    { bidang: "Penyelenggaraan Pemerintahan Desa", nama: "Operasional Perkantoran", kode_rekening: "5.1.2" },
-    { bidang: "Penyelenggaraan Pemerintahan Desa", nama: "Operasional BPD", kode_rekening: "5.1.3" },
-    { bidang: "Penyelenggaraan Pemerintahan Desa", nama: "Operasional RT/RW", kode_rekening: "5.1.4" },
-    { bidang: "Pelaksanaan Pembangunan Desa", nama: "Pembangunan/Rehab/Peningkatan Jalan Desa", kode_rekening: "5.2.1" },
-    { bidang: "Pelaksanaan Pembangunan Desa", nama: "Pembangunan/Rehab/Peningkatan Jembatan Desa", kode_rekening: "5.2.2" },
-    { bidang: "Pelaksanaan Pembangunan Desa", nama: "Pembangunan/Rehab/Peningkatan Prasarana Air Bersih", kode_rekening: "5.2.3" },
-    { bidang: "Pelaksanaan Pembangunan Desa", nama: "Pembangunan/Rehab/Peningkatan Sanitasi", kode_rekening: "5.2.4" },
-    { bidang: "Pelaksanaan Pembangunan Desa", nama: "Sarana dan Prasarana Kesehatan", kode_rekening: "5.2.5" },
-    { bidang: "Pelaksanaan Pembangunan Desa", nama: "Sarana dan Prasarana Pendidikan", kode_rekening: "5.2.6" },
-    { bidang: "Pembinaan Kemasyarakatan Desa", nama: "Pembinaan Ketentraman dan Ketertiban", kode_rekening: "5.3.1" },
-    { bidang: "Pembinaan Kemasyarakatan Desa", nama: "Pembinaan Kerukunan Umat Beragama", kode_rekening: "5.3.2" },
-    { bidang: "Pembinaan Kemasyarakatan Desa", nama: "Pembinaan Kepemudaan dan Olahraga", kode_rekening: "5.3.3" },
-    { bidang: "Pembinaan Kemasyarakatan Desa", nama: "Pembinaan Lembaga Adat", kode_rekening: "5.3.4" },
-    { bidang: "Pemberdayaan Masyarakat Desa", nama: "Peningkatan Kapasitas Aparatur Desa", kode_rekening: "5.4.1" },
-    { bidang: "Pemberdayaan Masyarakat Desa", nama: "Pemberdayaan Kesejahteraan Keluarga (PKK)", kode_rekening: "5.4.2" },
-    { bidang: "Pemberdayaan Masyarakat Desa", nama: "Pengembangan Usaha Ekonomi Produktif (BUMDes)", kode_rekening: "5.4.3" },
-    { bidang: "Belanja Tak Terduga", nama: "Keadaan Darurat", kode_rekening: "5.5.1" },
-    { bidang: "Belanja Tak Terduga", nama: "Bencana Alam", kode_rekening: "5.5.2" },
-    { bidang: "Belanja Tak Terduga", nama: "Bencana Sosial", kode_rekening: "5.5.3" },
+    { bidang: "Penyelenggaraan Pemerintahan Desa", nama: "Penghasilan Tetap dan Tunjangan", jenis: "Belanja", kode_rekening: "5.1.1" },
+    { bidang: "Penyelenggaraan Pemerintahan Desa", nama: "Operasional Perkantoran", jenis: "Belanja", kode_rekening: "5.1.2" },
+    { bidang: "Penyelenggaraan Pemerintahan Desa", nama: "Operasional BPD", jenis: "Belanja", kode_rekening: "5.1.3" },
+    { bidang: "Penyelenggaraan Pemerintahan Desa", nama: "Operasional RT/RW", jenis: "Belanja", kode_rekening: "5.1.4" },
+    { bidang: "Pelaksanaan Pembangunan Desa", nama: "Pembangunan/Rehab/Peningkatan Jalan Desa", jenis: "Belanja", kode_rekening: "5.2.1" },
+    { bidang: "Pelaksanaan Pembangunan Desa", nama: "Pembangunan/Rehab/Peningkatan Jembatan Desa", jenis: "Belanja", kode_rekening: "5.2.2" },
+    { bidang: "Pelaksanaan Pembangunan Desa", nama: "Pembangunan/Rehab/Peningkatan Prasarana Air Bersih", jenis: "Belanja", kode_rekening: "5.2.3" },
+    { bidang: "Pelaksanaan Pembangunan Desa", nama: "Pembangunan/Rehab/Peningkatan Sanitasi", jenis: "Belanja", kode_rekening: "5.2.4" },
+    { bidang: "Pelaksanaan Pembangunan Desa", nama: "Sarana dan Prasarana Kesehatan", jenis: "Belanja", kode_rekening: "5.2.5" },
+    { bidang: "Pelaksanaan Pembangunan Desa", nama: "Sarana dan Prasarana Pendidikan", jenis: "Belanja", kode_rekening: "5.2.6" },
+    { bidang: "Pembinaan Kemasyarakatan Desa", nama: "Pembinaan Ketentraman dan Ketertiban", jenis: "Belanja", kode_rekening: "5.3.1" },
+    { bidang: "Pembinaan Kemasyarakatan Desa", nama: "Pembinaan Kerukunan Umat Beragama", jenis: "Belanja", kode_rekening: "5.3.2" },
+    { bidang: "Pembinaan Kemasyarakatan Desa", nama: "Pembinaan Kepemudaan dan Olahraga", jenis: "Belanja", kode_rekening: "5.3.3" },
+    { bidang: "Pembinaan Kemasyarakatan Desa", nama: "Pembinaan Lembaga Adat", jenis: "Belanja", kode_rekening: "5.3.4" },
+    { bidang: "Pemberdayaan Masyarakat Desa", nama: "Peningkatan Kapasitas Aparatur Desa", jenis: "Belanja", kode_rekening: "5.4.1" },
+    { bidang: "Pemberdayaan Masyarakat Desa", nama: "Pemberdayaan Kesejahteraan Keluarga (PKK)", jenis: "Belanja", kode_rekening: "5.4.2" },
+    { bidang: "Pemberdayaan Masyarakat Desa", nama: "Pengembangan Usaha Ekonomi Produktif (BUMDes)", jenis: "Belanja", kode_rekening: "5.4.3" },
+    { bidang: "Belanja Tak Terduga", nama: "Keadaan Darurat", jenis: "Belanja", kode_rekening: "5.5.1" },
+    { bidang: "Belanja Tak Terduga", nama: "Bencana Alam", jenis: "Belanja", kode_rekening: "5.5.2" },
+    { bidang: "Belanja Tak Terduga", nama: "Bencana Sosial", jenis: "Belanja", kode_rekening: "5.5.3" },
 ];
-
 
 // --- Kategori Aset ---
 export const KATEGORI_ASET = [
@@ -62,6 +64,15 @@ export const KATEGORI_ASET = [
     "Konstruksi Dalam Pengerjaan"
 ];
 export const KONDISI_ASET = ["Baik", "Rusak Ringan", "Rusak Berat"];
+
+// --- Kode Rekening (sample minimal set) ---
+export const KODE_REKENING = [
+    { kode: '1.01.01', uraian: 'Pendapatan Asli Desa', jenis: 'Pendapatan' },
+    { kode: '1.01.02', uraian: 'Hasil Aset Desa', jenis: 'Pendapatan' },
+    { kode: '2.01.01', uraian: 'Belanja Operasional Pemerintahan', jenis: 'Belanja' },
+    { kode: '2.01.02', uraian: 'Belanja Pembangunan Desa', jenis: 'Belanja' },
+    // Tambahkan kode rekening lebih lengkap sesuai kebutuhan
+];
 
 
 // --- Konfigurasi untuk setiap Modul Organisasi ---
@@ -85,18 +96,26 @@ export const BPD_CONFIG = {
     ]
 };
 
+// [PEMBARUAN] Konfigurasi LPM disesuaikan dengan Ide 1
 export const LPM_CONFIG = {
     collectionName: 'lpm',
     title: 'Pengurus LPM',
     subModule: 'lpm',
     formFields: [
         { name: 'nama', label: 'Nama Lengkap', type: 'text', required: true },
+        { name: 'jenis_kelamin', label: 'Jenis Kelamin', type: 'select', options: JENIS_KELAMIN_LIST },
         { name: 'jabatan', label: 'Jabatan', type: 'text', placeholder: 'Contoh: Ketua, Sekretaris, Anggota', required: true },
-        { name: 'periode', label: 'Periode Jabatan', type: 'text', placeholder: 'Contoh: 2024-2029' },
+        { name: 'tempat_lahir', label: 'Tempat Lahir', type: 'text' },
+        { name: 'tgl_lahir', label: 'Tanggal Lahir', type: 'date' },
+        { name: 'pendidikan', label: 'Pendidikan Terakhir', type: 'select', options: PENDIDIKAN_LIST },
         { name: 'no_sk', label: 'Nomor SK', type: 'text' },
+        { name: 'tgl_pelantikan', label: 'Tanggal Pelantikan', type: 'date' },
+        { name: 'masa_bakti', label: 'Masa Bakti (Tahun)', type: 'number' },
+        { name: 'akhir_jabatan', label: 'Akhir Jabatan', type: 'date' },
+        { name: 'no_hp', label: 'No. HP / WA', type: 'tel' },
     ],
-    tableColumns: ['nama', 'jabatan', 'periode', 'no_sk'],
-    completenessCriteria: ['nama', 'jabatan', 'periode', 'no_sk'],
+    tableColumns: ['nama', 'jabatan', 'periode', 'no_sk'], // Ini bisa disesuaikan, OrganisasiCrudPage tidak menggunakannya lagi
+    completenessCriteria: ['nama', 'jabatan', 'periode', 'no_sk', 'tgl_pelantikan'],
     hierarchy: [
         { title: 'Pimpinan', keywords: ['Ketua', 'Wakil Ketua'] },
         { title: 'Sekretaris & Bendahara', keywords: ['Sekretaris', 'Bendahara'] },
@@ -186,5 +205,24 @@ export const RT_RW_CONFIG = {
         { title: 'Ketua RW', keywords: ['Ketua RW'] },
         { title: 'Ketua RT', keywords: ['Ketua RT'] },
     ]
+};
+
+// [PENAMBAHAN] Konfigurasi untuk Program Kerja LPM
+export const LPM_PROGRAM_CONFIG = {
+    collectionName: 'lpm_program',
+    title: 'Program Kerja LPM',
+    subModule: 'lpm', // Untuk navigasi
+    formFields: [
+        { name: 'nama_program', label: 'Nama Program/Kegiatan', type: 'text', required: true },
+        { name: 'seksi', label: 'Seksi Penanggung Jawab', type: 'text', required: true, placeholder: 'cth: Seksi Pembangunan' },
+        { name: 'tgl_mulai', label: 'Tanggal Mulai', type: 'date' },
+        { name: 'tgl_selesai', label: 'Tanggal Selesai', type: 'date' },
+        { name: 'sumber_dana', label: 'Sumber Dana', type: 'text', placeholder: 'cth: Dana Desa, Swadaya' },
+        { name: 'perkiraan_anggaran', label: 'Perkiraan Anggaran (Rp)', type: 'number' },
+        { name: 'realisasi_anggaran', label: 'Realisasi Anggaran (Rp)', type: 'number' },
+        { name: 'status', label: 'Status', type: 'select', options: ['Direncanakan', 'Berjalan', 'Selesai', 'Dibatalkan'], required: true },
+        { name: 'keterangan', label: 'Catatan/Keterangan', type: 'textarea' },
+    ],
+    tableColumns: ['nama_program', 'seksi', 'tgl_mulai', 'status'], // Kolom yang ditampilkan di tabel utama
 };
 

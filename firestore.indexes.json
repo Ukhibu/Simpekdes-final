@@ -17,14 +17,6 @@
       ]
     },
     {
-      "collectionGroup": "kegiatan",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "desa", "order": "ASCENDING" },
-        { "fieldPath": "tanggalMulai", "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "lpm",
       "queryScope": "COLLECTION",
       "fields": [
@@ -58,11 +50,26 @@
     },
     {
       "collectionGroup": "anggaran_tahunan",
-      "queryScope": "COLLECTION_GROUP",
+      "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "desa", "order": "ASCENDING" },
-        { "fieldPath": "tahun", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" }
+        { "fieldPath": "tahun", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "kegiatan",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "desa", "order": "ASCENDING" },
+        { "fieldPath": "start", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "lpm_program",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "desa", "order": "ASCENDING" },
+        { "fieldPath": "nama_program", "order": "ASCENDING" }
       ]
     },
     {
@@ -73,7 +80,6 @@
         { "fieldPath": "tanggal", "order": "ASCENDING" }
       ]
     }
-  ],
-  "fieldOverrides": []
+  ]
 }
 

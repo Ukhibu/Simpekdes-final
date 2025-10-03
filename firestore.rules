@@ -63,23 +63,6 @@ service cloud.firestore {
                       (validatePerangkatData(request.resource.data) || validateJabatanKosongUpdate(request.resource.data, resource.data));
       allow delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
     }
-
-    // --- [PERBAIKAN] Aturan untuk anggaran dan sub-koleksi realisasinya ---
-    match /anggaran_tahunan/{anggaranId} {
-      allow read, update, delete: if isSignedIn() &&
-                      (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
-      allow create: if isSignedIn() &&
-                      (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
-
-      // [BARU] Aturan untuk sub-koleksi realisasi
-      match /realisasi/{realisasiId} {
-        allow read, write: if isSignedIn() &&
-                            (
-                              isUserRole('admin_kecamatan') ||
-                              (isUserRole('admin_desa') && get(/databases/$(database)/documents/anggaran_tahunan/$(anggaranId)).data.desa == getUserDesa())
-                            );
-      }
-    }
     
     match /bpd/{docId} {
       allow read: if isSignedIn();
@@ -88,6 +71,13 @@ service cloud.firestore {
     }
     
     match /lpm/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
+      allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
+    }
+
+    // [PENAMBAHAN] Aturan baru untuk koleksi program kerja LPM
+    match /lpm_program/{docId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
       allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
@@ -140,6 +130,22 @@ service cloud.firestore {
       allow create: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isCreatingForOwnDesa()));
       allow update, delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
     }
+
+    // Collection-group rules for any `realisasi` subcollection used by collectionGroup queries
+    match /{path=**}/realisasi/{realisasiId} {
+      allow read: if isSignedIn() && (
+        isUserRole('admin_kecamatan') ||
+        (isUserRole('admin_desa') && resource.data.parentDesa == getUserDesa())
+      );
+      allow create: if isSignedIn() && (
+        isUserRole('admin_kecamatan') ||
+        (isUserRole('admin_desa') && request.resource.data.parentDesa == getUserDesa())
+      );
+      allow update, delete: if isSignedIn() && (
+        isUserRole('admin_kecamatan') ||
+        (isUserRole('admin_desa') && resource.data.parentDesa == getUserDesa())
+      );
+    }
     
     match /notifications/{notificationId} {
       allow read, update: if isSignedIn() && request.auth.uid == resource.data.userId;
@@ -149,6 +155,35 @@ service cloud.firestore {
     match /settings/{docId} {
       allow read: if isSignedIn();
       allow write: if isUserRole('admin_kecamatan');
+    }
+    
+    // --- ATURAN BARU UNTUK MODUL KEUANGAN ---
+    match /anggaran_tahunan/{anggaranId} {
+      // Allow read for authenticated users
+      allow read: if isSignedIn();
+
+      // Create: only admin_desa may create anggaran for their own desa
+      allow create: if isSignedIn() && isUserRole('admin_desa') && isCreatingForOwnDesa();
+
+      // Update: admin_desa may update their own anggaran when status is Draft or Ditolak;
+      // admin_kecamatan may update any anggaran (e.g., to Disahkan or Revisi)
+      allow update: if isSignedIn() && (
+        (isUserRole('admin_desa') && isOwnerOfExistingDoc() && (resource.data.status == 'Draft' || resource.data.status == 'Ditolak')) ||
+        isUserRole('admin_kecamatan')
+      );
+
+      // Delete: admin_desa may delete their own anggaran when status is Draft or Ditolak;
+      // admin_kecamatan may delete any anggaran
+      allow delete: if isSignedIn() && (
+        (isUserRole('admin_desa') && isOwnerOfExistingDoc() && (resource.data.status == 'Draft' || resource.data.status == 'Ditolak')) ||
+        isUserRole('admin_kecamatan')
+      );
+
+      // Subcollection realisasi rules remain more restrictive: operation allowed when appropriate
+      match /realisasi/{realisasiId} {
+        allow read: if isSignedIn();
+        allow create, update, delete: if isSignedIn() && isUserRole('admin_desa') && isCreatingForOwnDesa() && get(/databases/$(database)/documents/anggaran_tahunan/$(anggaranId)).data.status == 'Disahkan';
+      }
     }
   }
 }

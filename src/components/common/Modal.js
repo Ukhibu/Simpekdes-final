@@ -44,7 +44,7 @@ const Modal = ({ isOpen, onClose, title, children, size = '3xl' }) => {
                     {children}
                 </div>
             </div>
-            <style jsx>{`
+            <style>{`
                 @keyframes scale-in {
                     from { transform: scale(0.95); opacity: 0; }
                     to { transform: scale(1); opacity: 1; }

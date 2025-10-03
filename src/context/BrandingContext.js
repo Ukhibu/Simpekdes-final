@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { db } from '../firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { useAuth } from './AuthContext';
 import defaultLogo from '../assets/banjarnegara-logo.png';
 // PERBAIKAN: Mengimpor gambar latar belakang default sebagai fallback.
 import defaultBackground from '../assets/default-bg.jpg';
@@ -22,7 +23,15 @@ export function BrandingProvider({ children }) {
     });
     const [loading, setLoading] = useState(true);
 
+    const { currentUser } = useAuth();
+
     useEffect(() => {
+        // If user is not signed in, do not attach a secure snapshot listener (rules require auth)
+        if (!currentUser) {
+            setLoading(false);
+            return;
+        }
+
         const docRef = doc(db, 'settings', 'branding');
         const unsubscribe = onSnapshot(docRef, (doc) => {
             if (doc.exists()) {
@@ -40,12 +49,13 @@ export function BrandingProvider({ children }) {
             }
             setLoading(false);
         }, (error) => {
+            // Handle permission-denied and other errors gracefully
             console.error("Error fetching branding:", error);
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, []);
+    }, [currentUser]);
 
     const value = {
         branding,

@@ -63,6 +63,27 @@ service cloud.firestore {
                       (validatePerangkatData(request.resource.data) || validateJabatanKosongUpdate(request.resource.data, resource.data));
       allow delete: if isSignedIn() && (isUserRole('admin_kecamatan') || (isUserRole('admin_desa') && isOwnerOfExistingDoc()));
     }
+
+    // Aturan untuk koleksi keuangan (digunakan oleh laporan keuangan)
+    match /keuangan/{docId} {
+      // Admin Kecamatan boleh baca semua; Admin Desa hanya boleh baca dokumen yang memiliki field desa sama dengan desa mereka
+      allow read: if isSignedIn() && (
+        isUserRole('admin_kecamatan') ||
+        (isUserRole('admin_desa') && resource.data.desa == getUserDesa())
+      );
+
+      // Create: boleh dibuat oleh admin_kecamatan, atau admin_desa untuk desa mereka sendiri
+      allow create: if isSignedIn() && (
+        isUserRole('admin_kecamatan') ||
+        (isUserRole('admin_desa') && request.resource.data.desa == getUserDesa())
+      );
+
+      // Update/Delete: admin_kecamatan boleh; admin_desa hanya untuk dokumen milik desanya
+      allow update, delete: if isSignedIn() && (
+        isUserRole('admin_kecamatan') ||
+        (isUserRole('admin_desa') && resource.data.desa == getUserDesa())
+      );
+    }
     
     match /bpd/{docId} {
       allow read: if isSignedIn();

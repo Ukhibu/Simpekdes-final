@@ -226,3 +226,11 @@ export const LPM_PROGRAM_CONFIG = {
     tableColumns: ['nama_program', 'seksi', 'tgl_mulai', 'status'], // Kolom yang ditampilkan di tabel utama
 };
 
+export const SK_CONFIG = {
+    perangkat: { label: "Perangkat Desa", collectionName: "perangkat", folder: "sk_perangkat" },
+    bpd: { label: "BPD", collectionName: "bpd", folder: "sk_bpd" },
+    lpm: { label: "LPM", collectionName: "lpm", folder: "sk_lpm" },
+    pkk: { label: "PKK", collectionName: "pkk", folder: "sk_pkk" },
+    karang_taruna: { label: "Karang Taruna", collectionName: "karang_taruna", folder: "sk_karang_taruna" },
+    rt_rw: { label: "RT/RW", collectionName: "rt_rw", folder: "sk_rt_rw" },
+};

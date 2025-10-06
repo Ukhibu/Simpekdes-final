@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { db } from '../firebase';
-import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore'; // deleteDoc diimpor
+import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
 import { deleteFileFromGithub } from '../utils/githubService';
@@ -11,7 +11,6 @@ import Modal from '../components/common/Modal';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import { FiFileText, FiSearch, FiFilter, FiEye, FiDownload, FiTrash2, FiCheckSquare } from 'react-icons/fi';
 import { DESA_LIST } from '../utils/constants';
-// [PERBAIKAN] Impor fungsi notifikasi yang sebelumnya hilang
 import { createNotificationForDesaAdmins } from '../utils/notificationService';
 
 // Konfigurasi untuk setiap tipe SK
@@ -31,6 +30,8 @@ const DataSK = () => {
     const [searchParams, setSearchParams] = useSearchParams();
 
     const [skDocs, setSkDocs] = useState([]);
+    // [BARU] State untuk menyimpan data yang sudah diperkaya dengan jabatan
+    const [enrichedSkDocs, setEnrichedSkDocs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterDesa, setFilterDesa] = useState(currentUser?.role === 'admin_kecamatan' ? 'all' : currentUser.desa);
@@ -57,6 +58,7 @@ const DataSK = () => {
         }
     }, [searchParams, setSearchParams]);
 
+    // Effect pertama: Memuat data dasar SK dari koleksi 'efile'
     useEffect(() => {
         if (!currentUser || !config.collectionName) {
             setLoading(false);
@@ -66,8 +68,9 @@ const DataSK = () => {
         setLoading(true);
         const q = query(collection(db, "efile"), where("skType", "==", skType));
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            setSkDocs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            setLoading(false);
+            const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setSkDocs(docs);
+            // Jangan setLoading(false) di sini, biarkan effect kedua yang menanganinya
         }, (error) => {
             console.error("Gagal memuat data SK:", error);
             showNotification('Gagal memuat data SK.', 'error');
@@ -77,8 +80,48 @@ const DataSK = () => {
         return () => unsubscribe();
     }, [currentUser, skType, config.collectionName, showNotification]);
 
+    // [BARU] Effect kedua: "Memperkaya" data SK dengan mengambil jabatan dari koleksi aslinya
+    useEffect(() => {
+        const enrichData = async () => {
+            if (skDocs.length === 0) {
+                setEnrichedSkDocs([]);
+                setLoading(false);
+                return;
+            }
+
+            const enrichedPromises = skDocs.map(async (sk) => {
+                let jabatan = '-'; // Nilai default jika jabatan tidak ditemukan
+                // Pastikan ada entityId dan nama koleksi yang valid untuk dicari
+                if (sk.entityId && config.collectionName) {
+                    try {
+                        const entityRef = doc(db, config.collectionName, sk.entityId);
+                        const entitySnap = await getDoc(entityRef);
+                        if (entitySnap.exists()) {
+                            // Ambil field 'jabatan' dari dokumen yang ditemukan
+                            jabatan = entitySnap.data().jabatan || 'Tidak ada jabatan';
+                        } else {
+                            jabatan = 'Data asli tidak ditemukan';
+                        }
+                    } catch (e) {
+                        console.error("Gagal mengambil data entitas:", e);
+                        jabatan = 'Gagal memuat jabatan';
+                    }
+                }
+                // Kembalikan objek SK yang sudah ditambahkan properti jabatan
+                return { ...sk, jabatan };
+            });
+
+            const resolvedData = await Promise.all(enrichedPromises);
+            setEnrichedSkDocs(resolvedData);
+            setLoading(false); // Selesai memuat setelah data diperkaya
+        };
+
+        enrichData();
+    }, [skDocs, config.collectionName]); // Dijalankan setiap kali data skDocs berubah
+
+    // [DIUBAH] Gunakan data yang sudah diperkaya untuk pemfilteran
     const filteredSkDocuments = useMemo(() => {
-        let data = skDocs;
+        let data = enrichedSkDocs;
         if (currentUser.role === 'admin_kecamatan' && filterDesa !== 'all') {
             data = data.filter(doc => doc.desa === filterDesa);
         } else if (currentUser.role === 'admin_desa') {
@@ -89,11 +132,12 @@ const DataSK = () => {
         if (search) {
             data = data.filter(doc =>
                 (doc.entityName || '').toLowerCase().includes(search) ||
-                (doc.fileName || '').toLowerCase().includes(search)
+                (doc.fileName || '').toLowerCase().includes(search) ||
+                (doc.jabatan || '').toLowerCase().includes(search) // Tambahkan pencarian berdasarkan jabatan
             );
         }
         return data;
-    }, [skDocs, searchTerm, filterDesa, currentUser.role]);
+    }, [enrichedSkDocs, searchTerm, filterDesa, currentUser.role]);
     
     const openPdfPreview = (url) => {
         if (!url) {
@@ -105,35 +149,23 @@ const DataSK = () => {
         setIsModalOpen(true);
     };
     
-    /**
-     * [PERBAIKAN] Fungsi untuk mengunduh file secara programmatic tanpa membuka tab baru.
-     */
     const handleDownload = async (fileUrl, fileName) => {
         showNotification(`Mengunduh "${fileName}"...`, 'info');
         try {
-            // Fetch file dari URL
             const response = await fetch(fileUrl);
             if (!response.ok) {
                 throw new Error('Gagal mengambil file dari server.');
             }
             const blob = await response.blob();
-
-            // Buat URL sementara untuk file blob
             const url = window.URL.createObjectURL(blob);
-            
-            // Buat elemen link sementara untuk memicu unduhan
             const link = document.createElement('a');
             link.href = url;
             link.setAttribute('download', fileName);
             document.body.appendChild(link);
             link.click();
-
-            // Hapus link sementara dan revoke URL
             link.parentNode.removeChild(link);
             window.URL.revokeObjectURL(url);
-            
             showNotification(`"${fileName}" berhasil diunduh.`, 'success');
-
         } catch (error) {
             console.error('Error downloading file:', error);
             showNotification(`Gagal mengunduh file: ${error.message}`, 'error');
@@ -152,7 +184,6 @@ const DataSK = () => {
             await deleteFileFromGithub(skDocToDelete.githubPath, skDocToDelete.githubSha);
             const docRef = doc(db, 'efile', skDocToDelete.id);
             await deleteDoc(docRef);
-
             showNotification('Dokumen SK dan file terkait berhasil dihapus.', 'success');
         } catch (error) {
             showNotification(`Gagal menghapus file: ${error.message}`, 'error');
@@ -168,12 +199,9 @@ const DataSK = () => {
         try {
             await updateDoc(docRef, { status: 'terverifikasi' });
             showNotification('Dokumen berhasil diverifikasi.', 'success');
-
-            // [BARU] Kirim notifikasi umpan balik ke Admin Desa
             const message = `SK untuk "${skDoc.entityName}" telah diverifikasi oleh Admin Kecamatan.`;
             const link = `/app/data-sk/${skType}`;
             await createNotificationForDesaAdmins(skDoc.desa, message, link);
-
         } catch (error) {
             showNotification('Gagal memverifikasi dokumen.', 'error');
         }
@@ -191,7 +219,7 @@ const DataSK = () => {
                    <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                    <input 
                        type="text" 
-                       placeholder="Cari berdasarkan nama personel atau nama file..." 
+                       placeholder="Cari berdasarkan nama, jabatan, atau nama file..." 
                        value={searchTerm} 
                        onChange={(e) => setSearchTerm(e.target.value)} 
                        className="w-full pl-10 pr-4 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white"
@@ -214,6 +242,8 @@ const DataSK = () => {
                         <thead className="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-50 dark:bg-gray-700">
                             <tr>
                                 <th className="px-6 py-3">Nama Personel/Lembaga</th>
+                                {/* [BARU] Header kolom jabatan */}
+                                <th className="px-6 py-3">Jabatan</th>
                                 {currentUser.role === 'admin_kecamatan' && <th className="px-6 py-3">Desa</th>}
                                 <th className="px-6 py-3">Nama File</th>
                                 <th className="px-6 py-3">Status</th>
@@ -224,6 +254,8 @@ const DataSK = () => {
                             {filteredSkDocuments.length > 0 ? filteredSkDocuments.map((sk) => (
                                 <tr key={sk.id} className={`bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 ${highlightedRow === sk.id ? 'highlight-row' : ''}`}>
                                     <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{sk.entityName}</td>
+                                    {/* [BARU] Sel untuk menampilkan jabatan */}
+                                    <td className="px-6 py-4">{sk.jabatan}</td>
                                     {currentUser.role === 'admin_kecamatan' && <td className="px-6 py-4">{sk.desa}</td>}
                                     <td className="px-6 py-4">{sk.fileName}</td>
                                     <td className="px-6 py-4">
@@ -233,10 +265,7 @@ const DataSK = () => {
                                     </td>
                                     <td className="px-6 py-4 flex items-center space-x-4">
                                         <button onClick={() => openPdfPreview(sk.fileUrl)} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300" title="Lihat/Pratinjau"><FiEye /></button>
-                                        
-                                        {/* [PERBAIKAN] Mengganti <a> dengan <button> yang memanggil handleDownload */}
                                         <button onClick={() => handleDownload(sk.fileUrl, sk.fileName)} className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" title="Unduh"><FiDownload /></button>
-                                        
                                         {currentUser.role === 'admin_kecamatan' && sk.status !== 'terverifikasi' && (
                                             <button onClick={() => handleVerify(sk)} className="text-teal-600 hover:text-teal-800 dark:text-teal-400 dark:hover:text-teal-300" title="Verifikasi"><FiCheckSquare /></button>
                                         )}
@@ -244,7 +273,8 @@ const DataSK = () => {
                                     </td>
                                 </tr>
                             )) : (
-                                <tr><td colSpan={currentUser.role === 'admin_kecamatan' ? 5 : 4} className="text-center py-10 text-gray-500">Tidak ada data SK yang ditemukan.</td></tr>
+                                // [DIUBAH] Menyesuaikan colspan
+                                <tr><td colSpan={currentUser.role === 'admin_kecamatan' ? 6 : 5} className="text-center py-10 text-gray-500">Tidak ada data SK yang ditemukan.</td></tr>
                             )}
                         </tbody>
                     </table>

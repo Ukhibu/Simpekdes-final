@@ -1,28 +1,37 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react'; // useMemo ditambahkan
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { FiMenu, FiMoon, FiSun, FiLogOut, FiBell, FiFileText } from 'react-icons/fi';
 
-// Komponen Notifikasi yang Ditingkatkan
+// [REVISED] Komponen Lonceng Notifikasi
 const NotificationBell = () => {
-    const { notifications, unreadCount, markNotificationAsRead } = useAuth();
+    const { currentUser, notifications, unreadCount, markNotificationAsRead } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
     const navigate = useNavigate();
     const bellRef = useRef(null);
 
+    // Filter notifikasi untuk hanya menampilkan yang belum dibaca
+    const unreadNotifications = useMemo(() => {
+        if (!currentUser) return [];
+        return notifications
+            .filter(n => {
+                if (n.isRoleBased) {
+                    return !n.readBy || !n.readBy.includes(currentUser.uid);
+                }
+                return !n.readStatus;
+            })
+            .sort((a,b) => b.timestamp.toMillis() - a.timestamp.toMillis()); // Urutkan dari yang terbaru
+    }, [notifications, currentUser]);
+
     const handleNotificationClick = (notification) => {
-        // Tandai sebagai sudah dibaca saat diklik
-        if (!notification.readStatus) {
-            markNotificationAsRead(notification.id);
-        }
-        // Arahkan ke link jika ada
+        markNotificationAsRead(notification.id);
         if (notification.link) {
             navigate(notification.link);
         }
-        setIsOpen(false); // Tutup dropdown setelah diklik
+        setIsOpen(false);
     };
 
-    // Menutup dropdown jika pengguna mengklik di luar area notifikasi
+    // Menutup dropdown saat klik di luar
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (bellRef.current && !bellRef.current.contains(event.target)) {
@@ -48,8 +57,8 @@ const NotificationBell = () => {
                 <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-md shadow-lg z-50 border dark:border-gray-700">
                     <div className="p-4 font-bold border-b dark:border-gray-700 text-gray-800 dark:text-gray-100">Notifikasi</div>
                     <ul className="max-h-96 overflow-y-auto">
-                        {notifications.length > 0 ? notifications.map(notif => (
-                            <li key={notif.id} onClick={() => handleNotificationClick(notif)} className={`flex items-start p-4 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer ${!notif.readStatus ? 'bg-blue-50 dark:bg-blue-900/30' : ''}`}>
+                        {unreadNotifications.length > 0 ? unreadNotifications.map(notif => (
+                            <li key={notif.id} onClick={() => handleNotificationClick(notif)} className="flex items-start p-4 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
                                 <div className="p-2 bg-blue-100 dark:bg-blue-800/50 rounded-full mr-3 mt-1">
                                     <FiFileText className="text-blue-600 dark:text-blue-300" />
                                 </div>
@@ -61,7 +70,7 @@ const NotificationBell = () => {
                                 </div>
                             </li>
                         )) : (
-                            <li className="p-4 text-center text-sm text-gray-500">Tidak ada notifikasi</li>
+                            <li className="p-4 text-center text-sm text-gray-500">Tidak ada notifikasi baru</li>
                         )}
                     </ul>
                 </div>
@@ -69,7 +78,6 @@ const NotificationBell = () => {
         </div>
     );
 };
-
 
 const Header = ({ pageTitle, onMenuClick }) => {
     const { currentUser, logout, theme, toggleTheme } = useAuth();
@@ -159,4 +167,3 @@ const Header = ({ pageTitle, onMenuClick }) => {
 };
 
 export default Header;
-

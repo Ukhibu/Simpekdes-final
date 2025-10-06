@@ -44,17 +44,17 @@ export const useFirestoreCollection = (collectionName) => {
         return () => unsubscribe();
     }, [collectionRef, currentUser, showNotification, collectionName]);
 
-    const addItem = useCallback(async (newItem) => {
+   const addItem = useCallback(async (newItem) => {
         try {
-            await addDoc(collectionRef, newItem);
+            const docRef = await addDoc(collectionRef, newItem);
             showNotification('Data berhasil ditambahkan!', 'success');
+            return docRef;
         } catch (err) {
             console.error(`Error adding item to ${collectionName}: `, err);
             showNotification(`Gagal menambahkan data: ${err.message}`, 'error');
             throw err; // Lemparkan error agar bisa ditangani di komponen
         }
     }, [collectionRef, collectionName, showNotification]);
-
     const updateItem = useCallback(async (id, updatedItem) => {
         try {
             const docRef = doc(db, collectionName, id);

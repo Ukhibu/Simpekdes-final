@@ -11,6 +11,8 @@ import Modal from '../components/common/Modal';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import { FiFileText, FiSearch, FiFilter, FiEye, FiDownload, FiTrash2, FiCheckSquare } from 'react-icons/fi';
 import { DESA_LIST } from '../utils/constants';
+// [PERBAIKAN] Impor fungsi notifikasi yang sebelumnya hilang
+import { createNotificationForDesaAdmins } from '../utils/notificationService';
 
 // Konfigurasi untuk setiap tipe SK
 const SK_CONFIG = {
@@ -166,6 +168,12 @@ const DataSK = () => {
         try {
             await updateDoc(docRef, { status: 'terverifikasi' });
             showNotification('Dokumen berhasil diverifikasi.', 'success');
+
+            // [BARU] Kirim notifikasi umpan balik ke Admin Desa
+            const message = `SK untuk "${skDoc.entityName}" telah diverifikasi oleh Admin Kecamatan.`;
+            const link = `/app/data-sk/${skType}`;
+            await createNotificationForDesaAdmins(skDoc.desa, message, link);
+
         } catch (error) {
             showNotification('Gagal memverifikasi dokumen.', 'error');
         }

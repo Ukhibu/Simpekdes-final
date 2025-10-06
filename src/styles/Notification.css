@@ -1,3 +1,8 @@
+/* * Perombakan Total `Notification.css`
+ * Mengubah posisi ke pojok kanan dan animasi slide dari kanan.
+*/
+
+/* Kontainer utama, sekarang di pojok kanan atas */
 .notification-container {
     position: fixed;
     top: 1.5rem;
@@ -6,39 +11,51 @@
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-    width: 350px;
-    max-width: 90vw;
+    width: 100%;
+    max-width: 400px;
+    align-items: flex-end; /* Mengatur notifikasi agar rata kanan */
 }
 
-.notification.toast {
+/* Styling utama untuk setiap notifikasi */
+.notification-toast {
     display: flex;
     align-items: flex-start;
+    width: 100%;
     padding: 1rem;
-    border-radius: 0.5rem;
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-    border: 1px solid transparent;
-    animation: toast-in-right 0.5s ease-in-out;
+    border-radius: 0.75rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
     color: white;
+    position: relative;
+    overflow: hidden;
+    animation: slide-in-from-right 0.4s cubic-bezier(0.215, 0.610, 0.355, 1.000) forwards;
+    will-change: transform, opacity;
 }
 
+/* Animasi saat notifikasi ditutup */
+.notification-toast.closing {
+    animation: slide-out-to-right 0.4s cubic-bezier(0.755, 0.050, 0.855, 0.060) forwards;
+}
+
+/* Ikon di sebelah kiri */
 .notification-icon {
     flex-shrink: 0;
     margin-right: 0.75rem;
     font-size: 1.25rem;
-    line-height: 1;
-    margin-top: 2px;
+    line-height: 1.2;
 }
 
+/* Konten teks */
 .notification-content {
     flex-grow: 1;
 }
 
 .notification-message {
-    font-size: 0.875rem;
+    font-size: 0.9rem;
     line-height: 1.25rem;
     font-weight: 500;
 }
 
+/* Tombol tutup (X) */
 .notification-close {
     margin-left: 1rem;
     background: transparent;
@@ -47,33 +64,41 @@
     opacity: 0.7;
     cursor: pointer;
     transition: opacity 0.2s;
+    align-self: center;
 }
 
 .notification-close:hover {
     opacity: 1;
 }
 
-/* Tipe Notifikasi */
-.notification.success {
-    background-color: #10B981; /* green-500 */
-    border-color: #059669; /* green-600 */
-}
-.notification.error {
-    background-color: #EF4444; /* red-500 */
-    border-color: #DC2626; /* red-600 */
-}
-.notification.warning {
-    background-color: #F59E0B; /* amber-500 */
-    border-color: #D97706; /* amber-600 */
-}
-.notification.info {
-    background-color: #3B82F6; /* blue-500 */
-    border-color: #2563EB; /* blue-600 */
+/* Baris Progres */
+.notification-progress-wrapper {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background-color: rgba(0, 0, 0, 0.2);
 }
 
-@keyframes toast-in-right {
+.notification-progress {
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.7);
+    animation: progress-deplete linear forwards;
+}
+
+/* Warna Spesifik untuk Tipe Notifikasi */
+.notification-toast.success { background-color: #16a34a; /* green-600 */ }
+.notification-toast.error { background-color: #dc2626; /* red-600 */ }
+.notification-toast.warning { background-color: #d97706; /* amber-600 */ }
+.notification-toast.info { background-color: #2563eb; /* blue-600 */ }
+
+/*
+ * Animasi Keyframes Baru
+*/
+@keyframes slide-in-from-right {
     from {
-        transform: translateX(100%);
+        transform: translateX(120%);
         opacity: 0;
     }
     to {
@@ -81,3 +106,24 @@
         opacity: 1;
     }
 }
+
+@keyframes slide-out-to-right {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(120%);
+        opacity: 0;
+    }
+}
+
+@keyframes progress-deplete {
+    from {
+        width: 100%;
+    }
+    to {
+        width: 0%;
+    }
+}
+

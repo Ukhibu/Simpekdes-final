@@ -345,11 +345,11 @@ const Perangkat = () => {
                 }
             }
             
-            if (currentUser.role === 'admin_desa' && docId) {
+          if (currentUser.role === 'admin_desa' && docId) {
                 const action = selectedPerangkat ? 'memperbarui' : 'menambahkan';
                 const message = `Admin Desa ${currentUser.desa} telah ${action} data perangkat: "${dataToSave.nama}".`;
                 const link = `/app/perangkat?desa=${currentUser.desa}&highlight=${docId}`;
-                await createNotificationForAdmins(message, link);
+                await createNotificationForAdmins(message, link, currentUser);
             }
 
             handleCloseModal();

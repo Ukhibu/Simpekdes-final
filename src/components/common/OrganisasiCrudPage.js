@@ -136,11 +136,11 @@ const OrganisasiCrudPage = ({ config, allPerangkat = [] }) => {
                 showNotification(`${config.title} berhasil ditambahkan!`, 'success');
             }
 
-            if (currentUser.role === 'admin_desa' && docId) {
+                 if (currentUser.role === 'admin_desa' && docId) {
                 const action = selectedItem ? 'memperbarui' : 'menambahkan';
                 const message = `Admin Desa ${currentUser.desa} telah ${action} data ${config.title}: "${formData.nama}".`;
                 const link = `/app/${config.subModule}/data?desa=${currentUser.desa}&highlight=${docId}`;
-                await createNotificationForAdmins(message, link);
+                await createNotificationForAdmins(message, link, currentUser);
             }
 
             handleCloseModal();

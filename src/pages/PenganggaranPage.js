@@ -10,6 +10,8 @@ import ConfirmationModal from '../components/common/ConfirmationModal';
 import Button from '../components/common/Button';
 import { FiPlus, FiEdit, FiTrash2, FiSend, FiCheckSquare, FiLock, FiXSquare, FiInfo } from 'react-icons/fi';
 import { KATEGORI_PENDAPATAN, KATEGORI_BELANJA, DESA_LIST } from '../utils/constants';
+// [BARU] Impor fungsi notifikasi
+import { createNotificationForAdmins, createNotificationForDesaAdmins } from '../utils/notificationService';
 
 const PenganggaranPage = () => {
     const { currentUser } = useAuth();
@@ -165,6 +167,17 @@ const PenganggaranPage = () => {
                 const newStatus = actionType === 'ajukan' ? 'Diajukan' : 'Disahkan';
                 await updateDoc(docRef, { status: newStatus, alasanPenolakan: null });
                 showNotification(`Anggaran berhasil ${newStatus.toLowerCase()}`, 'success');
+
+                // [BARU] Logika pengiriman notifikasi
+                if (actionType === 'ajukan') {
+                    const message = `Pengajuan anggaran dari Desa ${itemToProcess.desa} (${itemToProcess.tahun}) menunggu persetujuan.`;
+                    const link = `/app/keuangan/penganggaran`;
+                    await createNotificationForAdmins(message, link, currentUser);
+                } else if (actionType === 'sahkan') {
+                    const message = `Pengajuan anggaran "${itemToProcess.uraian}" (${itemToProcess.tahun}) telah DISAHKAN.`;
+                    const link = `/app/keuangan/penganggaran`;
+                    await createNotificationForDesaAdmins(itemToProcess.desa, message, link);
+                }
             }
         } catch (error) {
             showNotification(`Gagal: ${error.message}`, 'error');
@@ -185,6 +198,12 @@ const PenganggaranPage = () => {
             const docRef = doc(db, 'anggaran_tahunan', itemToProcess.id);
             await updateDoc(docRef, { status: 'Ditolak', alasanPenolakan: rejectionReason });
             showNotification('Anggaran berhasil ditolak.', 'success');
+
+            // [BARU] Kirim notifikasi penolakan
+            const message = `Pengajuan anggaran "${itemToProcess.uraian}" (${itemToProcess.tahun}) DITOLAK.`;
+            const link = `/app/keuangan/penganggaran`;
+            await createNotificationForDesaAdmins(itemToProcess.desa, message, link);
+
         } catch (error) {
             showNotification(`Gagal menolak anggaran: ${error.message}`, 'error');
         } finally {

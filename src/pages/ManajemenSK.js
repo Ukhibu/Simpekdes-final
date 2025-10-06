@@ -97,10 +97,10 @@ const ManajemenSK = () => {
                 uploadedAt: new Date(),
             });
             
-            if (currentUser.role === 'admin_desa') {
+             if (currentUser.role === 'admin_desa') {
                 const message = `SK ${config.label} baru untuk ${entity.nama} (${entity.desa}) telah diunggah.`;
                 const link = `/app/data-sk/${skType}?highlight=${newDocRef.id}`;
-                await createNotificationForAdmins(message, link);
+                await createNotificationForAdmins(message, link, currentUser);
             }
 
             showNotification('Dokumen SK berhasil diunggah.', 'success');

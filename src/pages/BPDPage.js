@@ -1,22 +1,31 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
-import { collection, query, where, writeBatch, getDoc, doc, getDocs } from 'firebase/firestore';
+import { collection, query, writeBatch, getDoc, doc, getDocs } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useSearchParams } from 'react-router-dom';
+import * as XLSX from 'xlsx';
+
+// Komponen UI
 import Modal from '../components/common/Modal';
 import Spinner from '../components/common/Spinner';
-import { FiEdit, FiTrash2, FiSearch, FiFilter, FiPlus, FiUpload, FiDownload, FiEye } from 'react-icons/fi';
-import * as XLSX from 'xlsx';
-import { generateBpdXLSX } from '../utils/generateBpdXLSX';
 import InputField from '../components/common/InputField';
-import { useFirestoreCollection } from '../hooks/useFirestoreCollection';
-import { useNotification } from '../context/NotificationContext';
 import ConfirmationModal from '../components/common/ConfirmationModal';
-import { DESA_LIST } from '../utils/constants';
 import Pagination from '../components/common/Pagination';
 import Button from '../components/common/Button';
 
-// Daftar statis & Komponen Detail tetap sama
+// Hook & Utilitas
+import { useFirestoreCollection } from '../hooks/useFirestoreCollection';
+import { useNotification } from '../context/NotificationContext';
+import { generateBpdXLSX } from '../utils/generateBpdXLSX';
+import { DESA_LIST } from '../utils/constants';
+// [BARU] Impor fungsi notifikasi
+import { createNotificationForAdmins, createNotificationForDesaAdmins } from '../utils/notificationService';
+
+// Ikon
+import { FiEdit, FiTrash2, FiSearch, FiFilter, FiPlus, FiUpload, FiDownload, FiEye } from 'react-icons/fi';
+
+
+// Daftar statis & Komponen Detail
 const JABATAN_BPD_LIST = ["Ketua", "Wakil Ketua", "Sekretaris", "Anggota"];
 const PENDIDIKAN_LIST = ["SD", "SLTP", "SLTA", "D1", "D2", "D3", "S1", "S2", "S3"];
 const AGAMA_LIST = ["Islam", "Kristen", "Katolik", "Hindu", "Budha", "Konghucu"];
@@ -150,6 +159,16 @@ const BPDPage = () => {
 
     useEffect(() => {
         const editId = searchParams.get('edit');
+        const highlightId = searchParams.get('highlight');
+        
+        if (highlightId) {
+             const timer = setTimeout(() => {
+                searchParams.delete('highlight');
+                setSearchParams(searchParams, { replace: true });
+            }, 3000);
+            return () => clearTimeout(timer);
+        }
+
         if (editId && allBpd.length > 0) {
             const bpdToEdit = allBpd.find(b => b.id === editId);
             if (bpdToEdit) {
@@ -183,6 +202,7 @@ const BPDPage = () => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
+    // [DIUBAH] Mengintegrasikan logika notifikasi ke dalam form submit
     const handleFormSubmit = async (e) => {
         e.preventDefault();
         if (!formData.desa) {
@@ -193,10 +213,29 @@ const BPDPage = () => {
         try {
             if (selectedBpd) {
                 await updateItem(selectedBpd.id, formData);
+                showNotification("Data BPD berhasil diperbarui.", "success");
+                
+                // Notifikasi saat Admin Kecamatan mengedit
+                if (currentUser.role === 'admin_kecamatan') {
+                    const message = `Admin Kecamatan telah memperbarui data BPD: "${formData.nama}".`;
+                    const link = `/app/bpd/data?edit=${selectedBpd.id}`;
+                    await createNotificationForDesaAdmins(message, link, selectedBpd.desa);
+                }
             } else {
-                await addItem(formData);
+                const created = await addItem(formData);
+                showNotification("Data BPD baru berhasil ditambahkan.", "success");
+
+                // Notifikasi saat Admin Desa menambah
+                if (currentUser.role === 'admin_desa') {
+                    const createdId = (created && created.id) ? created.id : (typeof created === 'string' ? created : '');
+                    const message = `Admin Desa ${currentUser.desa} telah menambahkan data BPD baru: "${formData.nama}".`;
+                    const link = `/app/bpd/data?highlight=${createdId}&desa=${currentUser.desa}`;
+                    await createNotificationForAdmins(message, link);
+                }
             }
             handleCloseModal();
+        } catch(error){
+            showNotification(`Gagal menyimpan data: ${error.message}`, 'error');
         } finally {
             setIsSubmitting(false);
         }
@@ -212,6 +251,9 @@ const BPDPage = () => {
         setIsSubmitting(true);
         try {
             await deleteItem(bpdToDelete.id);
+            showNotification(`Data BPD "${bpdToDelete.nama}" berhasil dihapus.`, 'success');
+        } catch(error) {
+            showNotification(`Gagal menghapus data: ${error.message}`, 'error');
         } finally {
             setIsSubmitting(false);
             setIsDeleteConfirmOpen(false);
@@ -219,7 +261,8 @@ const BPDPage = () => {
         }
     };
 
-   const handleFileUpload = (e) => {
+    // [DIUBAH] Mengintegrasikan logika notifikasi ke dalam file upload
+    const handleFileUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
         if (!uploadConfig || Object.values(uploadConfig).every(v => !v)) {
@@ -263,7 +306,7 @@ const BPDPage = () => {
                     if (currentUser.role === 'admin_desa') newDoc.desa = currentUser.desa;
                     const nama = String(newDoc.nama || '').toLowerCase().trim();
                     const noSkBupati = String(newDoc.no_sk_bupati || '').toString().trim();
-                    if (!nama || !noSkBupati) return;
+                    if (!nama || !noSkBupati || !newDoc.desa) return;
 
                     const uniqueKey = `${nama}_${noSkBupati}`;
                     if (existingDataCheck.has(uniqueKey)) {
@@ -276,7 +319,15 @@ const BPDPage = () => {
                     }
                 });
 
-                if (newEntriesCount > 0) await batch.commit();
+                if (newEntriesCount > 0) {
+                    await batch.commit();
+                    // Notifikasi setelah import berhasil
+                    if (currentUser.role === 'admin_desa') {
+                        const message = `Sebanyak ${newEntriesCount} data anggota BPD baru telah diimpor untuk Desa ${currentUser.desa}.`;
+                        const link = `/app/organisasi/bpd`;
+                        await createNotificationForAdmins(message, link, currentUser);
+                    }
+                }
                 let notificationMessage = `${newEntriesCount} data baru berhasil diimpor.`;
                 if (duplicates.length > 0) {
                     notificationMessage += `\n\n${duplicates.length} data duplikat tidak diimpor: ${duplicates.join(', ')}`;
@@ -357,6 +408,8 @@ const BPDPage = () => {
         if (modalMode === 'edit') return 'Edit Data BPD';
         return 'Tambah Data BPD';
     };
+    
+    const highlightClass = (id) => searchParams.get('highlight') === id ? 'highlight-row' : '';
 
     if (loading || loadingExtras) return <Spinner size="lg" />;
 
@@ -389,7 +442,7 @@ const BPDPage = () => {
                     <tbody>
                         {filteredBpd.length > 0 ? (
                             filteredBpd.map((p) => (
-                                <tr key={p.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                                <tr key={p.id} className={`bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 ${highlightClass(p.id)}`}>
                                     <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
                                         <p className="font-semibold">{p.nama}</p>
                                         <p className="text-xs text-gray-500 dark:text-gray-400">No. SK: {p.no_sk_bupati || 'N/A'}</p>
@@ -398,9 +451,9 @@ const BPDPage = () => {
                                     <td className="px-6 py-4">{p.jabatan}</td>
                                     <td className="px-6 py-4">{p.periode}</td>
                                     <td className="px-6 py-4 flex space-x-3">
-                                        <button onClick={() => handleOpenModal(p, 'view')} className="text-gray-500 hover:text-gray-700"><FiEye /></button>
-                                        <button onClick={() => handleOpenModal(p, 'edit')} className="text-blue-600 hover:text-blue-800"><FiEdit /></button>
-                                        <button onClick={() => confirmDelete(p)} className="text-red-600 hover:text-red-800"><FiTrash2 /></button>
+                                        <button onClick={() => handleOpenModal(p, 'view')} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" title="Lihat Detail"><FiEye /></button>
+                                        <button onClick={() => handleOpenModal(p, 'edit')} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300" title="Edit"><FiEdit /></button>
+                                        <button onClick={() => confirmDelete(p)} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Hapus"><FiTrash2 /></button>
                                     </td>
                                 </tr>
                             ))

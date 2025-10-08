@@ -30,7 +30,6 @@ const DataSK = () => {
     const [searchParams, setSearchParams] = useSearchParams();
 
     const [skDocs, setSkDocs] = useState([]);
-    // [BARU] State untuk menyimpan data yang sudah diperkaya dengan jabatan
     const [enrichedSkDocs, setEnrichedSkDocs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -70,7 +69,6 @@ const DataSK = () => {
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setSkDocs(docs);
-            // Jangan setLoading(false) di sini, biarkan effect kedua yang menanganinya
         }, (error) => {
             console.error("Gagal memuat data SK:", error);
             showNotification('Gagal memuat data SK.', 'error');
@@ -80,7 +78,7 @@ const DataSK = () => {
         return () => unsubscribe();
     }, [currentUser, skType, config.collectionName, showNotification]);
 
-    // [BARU] Effect kedua: "Memperkaya" data SK dengan mengambil jabatan dari koleksi aslinya
+    // Effect kedua: "Memperkaya" data SK dengan mengambil jabatan dari koleksi aslinya
     useEffect(() => {
         const enrichData = async () => {
             if (skDocs.length === 0) {
@@ -90,14 +88,12 @@ const DataSK = () => {
             }
 
             const enrichedPromises = skDocs.map(async (sk) => {
-                let jabatan = '-'; // Nilai default jika jabatan tidak ditemukan
-                // Pastikan ada entityId dan nama koleksi yang valid untuk dicari
+                let jabatan = '-';
                 if (sk.entityId && config.collectionName) {
                     try {
                         const entityRef = doc(db, config.collectionName, sk.entityId);
                         const entitySnap = await getDoc(entityRef);
                         if (entitySnap.exists()) {
-                            // Ambil field 'jabatan' dari dokumen yang ditemukan
                             jabatan = entitySnap.data().jabatan || 'Tidak ada jabatan';
                         } else {
                             jabatan = 'Data asli tidak ditemukan';
@@ -107,19 +103,17 @@ const DataSK = () => {
                         jabatan = 'Gagal memuat jabatan';
                     }
                 }
-                // Kembalikan objek SK yang sudah ditambahkan properti jabatan
                 return { ...sk, jabatan };
             });
 
             const resolvedData = await Promise.all(enrichedPromises);
             setEnrichedSkDocs(resolvedData);
-            setLoading(false); // Selesai memuat setelah data diperkaya
+            setLoading(false);
         };
 
         enrichData();
-    }, [skDocs, config.collectionName]); // Dijalankan setiap kali data skDocs berubah
+    }, [skDocs, config.collectionName]);
 
-    // [DIUBAH] Gunakan data yang sudah diperkaya untuk pemfilteran
     const filteredSkDocuments = useMemo(() => {
         let data = enrichedSkDocs;
         if (currentUser.role === 'admin_kecamatan' && filterDesa !== 'all') {
@@ -133,24 +127,27 @@ const DataSK = () => {
             data = data.filter(doc =>
                 (doc.entityName || '').toLowerCase().includes(search) ||
                 (doc.fileName || '').toLowerCase().includes(search) ||
-                (doc.jabatan || '').toLowerCase().includes(search) // Tambahkan pencarian berdasarkan jabatan
+                (doc.jabatan || '').toLowerCase().includes(search)
             );
         }
         return data;
     }, [enrichedSkDocs, searchTerm, filterDesa, currentUser.role]);
     
+    // [DIUBAH] Menambahkan notifikasi saat pratinjau dibuka
     const openPdfPreview = (url) => {
         if (!url) {
             showNotification('URL file tidak valid.', 'error');
             return;
         }
+        showNotification('Mempersiapkan pratinjau dokumen...', 'info', 2000);
         const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
         setPreviewUrl(viewerUrl);
         setIsModalOpen(true);
     };
     
+    // [DIUBAH] Menambahkan notifikasi untuk proses unduh
     const handleDownload = async (fileUrl, fileName) => {
-        showNotification(`Mengunduh "${fileName}"...`, 'info');
+        showNotification(`Mengunduh "${fileName}"...`, 'info', 3000);
         try {
             const response = await fetch(fileUrl);
             if (!response.ok) {
@@ -242,7 +239,6 @@ const DataSK = () => {
                         <thead className="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-50 dark:bg-gray-700">
                             <tr>
                                 <th className="px-6 py-3">Nama Personel/Lembaga</th>
-                                {/* [BARU] Header kolom jabatan */}
                                 <th className="px-6 py-3">Jabatan</th>
                                 {currentUser.role === 'admin_kecamatan' && <th className="px-6 py-3">Desa</th>}
                                 <th className="px-6 py-3">Nama File</th>
@@ -254,7 +250,6 @@ const DataSK = () => {
                             {filteredSkDocuments.length > 0 ? filteredSkDocuments.map((sk) => (
                                 <tr key={sk.id} className={`bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 ${highlightedRow === sk.id ? 'highlight-row' : ''}`}>
                                     <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{sk.entityName}</td>
-                                    {/* [BARU] Sel untuk menampilkan jabatan */}
                                     <td className="px-6 py-4">{sk.jabatan}</td>
                                     {currentUser.role === 'admin_kecamatan' && <td className="px-6 py-4">{sk.desa}</td>}
                                     <td className="px-6 py-4">{sk.fileName}</td>
@@ -273,7 +268,6 @@ const DataSK = () => {
                                     </td>
                                 </tr>
                             )) : (
-                                // [DIUBAH] Menyesuaikan colspan
                                 <tr><td colSpan={currentUser.role === 'admin_kecamatan' ? 6 : 5} className="text-center py-10 text-gray-500">Tidak ada data SK yang ditemukan.</td></tr>
                             )}
                         </tbody>
@@ -304,4 +298,3 @@ const DataSK = () => {
 };
 
 export default DataSK;
-

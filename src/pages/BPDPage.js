@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
-import { collection, query, writeBatch, getDoc, doc, getDocs } from 'firebase/firestore';
+import { collection, query, writeBatch, getDoc, doc, getDocs, onSnapshot, addDoc, updateDoc, deleteDoc, where } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 
 // Komponen UI
@@ -18,7 +18,7 @@ import { useFirestoreCollection } from '../hooks/useFirestoreCollection';
 import { useNotification } from '../context/NotificationContext';
 import { generateBpdXLSX } from '../utils/generateBpdXLSX';
 import { DESA_LIST } from '../utils/constants';
-// [BARU] Impor fungsi notifikasi
+// [DIUBAH] Impor fungsi notifikasi yang diperlukan
 import { createNotificationForAdmins, createNotificationForDesaAdmins } from '../utils/notificationService';
 
 // Ikon
@@ -114,6 +114,9 @@ const BPDPage = () => {
     const [currentDesa, setCurrentDesa] = useState(DESA_LIST[0]);
     const [searchParams, setSearchParams] = useSearchParams();
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+    const navigate = useNavigate();
+    const [highlightedRow, setHighlightedRow] = useState(null);
+
 
     useEffect(() => {
         if (currentUser && currentUser.role === 'admin_desa') {
@@ -157,26 +160,42 @@ const BPDPage = () => {
         fetchUploadConfig();
     }, []);
 
+    // [DIUBAH] Logika untuk menangani parameter URL 'edit', 'view', dan 'highlight'
     useEffect(() => {
         const editId = searchParams.get('edit');
+        const viewId = searchParams.get('view');
         const highlightId = searchParams.get('highlight');
-        
+        const targetDesa = searchParams.get('desa');
+    
+        // Jika user adalah admin kecamatan dan ada parameter desa, ganti tampilan desa
+        if (currentUser.role === 'admin_kecamatan' && targetDesa && targetDesa !== currentDesa) {
+            setCurrentDesa(targetDesa);
+        }
+    
         if (highlightId) {
-             const timer = setTimeout(() => {
+            setHighlightedRow(highlightId);
+            const timer = setTimeout(() => {
+                setHighlightedRow(null);
+                // Hapus parameter dari URL setelah digunakan
                 searchParams.delete('highlight');
+                searchParams.delete('desa');
                 setSearchParams(searchParams, { replace: true });
-            }, 3000);
+            }, 3000); // Sorot selama 3 detik
             return () => clearTimeout(timer);
         }
-
-        if (editId && allBpd.length > 0) {
-            const bpdToEdit = allBpd.find(b => b.id === editId);
-            if (bpdToEdit) {
-                handleOpenModal(bpdToEdit, 'edit');
-                setSearchParams({}, { replace: true });
+    
+        if ((editId || viewId) && allBpd.length > 0) {
+            const bpdToShow = allBpd.find(b => b.id === (editId || viewId));
+            if (bpdToShow) {
+                handleOpenModal(bpdToShow, editId ? 'edit' : 'view');
+                // Hapus parameter dari URL setelah modal dibuka
+                searchParams.delete('edit');
+                searchParams.delete('view');
+                setSearchParams(searchParams, { replace: true });
             }
         }
-    }, [allBpd, searchParams, setSearchParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [allBpd, searchParams, setSearchParams, currentUser.role]);
     
     const handleOpenModal = (bpd = null, mode = 'add') => {
         setModalMode(mode);
@@ -202,7 +221,6 @@ const BPDPage = () => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-    // [DIUBAH] Mengintegrasikan logika notifikasi ke dalam form submit
     const handleFormSubmit = async (e) => {
         e.preventDefault();
         if (!formData.desa) {
@@ -211,26 +229,25 @@ const BPDPage = () => {
         }
         setIsSubmitting(true);
         try {
+            let docId = selectedBpd ? selectedBpd.id : null;
             if (selectedBpd) {
                 await updateItem(selectedBpd.id, formData);
                 showNotification("Data BPD berhasil diperbarui.", "success");
                 
-                // Notifikasi saat Admin Kecamatan mengedit
                 if (currentUser.role === 'admin_kecamatan') {
-                    const message = `Admin Kecamatan telah memperbarui data BPD: "${formData.nama}".`;
-                    const link = `/app/bpd/data?edit=${selectedBpd.id}`;
-                    await createNotificationForDesaAdmins(message, link, selectedBpd.desa);
+                    const message = `Admin Kecamatan telah memperbarui data BPD untuk "${formData.nama}".`;
+                    const link = `/app/bpd/data?view=${selectedBpd.id}`;
+                    await createNotificationForDesaAdmins(selectedBpd.desa, message, link);
                 }
             } else {
-                const created = await addItem(formData);
+                const newDocRef = await addItem(formData);
+                docId = newDocRef.id;
                 showNotification("Data BPD baru berhasil ditambahkan.", "success");
 
-                // Notifikasi saat Admin Desa menambah
-                if (currentUser.role === 'admin_desa') {
-                    const createdId = (created && created.id) ? created.id : (typeof created === 'string' ? created : '');
+                if (currentUser.role === 'admin_desa' && docId) {
                     const message = `Admin Desa ${currentUser.desa} telah menambahkan data BPD baru: "${formData.nama}".`;
-                    const link = `/app/bpd/data?highlight=${createdId}&desa=${currentUser.desa}`;
-                    await createNotificationForAdmins(message, link);
+                    const link = `/app/bpd/data?view=${docId}&desa=${currentUser.desa}`;
+                    await createNotificationForAdmins(message, link, currentUser);
                 }
             }
             handleCloseModal();
@@ -261,7 +278,6 @@ const BPDPage = () => {
         }
     };
 
-    // [DIUBAH] Mengintegrasikan logika notifikasi ke dalam file upload
     const handleFileUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -321,10 +337,10 @@ const BPDPage = () => {
 
                 if (newEntriesCount > 0) {
                     await batch.commit();
-                    // Notifikasi setelah import berhasil
+                    
                     if (currentUser.role === 'admin_desa') {
                         const message = `Sebanyak ${newEntriesCount} data anggota BPD baru telah diimpor untuk Desa ${currentUser.desa}.`;
-                        const link = `/app/organisasi/bpd`;
+                        const link = `/app/bpd/data?desa=${currentUser.desa}`;
                         await createNotificationForAdmins(message, link, currentUser);
                     }
                 }
@@ -337,7 +353,7 @@ const BPDPage = () => {
                 showNotification(`Gagal memproses file: ${error.message}`, 'error');
             } finally {
                 setIsUploading(false);
-                e.target.value = null;
+                if (e.target) e.target.value = null;
             }
         };
         reader.readAsArrayBuffer(file);
@@ -409,7 +425,7 @@ const BPDPage = () => {
         return 'Tambah Data BPD';
     };
     
-    const highlightClass = (id) => searchParams.get('highlight') === id ? 'highlight-row' : '';
+    const highlightClass = (id) => highlightedRow === id ? 'highlight-row' : '';
 
     if (loading || loadingExtras) return <Spinner size="lg" />;
 

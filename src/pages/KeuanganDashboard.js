@@ -6,20 +6,21 @@ import { useNotification } from '../context/NotificationContext';
 import Spinner from '../components/common/Spinner';
 import { Bar, Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
-import { FiTrendingUp, FiTrendingDown } from 'react-icons/fi';
+import { FiTrendingUp, FiTrendingDown, FiDollarSign } from 'react-icons/fi';
 import { DESA_LIST } from '../utils/constants';
 import InputField from '../components/common/InputField';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend);
 
+// [PERBAIKAN] Komponen StatCard didesain ulang untuk menangani teks panjang
 const StatCard = ({ title, value, icon, colorClass }) => (
-    <div className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-md flex items-center gap-4">
+    <div className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-md flex items-center gap-4 overflow-hidden">
         <div className={`p-3 rounded-full text-white ${colorClass}`}>
             {icon}
         </div>
-        <div>
-            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+        <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">{title}</p>
+            <p className="text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
         </div>
     </div>
 );
@@ -82,7 +83,6 @@ const KeuanganDashboard = () => {
             if (err && err.code === 'permission-denied') {
                 showNotification('Izin ditolak. Pastikan aturan keamanan Firestore sudah benar.', 'error');
             } else if (err && err.code === 'failed-precondition') {
-                // Firestore tells us to create a collection-group/composite index
                 showNotification('Kueri realisasi memerlukan index composite (collection-group) yang belum tersedia. Jalankan `firebase deploy --only firestore:indexes` atau buat index di Firebase Console -> Firestore -> Indexes.', 'error', 12000);
             } else {
                 showNotification('Gagal memuat data realisasi.', 'error');
@@ -95,9 +95,25 @@ const KeuanganDashboard = () => {
             unsubRealisasi();
         };
     }, [currentUser, filterDesa, filterTahun, showNotification]);
-
-    // [PERBAIKAN TOTAL] Logika kalkulasi diperbaiki untuk mencocokkan realisasi dengan anggaran induknya
+    
     const dashboardData = useMemo(() => {
+        // [PERBAIKAN] Fungsi untuk format angka menjadi ringkas (Miliar, Juta, Ribu)
+        const formatRupiahKompak = (value) => {
+            const num = Number(value);
+            if (isNaN(num)) return 'Rp 0';
+        
+            if (Math.abs(num) >= 1e12) {
+                return `Rp ${(num / 1e12).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} T`;
+            }
+            if (Math.abs(num) >= 1e9) {
+                return `Rp ${(num / 1e9).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} M`;
+            }
+            if (Math.abs(num) >= 1e6) {
+                return `Rp ${(num / 1e6).toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Jt`;
+            }
+            return `Rp ${num.toLocaleString('id-ID')}`;
+        };
+
         const validAnggaran = anggaranList.filter(a => a.status === 'Disahkan' || a.status === 'Perubahan');
         const anggaranMap = new Map(validAnggaran.map(a => [a.id, a]));
 
@@ -110,7 +126,7 @@ const KeuanganDashboard = () => {
 
         realisasiList.forEach(t => {
             const parentAnggaran = anggaranMap.get(t.parentAnggaranId);
-            if (parentAnggaran) { // Hanya proses realisasi yang anggarannya valid
+            if (parentAnggaran) {
                 if (parentAnggaran.jenis === 'Pendapatan') {
                     totalRealisasiPendapatan += t.jumlah;
                 } else if (parentAnggaran.jenis === 'Belanja') {
@@ -127,9 +143,7 @@ const KeuanganDashboard = () => {
                 }
             }
         });
-
-        const formatRupiah = (val) => `Rp ${val.toLocaleString('id-ID') || 0}`;
-
+        
         const realisasiChartData = {
             labels: ['Pendapatan', 'Belanja'],
             datasets: [
@@ -148,11 +162,12 @@ const KeuanganDashboard = () => {
 
         return {
             stats: {
-                anggaranPendapatan: formatRupiah(totalAnggaranPendapatan),
-                realisasiPendapatan: formatRupiah(totalRealisasiPendapatan),
-                anggaranBelanja: formatRupiah(totalAnggaranBelanja),
-                realisasiBelanja: formatRupiah(totalRealisasiBelanja),
+                anggaranPendapatan: formatRupiahKompak(totalAnggaranPendapatan),
+                realisasiPendapatan: formatRupiahKompak(totalRealisasiPendapatan),
+                anggaranBelanja: formatRupiahKompak(totalAnggaranBelanja),
+                realisasiBelanja: formatRupiahKompak(totalRealisasiBelanja),
             },
+            sisaAnggaran: formatRupiahKompak((totalRealisasiPendapatan - totalRealisasiBelanja)), // Sisa dari realisasi
             realisasiChartData,
             arusKasChartData,
         };
@@ -181,6 +196,26 @@ const KeuanganDashboard = () => {
                 <StatCard title="Anggaran Belanja" value={dashboardData.stats.anggaranBelanja} icon={<FiTrendingDown />} colorClass="bg-red-500" />
                 <StatCard title="Realisasi Belanja" value={dashboardData.stats.realisasiBelanja} icon={<FiTrendingDown />} colorClass="bg-red-600" />
             </div>
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
+                <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center">
+                    <FiDollarSign className="mr-3 text-green-500" /> Ringkasan Realisasi Anggaran Tahun {filterTahun}
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 className="font-bold text-lg text-green-600 dark:text-green-400">Total Realisasi Pendapatan</h3>
+                        <p className="text-3xl font-bold">{dashboardData.stats.realisasiPendapatan}</p>
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-lg text-red-600 dark:text-red-400">Total Realisasi Belanja</h3>
+                        <p className="text-3xl font-bold">{dashboardData.stats.realisasiBelanja}</p>
+                    </div>
+                </div>
+                <div className="mt-6 pt-4 border-t dark:border-gray-700">
+                     <h3 className="font-bold text-lg text-blue-600 dark:text-blue-400">Sisa Anggaran (Silpa Dari Realisasi)</h3>
+                     <p className="text-3xl font-bold">{dashboardData.sisaAnggaran}</p>
+                </div>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                 <div className="lg:col-span-3 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
                     <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-4">Realisasi Anggaran</h2>
@@ -200,4 +235,3 @@ const KeuanganDashboard = () => {
 };
 
 export default KeuanganDashboard;
-

@@ -1,16 +1,14 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react'; // useMemo ditambahkan
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { FiMenu, FiMoon, FiSun, FiLogOut, FiBell, FiFileText } from 'react-icons/fi';
+import { FiMenu, FiMoon, FiSun, FiLogOut, FiBell, FiFileText, FiUser } from 'react-icons/fi';
 
-// [REVISED] Komponen Lonceng Notifikasi
 const NotificationBell = () => {
     const { currentUser, notifications, unreadCount, markNotificationAsRead } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
     const navigate = useNavigate();
     const bellRef = useRef(null);
 
-    // Filter notifikasi untuk hanya menampilkan yang belum dibaca
     const unreadNotifications = useMemo(() => {
         if (!currentUser) return [];
         return notifications
@@ -20,7 +18,7 @@ const NotificationBell = () => {
                 }
                 return !n.readStatus;
             })
-            .sort((a,b) => b.timestamp.toMillis() - a.timestamp.toMillis()); // Urutkan dari yang terbaru
+            .sort((a,b) => b.timestamp.toMillis() - a.timestamp.toMillis());
     }, [notifications, currentUser]);
 
     const handleNotificationClick = (notification) => {
@@ -31,7 +29,6 @@ const NotificationBell = () => {
         setIsOpen(false);
     };
 
-    // Menutup dropdown saat klik di luar
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (bellRef.current && !bellRef.current.contains(event.target)) {
@@ -79,7 +76,7 @@ const NotificationBell = () => {
     );
 };
 
-const Header = ({ pageTitle, onMenuClick }) => {
+const Header = ({ pageTitle, onMenuClick, onProfileClick }) => {
     const { currentUser, logout, theme, toggleTheme } = useAuth();
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const profileMenuRef = useRef(null);
@@ -110,7 +107,8 @@ const Header = ({ pageTitle, onMenuClick }) => {
     };
 
     return (
-        <header className="flex items-center justify-between p-4 md:p-6 bg-white dark:bg-gray-800 shadow-md">
+        // [PERUBAHAN] Menambahkan kelas 'sticky top-0 z-50' untuk membuat header tetap di atas saat scroll
+        <header className="flex items-center justify-between p-4 md:p-6 bg-white dark:bg-gray-800 shadow-md sticky top-0 z-50">
             <div className="flex items-center">
                 <button onClick={onMenuClick} className="text-gray-500 dark:text-gray-300 focus:outline-none md:hidden mr-4">
                     <FiMenu size={24} />
@@ -124,46 +122,61 @@ const Header = ({ pageTitle, onMenuClick }) => {
             <div className="flex items-center gap-4">
                 <NotificationBell />
                 <div className="relative" ref={profileMenuRef}>
-                 <button onClick={() => setIsProfileOpen(!isProfileOpen)} className="flex items-center space-x-3 cursor-pointer">
-                     <div className="hidden md:block text-right">
-                        <p className="font-semibold text-gray-800 dark:text-gray-100">{currentUser?.nama || 'Nama Pengguna'}</p>
-                        <span className="text-xs px-2 py-0.5 font-semibold text-blue-800 dark:text-blue-200 bg-blue-100 dark:bg-blue-900/50 rounded-full">
-                            {currentUser?.role === 'admin_kecamatan' ? 'Admin Kecamatan' : `Admin ${currentUser?.desa || ''}`}
-                        </span>
-                    </div>
-                    <div className="w-10 h-10 bg-blue-500 text-white flex items-center justify-center rounded-full font-bold text-lg">
-                        {getInitials(currentUser?.nama)}
-                    </div>
-                </button>
-                
-                <div className={`absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-md shadow-lg py-2 z-50 transition-all duration-300 ease-in-out ${isProfileOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
-                    <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">Tema Tampilan</p>
-                        <div className="mt-2">
-                            <label htmlFor="theme-toggle" className="flex items-center cursor-pointer">
-                                <div className="relative">
-                                    <input type="checkbox" id="theme-toggle" className="sr-only" checked={theme === 'dark'} onChange={toggleTheme} />
-                                    <div className="block bg-gray-200 dark:bg-gray-600 w-14 h-8 rounded-full"></div>
-                                    <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform duration-300 ease-in-out flex items-center justify-center ${theme === 'dark' ? 'transform translate-x-6' : ''}`}>
-                                        <FiSun className={`text-yellow-500 transition-opacity duration-300 ${theme === 'light' ? 'opacity-100' : 'opacity-0'}`} />
-                                        <FiMoon className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-blue-500 transition-opacity duration-300 ${theme === 'dark' ? 'opacity-100' : 'opacity-0'}`} />
-                                    </div>
-                                </div>
-                                <div className="ml-3 text-gray-700 dark:text-gray-300 text-sm font-medium">
-                                    {theme === 'dark' ? 'Mode Gelap' : 'Mode Terang'}
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-                    <button onClick={handleLogout} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3">
-                       <FiLogOut />
-                       <span>Keluar</span>
-                    </button>
-                </div>
-                </div>
+                   <button onClick={() => setIsProfileOpen(!isProfileOpen)} className="flex items-center space-x-3 cursor-pointer">
+                       <div className="hidden md:block text-right">
+                           <p className="font-semibold text-gray-800 dark:text-gray-100">{currentUser?.nama || 'Nama Pengguna'}</p>
+                           <span className="text-xs px-2 py-0.5 font-semibold text-blue-800 dark:text-blue-200 bg-blue-100 dark:bg-blue-900/50 rounded-full">
+                               {currentUser?.role === 'admin_kecamatan' ? 'Admin Kecamatan' : `Admin ${currentUser?.desa || ''}`}
+                           </span>
+                       </div>
+                       {currentUser?.foto_url ? (
+                           <img src={currentUser.foto_url} alt="Profil" className="w-10 h-10 rounded-full object-cover" />
+                       ) : (
+                           <div className="w-10 h-10 bg-blue-500 text-white flex items-center justify-center rounded-full font-bold text-lg">
+                               {getInitials(currentUser?.nama)}
+                           </div>
+                       )}
+                   </button>
+                   
+                   <div className={`absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-md shadow-lg py-2 z-50 transition-all duration-300 ease-in-out ${isProfileOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
+                       <button 
+                           onClick={() => {
+                               onProfileClick();
+                               setIsProfileOpen(false);
+                           }} 
+                           className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3"
+                       >
+                           <FiUser />
+                           <span>Edit Profil</span>
+                       </button>
+                       <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+                           <p className="text-sm font-medium text-gray-900 dark:text-white">Tema Tampilan</p>
+                           <div className="mt-2">
+                               <label htmlFor="theme-toggle" className="flex items-center cursor-pointer">
+                                   <div className="relative">
+                                       <input type="checkbox" id="theme-toggle" className="sr-only" checked={theme === 'dark'} onChange={toggleTheme} />
+                                       <div className="block bg-gray-200 dark:bg-gray-600 w-14 h-8 rounded-full"></div>
+                                       <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform duration-300 ease-in-out flex items-center justify-center ${theme === 'dark' ? 'transform translate-x-6' : ''}`}>
+                                           <FiSun className={`text-yellow-500 transition-opacity duration-300 ${theme === 'light' ? 'opacity-100' : 'opacity-0'}`} />
+                                           <FiMoon className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-blue-500 transition-opacity duration-300 ${theme === 'dark' ? 'opacity-100' : 'opacity-0'}`} />
+                                       </div>
+                                   </div>
+                                   <div className="ml-3 text-gray-700 dark:text-gray-300 text-sm font-medium">
+                                       {theme === 'dark' ? 'Mode Gelap' : 'Mode Terang'}
+                                   </div>
+                               </label>
+                           </div>
+                       </div>
+                       <button onClick={handleLogout} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3">
+                           <FiLogOut />
+                           <span>Keluar</span>
+                       </button>
+                   </div>
+                   </div>
             </div>
         </header>
     );
 };
 
 export default Header;
+

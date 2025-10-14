@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { db, auth } from '../firebase'; // auth utama untuk reset password
+import { useSearchParams } from 'react-router-dom';
+import { db, auth } from '../firebase';
 import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { sendPasswordResetEmail, createUserWithEmailAndPassword, getAuth } from 'firebase/auth';
 import { initializeApp } from 'firebase/app';
@@ -25,6 +26,8 @@ const ManajemenAdmin = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [adminToDelete, setAdminToDelete] = useState(null);
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [highlightedRow, setHighlightedRow] = useState(null);
 
     useEffect(() => {
         const q = query(collection(db, "users"), where("role", "==", "admin_desa"));
@@ -35,6 +38,20 @@ const ManajemenAdmin = () => {
         });
         return () => unsubscribe();
     }, []);
+
+    useEffect(() => {
+        const highlightId = searchParams.get('highlight');
+        if (highlightId) {
+            setHighlightedRow(highlightId);
+            const timer = setTimeout(() => {
+                setHighlightedRow(null);
+                searchParams.delete('highlight');
+                setSearchParams(searchParams, { replace: true });
+            }, 3000); // Highlight berlaku selama 3 detik
+            return () => clearTimeout(timer);
+        }
+    }, [searchParams, setSearchParams]);
+
 
     const handleOpenModal = () => {
         setFormData({ nama: '', email: '', password: '', desa: DESA_LIST[0] });
@@ -67,6 +84,7 @@ const ManajemenAdmin = () => {
                 email: formData.email,
                 desa: formData.desa,
                 role: "admin_desa",
+                foto_url: null
             });
             
             showNotification(`Admin untuk Desa ${formData.desa} berhasil dibuat.`, 'success');
@@ -116,6 +134,11 @@ const ManajemenAdmin = () => {
         }
     };
 
+    const getInitials = (name) => {
+        if (!name) return '?';
+        return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+    };
+
     if (loading) return <Spinner />;
 
     return (
@@ -139,8 +162,19 @@ const ManajemenAdmin = () => {
                     </thead>
                     <tbody>
                         {adminList.map((admin) => (
-                            <tr key={admin.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                                <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{admin.nama}</td>
+                            <tr key={admin.id} className={`bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 ${highlightedRow === admin.id ? 'highlight-row' : ''}`}>
+                                <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
+                                    <div className="flex items-center gap-3">
+                                        {admin.foto_url ? (
+                                            <img src={admin.foto_url} alt={admin.nama} className="w-10 h-10 rounded-full object-cover"/>
+                                        ) : (
+                                            <div className="w-10 h-10 bg-blue-500 text-white flex items-center justify-center rounded-full font-bold">
+                                                {getInitials(admin.nama)}
+                                            </div>
+                                        )}
+                                        <span>{admin.nama}</span>
+                                    </div>
+                                </td>
                                 <td className="px-6 py-4">{admin.email}</td>
                                 <td className="px-6 py-4">{admin.desa}</td>
                                 <td className="px-6 py-4 flex space-x-3">
@@ -200,4 +234,3 @@ const ManajemenAdmin = () => {
 };
 
 export default ManajemenAdmin;
-

@@ -8,7 +8,7 @@ import Modal from '../components/common/Modal';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import Button from '../components/common/Button';
 import SkeletonLoader from '../components/common/SkeletonLoader';
-import { FiEdit, FiSearch, FiUpload, FiDownload, FiPlus, FiEye, FiUserX, FiTrash2, FiBriefcase, FiCheckSquare, FiXSquare } from 'react-icons/fi';
+import { FiEdit, FiSearch, FiUpload, FiDownload, FiPlus, FiEye, FiUserX, FiTrash2, FiBriefcase, FiCheckSquare, FiXSquare, FiArchive } from 'react-icons/fi';
 import * as XLSX from 'xlsx';
 import { generatePerangkatXLSX } from '../utils/generatePerangkatXLSX';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
@@ -16,6 +16,7 @@ import { uploadImageToCloudinary } from '../utils/imageUploader';
 import { DESA_LIST } from '../utils/constants';
 import Pagination from '../components/common/Pagination';
 import { createNotificationForAdmins } from '../utils/notificationService';
+import { checkAndProcessPurnaTugas } from '../utils/purnaTugasChecker'; // <-- NAMA FUNGSI DIPERBAIKI DI SINI
 
 const JABATAN_LIST = [ "Kepala Desa", "Pj. Kepala Desa", "Sekretaris Desa", "Kasi Pemerintahan", "Kasi Kesejahteraan", "Kasi Pelayanan", "Kaur TU dan Umum", "Kaur Keuangan", "Kaur Perencanaan", "Kadus I","Kadus II","Kadus III" ,"Kadus IV","Kadus V","Kadus VI","Staf Desa" ];
 const PENDIDIKAN_LIST = ["SD", "SLTP", "SLTA", "D1", "D2", "D3", "S1", "S2", "S3"];
@@ -85,6 +86,15 @@ const Perangkat = () => {
     const { currentUser } = useAuth();
     const { showNotification } = useNotification();
     const { data: allPerangkat, loading, addItem, updateItem } = useFirestoreCollection('perangkat', { orderByField: 'nama' });
+
+    // Jalankan pengecekan purna tugas otomatis saat komponen dimuat
+    useEffect(() => {
+        checkAndProcessPurnaTugas().then(({ processed, skipped }) => { // <-- NAMA FUNGSI DIPERBAIKI DI SINI
+            if (!skipped && processed > 0) {
+                showNotification(`${processed} perangkat telah dipindahkan ke riwayat purna tugas.`, 'info');
+            }
+        });
+    }, []);
     
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedPerangkat, setSelectedPerangkat] = useState(null);
@@ -102,7 +112,6 @@ const Perangkat = () => {
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
     const [bulkDeleteMode, setBulkDeleteMode] = useState(null);
-    // --- PERBAIKAN: State untuk modal pilihan ekspor ---
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     
     const [currentDesa, setCurrentDesa] = useState(DESA_LIST[0]);
@@ -389,19 +398,16 @@ const Perangkat = () => {
         }
     };
     
-    // --- PERBAIKAN: Fungsi utama untuk menangani klik ekspor ---
     const handleExportClick = () => {
         if (currentUser.role === 'admin_kecamatan') {
             setIsExportModalOpen(true);
         } else {
-            // Admin Desa hanya punya satu pilihan, langsung ekspor
             handleExportXLSX('current');
         }
     };
 
-    // --- PERBAIKAN: Fungsi ekspor yang menerima scope (cakupan data) ---
     const handleExportXLSX = (scope) => {
-        setIsExportModalOpen(false); // Tutup modal setelah pilihan dibuat
+        setIsExportModalOpen(false);
         let dataToExport;
         let groupedData;
 
@@ -411,7 +417,6 @@ const Perangkat = () => {
                 showNotification("Tidak ada data untuk diekspor.", "warning");
                 return;
             }
-            // Kelompokkan semua data berdasarkan desa
             const dataByDesa = dataToExport.reduce((acc, p) => {
                 const desa = p.desa || 'Lainnya';
                 if (!acc[desa]) {
@@ -623,6 +628,9 @@ const Perangkat = () => {
             </div>
             
             <div className="flex flex-wrap justify-end gap-2 mb-4">
+                 <Button onClick={() => navigate('/app/histori-perangkat')} variant="secondary">
+                    <FiArchive className="mr-2" /> Riwayat Purna
+                </Button>
                 {isSelectionMode ? (
                     <>
                         <Button onClick={() => handleBulkDelete('kosongkan')} variant="warning" disabled={isDeleting || selectedIds.size === 0} isLoading={isDeleting}><FiUserX /> Kosongkan ({selectedIds.size})</Button>
@@ -636,7 +644,6 @@ const Perangkat = () => {
                             <input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls, .csv" disabled={isUploading}/>
                             {isUploading ? 'Mengimpor...' : 'Impor Data'}
                         </label>
-                        {/* --- PERBAIKAN: Tombol ekspor memanggil fungsi baru --- */}
                         <Button onClick={handleExportClick} variant="success"><FiDownload className="mr-2"/> Ekspor XLSX</Button>
                         <Button onClick={() => handleOpenModal(null, 'add')} variant="primary"><FiPlus className="mr-2"/> Tambah Data</Button>
                     </>
@@ -739,7 +746,6 @@ const Perangkat = () => {
                 message={`Apakah Anda yakin ingin ${bulkDeleteMode === 'kosongkan' ? 'mengosongkan jabatan' : 'menghapus permanen'} untuk ${selectedIds.size} data yang dipilih?`}
             />
 
-            {/* --- PERBAIKAN: Modal baru untuk pilihan ekspor --- */}
             {currentUser.role === 'admin_kecamatan' && (
                  <Modal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} title="Pilih Opsi Ekspor Data Perangkat">
                     <p className="text-gray-600 dark:text-gray-400 mb-6">Pilih data yang ingin Anda ekspor ke dalam file XLSX.</p>
@@ -758,3 +764,4 @@ const Perangkat = () => {
 };
 
 export default Perangkat;
+

@@ -1,13 +1,9 @@
 rules_version = '2';
-
 service cloud.firestore {
 match /databases/{database}/documents {
 
-// =====================================================================
-// FUNGSI BANTUAN (HELPER FUNCTIONS)
-// =====================================================================
-
-function isSignedIn() {
+// == Helper Functions ==
+function isAuthenticated() {
   return request.auth != null;
 }
 
@@ -15,175 +11,162 @@ function getUserData() {
   return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
 }
 
-function isKecamatanAdmin() {
-  return isSignedIn() && getUserData().role == 'admin_kecamatan';
+function isAdminKecamatan() {
+  return isAuthenticated() && getUserData().role == 'admin_kecamatan';
 }
 
-function isDesaAdmin() {
-  return isSignedIn() && getUserData().role == 'admin_desa';
+function isAdminDesa() {
+  return isAuthenticated() && getUserData().role == 'admin_desa';
 }
 
-function isOwnerOfResource() {
-  return isDesaAdmin() && request.resource.data.desa == getUserData().desa;
-}
-
-function isOwnerOfExistingDoc() {
-  return isDesaAdmin() && resource.data.desa == getUserData().desa;
-}
-
-// [BARU] Helper untuk aturan notifikasi
 function isOwner(userId) {
   return request.auth.uid == userId;
 }
 
-// [BARU] Helper untuk aturan notifikasi
-function isTargetRole(role) {
-  return isSignedIn() && getUserData().role == role;
+// Memeriksa apakah admin desa adalah pemilik dokumen yang sedang diakses
+function isAdminDesaOfResource(desa) {
+  return isAdminDesa() && getUserData().desa == desa;
 }
 
+// == Aturan Inti Aplikasi ==
 
-// =====================================================================
-// MODUL UTAMA: PENGGUNA, PENGATURAN, & NOTIFIKASI
-// =====================================================================
-
+// Pengguna (Profil Admin)
 match /users/{userId} {
-  allow read, update: if isKecamatanAdmin() || isOwner(userId);
-  allow create: if isKecamatanAdmin();
-  allow delete: if false; // Penghapusan user hanya dari sisi server/konsol
+  allow read: if isAuthenticated();
+  // Hanya pemilik akun yang bisa mengubah profilnya
+  allow update: if isOwner(userId);
+  // Hanya admin kecamatan yang bisa membuat atau menghapus akun
+  allow create, delete: if isAdminKecamatan();
 }
 
-match /settings/{docId} {
-  allow read: if isSignedIn();
-  allow write: if isKecamatanAdmin();
-}
-
-// [DIUBAH] Aturan Notifikasi yang Lebih Eksplisit
+// Notifikasi
 match /notifications/{notificationId} {
-  // Siapa pun yang sudah login dapat membuat notifikasi.
-  // Logika bisnis tentang siapa yang dikirimi notifikasi diatur di sisi klien.
-  allow create: if isSignedIn();
-
-  // Aturan baca/update:
-  // 1. Pengguna dapat membaca/memperbarui notifikasi yang ditujukan langsung kepadanya (via userId).
-  // 2. Admin Kecamatan dapat membaca/memperbarui notifikasi yang ditujukan untuk perannya (via targetRole).
-  allow read, update: if isSignedIn() && (
-    (resource.data.userId != null && isOwner(resource.data.userId)) ||
-    (resource.data.targetRole != null && isTargetRole(resource.data.targetRole))
-  );
-
-  // Hanya penerima notifikasi pribadi yang dapat menghapusnya.
-  allow delete: if isSignedIn() && resource.data.userId != null && isOwner(resource.data.userId);
+  allow read, create, update: if isAuthenticated();
+  allow delete: if isAdminKecamatan();
 }
 
-
-// =====================================================================
-// ATURAN GENERIK UNTUK MODUL DATA MASTER
-// =====================================================================
-
-function canReadData() {
-  return isSignedIn();
+// Pengaturan & Branding
+match /settings/{settingId} {
+    allow read: if isAuthenticated();
+    allow write: if isAdminKecamatan();
 }
-function canCreateData() {
-  return isKecamatanAdmin() || isOwnerOfResource();
-}
-function canUpdateDeleteData() {
-  return isKecamatanAdmin() || isOwnerOfExistingDoc();
+ match /branding/{brandId} {
+    allow read: if true;
+    allow write: if isAdminKecamatan();
 }
 
-// =====================================================================
-// PENERAPAN ATURAN PADA KOLEKSI DATA MASTER
-// =====================================================================
+// == Aturan untuk Fitur Purna Tugas Otomatis ==
+
+// Riwayat Perangkat (Purna)
+match /historyPerangkatDesa/{docId} {
+    allow read: if isAuthenticated();
+    // Izin tulis diperlukan agar pengecekan otomatis dari browser admin bisa berjalan
+    allow write: if isAuthenticated(); 
+}
+
+// Dokumen Sistem (untuk menyimpan timestamp pengecekan terakhir)
+match /system/{docId} {
+    allow read, write: if isAuthenticated();
+}
+
+// == Aturan untuk Semua Modul Data Utama ==
+// Aturan berikut diterapkan untuk setiap koleksi data utama secara individual.
+
+function canCreateMainData() {
+    return isAdminKecamatan() || (isAdminDesa() && request.resource.data.desa == getUserData().desa);
+}
+
+function canUpdateDeleteMainData() {
+    return isAdminKecamatan() || isAdminDesaOfResource(resource.data.desa);
+}
 
 match /perangkat/{docId} {
-  allow read: if canReadData();
-  allow create: if canCreateData();
-  allow update, delete: if canUpdateDeleteData();
-}
-
-match /bpd/{docId} {
-  allow read: if canReadData();
-  allow create: if canCreateData();
-  allow update, delete: if canUpdateDeleteData();
-}
-
-match /lpm/{docId} {
-  allow read: if canReadData();
-  allow create: if canCreateData();
-  allow update, delete: if canUpdateDeleteData();
-}
-
-match /pkk/{docId} {
-  allow read: if canReadData();
-  allow create: if canCreateData();
-  allow update, delete: if canUpdateDeleteData();
-}
-
-match /karang_taruna/{docId} {
-  allow read: if canReadData();
-  allow create: if canCreateData();
-  allow update, delete: if canUpdateDeleteData();
-}
-
-match /rt_rw/{docId} {
-  allow read: if canReadData();
-  allow create: if canCreateData();
-  allow update, delete: if canUpdateDeleteData();
-}
-
-match /lpm_program/{docId} {
-  allow read: if canReadData();
-  allow create: if canCreateData();
-  allow update, delete: if canUpdateDeleteData();
-}
-
-match /pkk_program/{docId} {
-  allow read: if canReadData();
-  allow create: if canCreateData();
-  allow update, delete: if canUpdateDeleteData();
-}
-
-match /karang_taruna_kegiatan/{docId} {
-  allow read: if canReadData();
-  allow create: if canCreateData();
-  allow update, delete: if canUpdateDeleteData();
+    allow read: if isAuthenticated();
+    allow create: if canCreateMainData();
+    allow update, delete: if canUpdateDeleteMainData();
 }
 
 match /aset/{docId} {
-  allow read: if canReadData();
-  allow create: if canCreateData();
-  allow update, delete: if canUpdateDeleteData();
+    allow read: if isAuthenticated();
+    allow create: if canCreateMainData();
+    allow update, delete: if canUpdateDeleteMainData();
+}
+
+match /bpd/{docId} {
+    allow read: if isAuthenticated();
+    allow create: if canCreateMainData();
+    allow update, delete: if canUpdateDeleteMainData();
+}
+
+match /lpm/{docId} {
+    allow read: if isAuthenticated();
+    allow create: if canCreateMainData();
+    allow update, delete: if canUpdateDeleteMainData();
+}
+
+match /pkk/{docId} {
+    allow read: if isAuthenticated();
+    allow create: if canCreateMainData();
+    allow update, delete: if canUpdateDeleteMainData();
+}
+
+match /karang_taruna/{docId} {
+    allow read: if isAuthenticated();
+    allow create: if canCreateMainData();
+    allow update, delete: if canUpdateDeleteMainData();
+}
+
+match /rt_rw/{docId} {
+    allow read: if isAuthenticated();
+    allow create: if canCreateMainData();
+    allow update, delete: if canUpdateDeleteMainData();
 }
 
 match /efile/{docId} {
-  allow read: if canReadData();
-  allow create: if canCreateData();
-  allow update, delete: if canUpdateDeleteData();
+    allow read: if isAuthenticated();
+    allow create: if canCreateMainData();
+    allow update, delete: if canUpdateDeleteMainData();
 }
 
 match /kegiatan/{docId} {
-  allow read: if canReadData();
-  allow create: if canCreateData();
-  allow update, delete: if canUpdateDeleteData();
+    allow read: if isAuthenticated();
+    allow create: if canCreateMainData();
+    allow update, delete: if canUpdateDeleteMainData();
 }
 
-// =====================================================================
-// MODUL KEUANGAN DESA
-// =====================================================================
+match /karang_taruna_kegiatan/{docId} {
+    allow read: if isAuthenticated();
+    allow create: if canCreateMainData();
+    allow update, delete: if canUpdateDeleteMainData();
+}
 
+match /lpm_program/{docId} {
+    allow read: if isAuthenticated();
+    allow create: if canCreateMainData();
+    allow update, delete: if canUpdateDeleteMainData();
+}
+
+match /pkk_program/{docId} {
+    allow read: if isAuthenticated();
+    allow create: if canCreateMainData();
+    allow update, delete: if canUpdateDeleteMainData();
+}
+
+// MODUL KEUANGAN DESA
 match /anggaran_tahunan/{anggaranId} {
-  allow read: if isSignedIn();
-  allow create: if isOwnerOfResource();
-  allow update, delete: if isKecamatanAdmin() || (isOwnerOfExistingDoc() && (resource.data.status == 'Draft' || resource.data.status == 'Ditolak'));
+  allow read: if isAuthenticated();
+  allow create: if isAdminDesa() && request.resource.data.desa == getUserData().desa;
+  allow update, delete: if isAdminKecamatan() || (isAdminDesaOfResource(resource.data.desa) && (resource.data.status == 'Draft' || resource.data.status == 'Ditolak'));
 
   match /realisasi/{realisasiId} {
-    allow read: if isSignedIn();
-    allow create: if isKecamatanAdmin() || (
-        isDesaAdmin()
+    allow read: if isAuthenticated();
+    allow create: if isAdminKecamatan() || (
+        isAdminDesa()
         && request.resource.data.parentDesa == getUserData().desa
         && get(/databases/$(database)/documents/anggaran_tahunan/$(anggaranId)).data.status == 'Disahkan'
     );
-    allow update, delete: if isKecamatanAdmin() || (
-        isDesaAdmin()
+    allow update, delete: if isAdminKecamatan() || (
+        isAdminDesa()
         && resource.data.parentDesa == getUserData().desa
         && get(/databases/$(database)/documents/anggaran_tahunan/$(anggaranId)).data.status == 'Disahkan'
     );
@@ -191,7 +174,7 @@ match /anggaran_tahunan/{anggaranId} {
 }
 
 match /{path=**}/realisasi/{realisasiId} {
-  allow read: if isKecamatanAdmin() || (isDesaAdmin() && resource.data.parentDesa == getUserData().desa);
+  allow read: if isAdminKecamatan() || (isAdminDesa() && resource.data.parentDesa == getUserData().desa);
 }
 
 }

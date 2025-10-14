@@ -9,7 +9,7 @@ import {
     FiClipboard, FiEdit, FiMap, FiChevronDown, FiDatabase, FiUpload
 } from 'react-icons/fi';
 
-const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
+const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen, onProfileClick }) => {
     const { currentUser } = useAuth();
     const { branding } = useBranding();
     const location = useLocation();
@@ -116,7 +116,6 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
         </>
     );
 
-    // [PEMBARUAN] Menu LPM sekarang memiliki sub-menu "Program Kerja"
     const LpmMenu = () => (
         <>
             <div className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">LPM</div>
@@ -192,6 +191,11 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
         }
     };
 
+    const getInitials = (name) => {
+        if (!name) return '?';
+        return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+    };
+
     return (
         <>
             <div
@@ -206,7 +210,31 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen }) => {
                     <img src={branding.loginLogoUrl} alt="Logo" className="w-10 h-10 mr-3 object-contain" />
                     <span className="text-xl font-bold text-white whitespace-nowrap">{branding.appName}</span>
                 </div>
-                <nav className="flex flex-col justify-between flex-1 mt-6">
+
+                {/* Bagian Profil Pengguna */}
+                <div 
+                    className="mt-4 p-3 rounded-lg hover:bg-gray-700 cursor-pointer transition-colors duration-200"
+                    onClick={onProfileClick}
+                >
+                    <div className="flex items-center">
+                        {currentUser?.foto_url ? (
+                            <img src={currentUser.foto_url} alt="Profil" className="w-12 h-12 rounded-full object-cover border-2 border-gray-600"/>
+                        ) : (
+                            <div className="w-12 h-12 bg-blue-500 text-white flex items-center justify-center rounded-full font-bold text-lg border-2 border-gray-600">
+                                {getInitials(currentUser?.nama)}
+                            </div>
+                        )}
+                        <div className="ml-3 overflow-hidden">
+                            <p className="text-sm font-semibold text-white truncate">{currentUser?.nama || 'Nama Pengguna'}</p>
+                            <p className="text-xs text-gray-400 truncate">
+                                {currentUser?.role === 'admin_kecamatan' ? 'Admin Kecamatan' : `Admin ${currentUser?.desa || ''}`}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+
+                <nav className="flex flex-col justify-between flex-1 mt-2">
                     <div>
                         {renderCurrentMenu()}
                     </div>

@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
+// Impor komponen ProfileModal yang baru
+import ProfileModal from '../profile/ProfileModal';
+import { useAuth } from '../../context/AuthContext'; // Impor useAuth
 
-// [PERBAIKAN] Fungsi ini diperbarui untuk mengenali semua rute, termasuk E-File sebagai modul terpisah
 const getPageContext = (pathname) => {
     // Modul Organisasi Desa
     if (
@@ -58,7 +60,7 @@ const getPageContext = (pathname) => {
         }
     }
 
-    // [BARU] Modul E-File / Arsip Digital
+    // Modul E-File / Arsip Digital
     if (pathname.startsWith('/app/efile') || pathname.startsWith('/app/manajemen-sk') || pathname.startsWith('/app/data-sk')) {
         const titleMap = {
             '/app/efile': 'Dashboard Arsip Digital',
@@ -86,10 +88,12 @@ const getPageContext = (pathname) => {
     }
 };
 
-const AppLayout = ({ children }) => {
+const AppLayout = () => {
     const location = useLocation();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const { module, subModule, title } = getPageContext(location.pathname);
+    const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+    const { currentUser, updateUserProfile } = useAuth();
 
     useEffect(() => {
         setIsSidebarOpen(false);
@@ -101,13 +105,36 @@ const AppLayout = ({ children }) => {
 
     return (
         <div className="flex bg-gray-100 dark:bg-gray-900 min-h-screen">
-            <Sidebar currentModule={module} activeSubModule={subModule} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
-            <main className="flex-1 md:ml-64 transition-all duration-300 ease-in-out">
-                <Header pageTitle={title} onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
-                <div className="p-4 md:p-8">
+            <Sidebar 
+                currentModule={module} 
+                activeSubModule={subModule} 
+                isOpen={isSidebarOpen} 
+                setIsOpen={setIsSidebarOpen}
+                onProfileClick={() => setIsProfileModalOpen(true)}
+            />
+            
+            {/* [PERBAIKAN] Wrapper untuk konten utama */}
+            <div className="flex-1 flex flex-col md:ml-64 transition-all duration-300 ease-in-out">
+                <Header 
+                    pageTitle={title} 
+                    onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+                    onProfileClick={() => setIsProfileModalOpen(true)}
+                />
+                
+                {/* [PERBAIKAN] Kontainer konten utama dengan padding atas */}
+                <main className="flex-grow p-4 md:p-8">
                     <Outlet />
-                </div>
-            </main>
+                </main>
+            </div>
+
+            {currentUser && (
+                <ProfileModal
+                    isOpen={isProfileModalOpen}
+                    onClose={() => setIsProfileModalOpen(false)}
+                    user={currentUser}
+                    onSave={updateUserProfile}
+                />
+            )}
         </div>
     );
 };

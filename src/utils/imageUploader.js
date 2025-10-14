@@ -14,9 +14,8 @@ export const uploadImageToCloudinary = async (file, uploadPreset, cloudName) => 
     }
 
     try {
-        // Langkah 1: Kompres gambar terlebih dahulu.
-        // Opsi default akan digunakan (maxWidth/maxHeight: 1024, quality: 0.8).
-        const compressedFile = await compressImage(file);
+        // Langkah 1: Kompres gambar terlebih dahulu untuk efisiensi.
+        const compressedFile = await compressImage(file, { maxWidth: 800, maxHeight: 800, quality: 0.75 });
 
         // Langkah 2: Buat FormData dengan file yang sudah dikompres.
         const data = new FormData();
@@ -34,6 +33,7 @@ export const uploadImageToCloudinary = async (file, uploadPreset, cloudName) => 
         if (result.secure_url) {
             return result.secure_url;
         } else {
+            // Lemparkan error yang lebih deskriptif dari Cloudinary jika ada.
             throw new Error(result.error?.message || 'Unggah ke Cloudinary gagal.');
         }
     } catch (error) {
@@ -42,4 +42,3 @@ export const uploadImageToCloudinary = async (file, uploadPreset, cloudName) => 
         throw error;
     }
 };
-

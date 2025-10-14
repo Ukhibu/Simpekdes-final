@@ -15,6 +15,7 @@ import HubPage from './pages/HubPage';
 // Halaman Modul Inti
 import DashboardPage from './pages/DashboardPage';
 import Perangkat from './pages/Perangkat';
+import HistoriPerangkat from './pages/HistoriPerangkat';
 import RekapitulasiAparatur from './pages/RekapitulasiAparatur';
 import LaporanPage from './pages/LaporanPage';
 import ManajemenAdmin from './pages/ManajemenAdmin';
@@ -84,6 +85,7 @@ function App() {
               <Route path="/app" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
                 <Route index element={<DashboardPage />} />
                 <Route path="perangkat" element={<Perangkat />} />
+                <Route path="histori-perangkat" element={<HistoriPerangkat />} />
                 <Route path="rekapitulasi-aparatur" element={<RekapitulasiAparatur />} />
                 <Route path="kalender-kegiatan" element={<KalenderKegiatanPage />} />
                 <Route path="manajemen-admin" element={<ManajemenAdmin />} />

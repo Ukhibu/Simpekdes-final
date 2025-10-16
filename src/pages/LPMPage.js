@@ -40,6 +40,7 @@ const LPMPage = () => {
     const [selectedItem, setSelectedItem] = useState(null);
     const [formData, setFormData] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
 
     // State untuk Konfirmasi Hapus
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -110,13 +111,15 @@ const LPMPage = () => {
         let data = dataList;
         if (currentUser.role === 'admin_kecamatan') {
             data = data.filter(item => item.desa === currentDesa);
+        } else {
+             data = data.filter(item => item.desa === currentUser.desa);
         }
         if (searchTerm) {
             const searchLower = searchTerm.toLowerCase();
             data = data.filter(item => (item.nama || '').toLowerCase().includes(searchLower) || (item.jabatan || '').toLowerCase().includes(searchLower));
         }
         return data;
-    }, [dataList, searchTerm, currentDesa, currentUser.role]);
+    }, [dataList, searchTerm, currentDesa, currentUser]);
 
     // Handler untuk membuka modal
     const handleOpenModal = (mode, item = null) => {
@@ -179,6 +182,114 @@ const LPMPage = () => {
             setItemToDelete(null);
         }
     };
+
+    // [BARU] Logika impor data dari Excel seperti di Perangkat.js
+    const handleFileUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        const reader = new FileReader();
+
+        reader.onload = async (event) => {
+            try {
+                const data = new Uint8Array(event.target.result);
+                const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+
+                const jsonDataWithHeaders = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 2 });
+                if (jsonDataWithHeaders.length < 1) throw new Error("Format file tidak sesuai. Header tidak ditemukan di baris ke-3.");
+                
+                const headerRow = jsonDataWithHeaders[0];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, { range: 3, header: headerRow });
+
+                if (jsonData.length === 0) throw new Error("File Excel tidak berisi data.");
+
+                const batch = writeBatch(db);
+                let newEntriesCount = 0;
+                let skippedCount = 0;
+
+                const parseAndFormatDate = (value) => {
+                    if (!value) return null;
+                    if (value instanceof Date) {
+                        const userTimezoneOffset = value.getTimezoneOffset() * 60000;
+                        return new Date(value.getTime() + userTimezoneOffset).toISOString().split('T')[0];
+                    }
+                    if (typeof value === 'number') {
+                        const date = XLSX.SSF.parse_date_code(value);
+                        return new Date(date.y, date.m - 1, date.d).toISOString().split('T')[0];
+                    }
+                    try {
+                        const date = new Date(value);
+                        if (!isNaN(date.getTime())) {
+                            const userTimezoneOffset = date.getTimezoneOffset() * 60000;
+                            return new Date(date.getTime() + userTimezoneOffset).toISOString().split('T')[0];
+                        }
+                    } catch (e) { /* ignore */ }
+                    return null;
+                };
+
+                jsonData.forEach(row => {
+                    const newDoc = {};
+
+                    newDoc.desa = row['DESA'] ? String(row['DESA']).trim() : null;
+
+                    if (!newDoc.desa) {
+                        skippedCount++;
+                        return; 
+                    }
+                    if (currentUser.role === 'admin_desa' && newDoc.desa.toUpperCase() !== currentUser.desa.toUpperCase()) {
+                        skippedCount++;
+                        return;
+                    }
+                    
+                    newDoc.nama = row['N A M A'] ? String(row['N A M A']).trim() : null;
+                    newDoc.jabatan = row['JABATAN'] ? String(row['JABATAN']).trim() : null;
+                    newDoc.jenis_kelamin = row['L'] == 1 ? 'L' : (row['P'] == 1 ? 'P' : null);
+                    newDoc.tempat_lahir = row['TEMPAT LAHIR'] || null;
+                    newDoc.tgl_lahir = parseAndFormatDate(row['TANGGAL LAHIR']);
+                    
+                    const pendidikanMap = { 'SD': 'SD', 'SLTP': 'SLTP', 'SLTA': 'SLTA', 'D1': 'D1', 'D2': 'D2', 'D3': 'D3', 'S1': 'S1', 'S2': 'S2', 'S3': 'S3' };
+                    newDoc.pendidikan = null;
+                    for (const key in pendidikanMap) {
+                      if (row[key] == 1) { 
+                        newDoc.pendidikan = pendidikanMap[key];
+                        break; 
+                      }
+                    }
+
+                    newDoc.no_sk = row['NO SK'] || null;
+                    newDoc.tgl_pelantikan = parseAndFormatDate(row['TANGGAL PELANTIKAN']);
+                    newDoc.akhir_jabatan = parseAndFormatDate(row['AKHIR MASA JABATAN']);
+                    newDoc.no_hp = row['No. HP / WA'] ? String(row['No. HP / WA']) : null;
+                    newDoc.masa_bakti = row['Masa Bakti (Tahun)'] || null;
+
+                    if (newDoc.nama && newDoc.jabatan && newDoc.desa) {
+                        const newDocRef = doc(collection(db, LPM_CONFIG.collectionName));
+                        batch.set(newDocRef, newDoc);
+                        newEntriesCount++;
+                    } else {
+                        skippedCount++;
+                    }
+                });
+
+                if (newEntriesCount > 0) {
+                    await batch.commit();
+                    showNotification(`${newEntriesCount} data baru berhasil diimpor. ${skippedCount > 0 ? `${skippedCount} baris dilewati.` : ''}`, 'success');
+                } else {
+                    showNotification(`Tidak ada data baru yang valid untuk diimpor. ${skippedCount > 0 ? `${skippedCount} baris dilewati.` : ''}`, 'info');
+                }
+            } catch (error) {
+                console.error("Error processing file:", error);
+                showNotification(`Gagal memproses file: ${error.message}`, 'error');
+            } finally {
+                setIsUploading(false);
+                if (e.target) e.target.value = null;
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
     
     // Handler untuk ekspor ke XLSX
     const handleExportXLSX = () => {
@@ -198,6 +309,12 @@ const LPMPage = () => {
             <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
                 <InputField type="text" placeholder="Cari nama atau jabatan..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} icon={<FiSearch />} />
                 <div className="flex gap-2">
+                    {/* [BARU] Tombol Impor Data */}
+                    <label className="btn btn-warning cursor-pointer">
+                        <FiUpload className="mr-2"/>
+                        <input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading}/>
+                        {isUploading ? 'Mengimpor...' : 'Impor Data'}
+                    </label>
                     <Button onClick={handleExportXLSX} variant="success"><FiDownload className="mr-2"/> Ekspor</Button>
                     <Button onClick={() => handleOpenModal('add')} variant="primary"><FiPlus className="mr-2"/> Tambah</Button>
                 </div>
@@ -271,6 +388,4 @@ const LPMPage = () => {
     );
 };
 
-
 export default LPMPage;
-

@@ -54,7 +54,7 @@ export const generateLpmXLSX = async (exportData) => {
 
     // --- Definisi Styles ---
     const titleStyle = { font: { name: 'Arial', size: 14, bold: true }, alignment: { horizontal: 'center' } };
-    const headerStyle = { font: { name: 'Arial', size: 10, bold: true }, alignment: { horizontal: 'center', vertical: 'middle', wrapText: true }, border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } } };
+    const headerStyle = { font: { name: 'Arial', size: 10, bold: true }, alignment: { horizontal: 'center', vertical: 'middle', wrapText: true }, border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } } };
     const cellStyle = { font: { name: 'Arial', size: 9 }, border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }, alignment: { vertical: 'middle' } };
     const centerCellStyle = { ...cellStyle, alignment: { ...cellStyle.alignment, horizontal: 'center' } };
     const totalRowStyle = { ...cellStyle, font: { ...cellStyle.font, bold: true }, alignment: { ...cellStyle.alignment, horizontal: 'center' } };
@@ -81,23 +81,23 @@ export const generateLpmXLSX = async (exportData) => {
     const headerRow1 = worksheet.getRow(currentRow);
     const headerRow2 = worksheet.getRow(currentRow + 1);
 
-    headerRow1.values = ["NO", "N A M A", "Jenis Kelamin", null, "Jumlah", "J A B A T A N", "TEMPAT, TGL LAHIR", null, "PENDIDIKAN", null, null, null, null, null, null, null, "Jumlah", "NO SK", "TANGGAL PELANTIKAN", "Masa Bakti", "Akhir /PURNA TUGAS", "No. HP / WA"];
-    headerRow2.values = [null, null, 'L', 'P', null, null, "TEMPAT LAHIR", "TANGGAL LAHIR", 'SD', 'SMP', 'SLTA', 'D1', 'D2', 'D3', 'S1', 'S2', null, null, null, null, null, null];
+    headerRow1.values = ["NO", "DESA", "N A M A", "Jenis Kelamin", null, "J A B A T A N", "TEMPAT, TGL LAHIR", null, "PENDIDIKAN", null, null, null, null, null, null, null, "NO SK", "TANGGAL PELANTIKAN", "Masa Bakti (Tahun)", "AKHIR MASA JABATAN", "No. HP / WA", "N I K"];
+    headerRow2.values = [null, null, null, 'L', 'P', null, "TEMPAT LAHIR", "TANGGAL LAHIR", 'SD', 'SMP', 'SLTA', 'D1', 'D2', 'D3', 'S1', 'S2', 'S3', null, null, null, null, null];
     
     // Merge cells untuk header
     worksheet.mergeCells(`A${currentRow}:A${currentRow + 1}`);
     worksheet.mergeCells(`B${currentRow}:B${currentRow + 1}`);
-    worksheet.mergeCells(`C${currentRow}:D${currentRow}`);
-    worksheet.mergeCells(`E${currentRow}:E${currentRow + 1}`);
+    worksheet.mergeCells(`C${currentRow}:C${currentRow + 1}`);
+    worksheet.mergeCells(`D${currentRow}:E${currentRow}`);
     worksheet.mergeCells(`F${currentRow}:F${currentRow + 1}`);
     worksheet.mergeCells(`G${currentRow}:H${currentRow}`);
-    worksheet.mergeCells(`I${currentRow}:P${currentRow}`);
-    worksheet.mergeCells(`Q${currentRow}:Q${currentRow + 1}`);
+    worksheet.mergeCells(`I${currentRow}:Q${currentRow}`);
     worksheet.mergeCells(`R${currentRow}:R${currentRow + 1}`);
     worksheet.mergeCells(`S${currentRow}:S${currentRow + 1}`);
     worksheet.mergeCells(`T${currentRow}:T${currentRow + 1}`);
     worksheet.mergeCells(`U${currentRow}:U${currentRow + 1}`);
     worksheet.mergeCells(`V${currentRow}:V${currentRow + 1}`);
+    worksheet.mergeCells(`W${currentRow}:W${currentRow + 1}`); // Kolom tambahan untuk NIK
     
     [headerRow1, headerRow2].forEach(row => {
         row.height = 20;
@@ -108,16 +108,16 @@ export const generateLpmXLSX = async (exportData) => {
     const firstDataRow = currentRow;
 
     // --- Isi Data ---
-    const pendidikanMap = { 'SD': 9, 'SLTP': 10, 'SLTA': 11, 'D1': 12, 'D2': 13, 'D3': 14, 'S1': 15, 'S2': 16 };
+    const pendidikanMap = { 'SD': 9, 'SLTP': 10, 'SLTA': 11, 'D1': 12, 'D2': 13, 'D3': 14, 'S1': 15, 'S2': 16, 'S3': 17 };
     const sortedData = [...dataToExport].sort((a, b) => (a.nama || '').localeCompare(b.nama || ''));
     
     sortedData.forEach((item, index) => {
         const rowData = new Array(TOTAL_COLUMNS).fill(null);
         rowData[0] = index + 1;
-        rowData[1] = item.nama || '';
-        rowData[2] = item.jenis_kelamin === 'L' ? 1 : null;
-        rowData[3] = item.jenis_kelamin === 'P' ? 1 : null;
-        rowData[4] = (item.jenis_kelamin === 'L' || item.jenis_kelamin === 'P') ? 1 : 0;
+        rowData[1] = item.desa || '';
+        rowData[2] = item.nama || '';
+        rowData[3] = item.jenis_kelamin === 'L' ? 1 : null;
+        rowData[4] = item.jenis_kelamin === 'P' ? 1 : null;
         rowData[5] = item.jabatan || '';
         rowData[6] = item.tempat_lahir || '';
         rowData[7] = formatDateForExcel(item.tgl_lahir);
@@ -125,7 +125,6 @@ export const generateLpmXLSX = async (exportData) => {
         const pendidikanCol = pendidikanMap[item.pendidikan];
         if (pendidikanCol) rowData[pendidikanCol - 1] = 1;
 
-        rowData[16] = pendidikanCol ? 1 : 0; // Jumlah Pendidikan
         rowData[17] = item.no_sk || '';
         rowData[18] = formatDateForExcel(item.tgl_pelantikan);
         rowData[19] = item.masa_bakti ? parseInt(item.masa_bakti, 10) : null;
@@ -135,9 +134,12 @@ export const generateLpmXLSX = async (exportData) => {
         const row = worksheet.addRow(rowData);
         row.height = 20;
         row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-            cell.style = (colNumber === 2 || colNumber === 6 || colNumber > 17) ? cellStyle : centerCellStyle;
+            cell.style = (colNumber === 3 || colNumber === 6 || colNumber > 20) ? cellStyle : centerCellStyle;
             if (colNumber === 8 || colNumber === 19 || colNumber === 21) {
                  cell.numFmt = 'dd/mm/yyyy';
+            }
+             if (colNumber === 22) { // NIK as text
+                cell.numFmt = '@';
             }
         });
     });
@@ -148,10 +150,10 @@ export const generateLpmXLSX = async (exportData) => {
     // --- Baris Jumlah ---
     if (lastDataRow >= firstDataRow) {
         const totalRow = worksheet.addRow([]);
-        totalRow.getCell(1).value = 'J U M L A H';
-        worksheet.mergeCells(`A${currentRow}:B${currentRow}`);
+        totalRow.getCell('A').value = 'JUMLAH';
+        worksheet.mergeCells(`A${currentRow}:C${currentRow}`);
         
-        const sumCols = ['C', 'D', 'E', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q'];
+        const sumCols = ['D', 'E', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q'];
         sumCols.forEach(col => {
             totalRow.getCell(col).value = { formula: `SUM(${col}${firstDataRow}:${col}${lastDataRow})` };
         });
@@ -196,16 +198,15 @@ export const generateLpmXLSX = async (exportData) => {
     // --- Lebar Kolom ---
     worksheet.columns = [
         { width: 4 },   // A: NO
-        { width: 25 },  // B: Nama
-        { width: 4 },   // C: L
-        { width: 4 },   // D: P
-        { width: 7 },   // E: Jumlah
+        { width: 20 },  // B: DESA
+        { width: 25 },  // C: Nama
+        { width: 4 },   // D: L
+        { width: 4 },   // E: P
         { width: 25 },  // F: Jabatan
         { width: 20 },  // G: Tempat Lahir
         { width: 15 },  // H: Tgl Lahir
-        { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, // I-P: Pendidikan
-        { width: 4 }, { width: 4 }, { width: 4 },
-        { width: 7 },   // Q: Jumlah Pendidikan
+        { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, // I-Q: Pendidikan
+        { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 },
         { width: 25 },  // R: No SK
         { width: 15 },  // S: Tgl Pelantikan
         { width: 10 },  // T: Masa Bakti

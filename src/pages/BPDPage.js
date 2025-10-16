@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '../firebase';
-import { collection, query, writeBatch, getDoc, doc, getDocs, onSnapshot, addDoc, updateDoc, deleteDoc, where } from 'firebase/firestore';
+import { collection, query, writeBatch, getDoc, doc, getDocs, onSnapshot, updateDoc, where } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -18,7 +18,6 @@ import { useFirestoreCollection } from '../hooks/useFirestoreCollection';
 import { useNotification } from '../context/NotificationContext';
 import { generateBpdXLSX } from '../utils/generateBpdXLSX';
 import { DESA_LIST } from '../utils/constants';
-// [DIUBAH] Impor fungsi notifikasi yang diperlukan
 import { createNotificationForAdmins, createNotificationForDesaAdmins } from '../utils/notificationService';
 
 // Ikon
@@ -116,8 +115,30 @@ const BPDPage = () => {
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const navigate = useNavigate();
     const [highlightedRow, setHighlightedRow] = useState(null);
+    const [selectedRows, setSelectedRows] = useState(new Set());
 
+    // --- DEKLARASI FUNGSI ---
+    const handleOpenModal = useCallback((bpd = null, mode = 'add') => {
+        setModalMode(mode);
+        setSelectedBpd(bpd);
+        if (mode === 'add') {
+            const initialDesa = currentUser.role === 'admin_desa' ? currentUser.desa : currentDesa;
+            setFormData({ desa: initialDesa, rt: '', rw: '' });
+        } else {
+            setFormData(bpd);
+        }
+        setIsModalOpen(true);
+    }, [currentUser, currentDesa]);
 
+    const handleCloseModal = useCallback(() => {
+        if (isSubmitting) return;
+        setIsModalOpen(false);
+        setModalMode(null);
+        setSelectedBpd(null);
+        setFormData({});
+    }, [isSubmitting]);
+
+    // --- EFEK SAMPING & LOGIKA ---
     useEffect(() => {
         if (currentUser && currentUser.role === 'admin_desa') {
             setCurrentDesa(currentUser.desa);
@@ -160,14 +181,12 @@ const BPDPage = () => {
         fetchUploadConfig();
     }, []);
 
-    // [DIUBAH] Logika untuk menangani parameter URL 'edit', 'view', dan 'highlight'
     useEffect(() => {
         const editId = searchParams.get('edit');
         const viewId = searchParams.get('view');
         const highlightId = searchParams.get('highlight');
         const targetDesa = searchParams.get('desa');
     
-        // Jika user adalah admin kecamatan dan ada parameter desa, ganti tampilan desa
         if (currentUser.role === 'admin_kecamatan' && targetDesa && targetDesa !== currentDesa) {
             setCurrentDesa(targetDesa);
         }
@@ -176,11 +195,10 @@ const BPDPage = () => {
             setHighlightedRow(highlightId);
             const timer = setTimeout(() => {
                 setHighlightedRow(null);
-                // Hapus parameter dari URL setelah digunakan
                 searchParams.delete('highlight');
                 searchParams.delete('desa');
                 setSearchParams(searchParams, { replace: true });
-            }, 3000); // Sorot selama 3 detik
+            }, 3000);
             return () => clearTimeout(timer);
         }
     
@@ -188,35 +206,13 @@ const BPDPage = () => {
             const bpdToShow = allBpd.find(b => b.id === (editId || viewId));
             if (bpdToShow) {
                 handleOpenModal(bpdToShow, editId ? 'edit' : 'view');
-                // Hapus parameter dari URL setelah modal dibuka
                 searchParams.delete('edit');
                 searchParams.delete('view');
                 setSearchParams(searchParams, { replace: true });
             }
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [allBpd, searchParams, setSearchParams, currentUser.role]);
+    }, [allBpd, searchParams, currentUser.role, currentDesa, handleOpenModal, setSearchParams]);
     
-    const handleOpenModal = (bpd = null, mode = 'add') => {
-        setModalMode(mode);
-        setSelectedBpd(bpd);
-        if (mode === 'add') {
-            const initialDesa = currentUser.role === 'admin_desa' ? currentUser.desa : currentDesa;
-            setFormData({ desa: initialDesa, rt: '', rw: '' });
-        } else {
-            setFormData(bpd);
-        }
-        setIsModalOpen(true);
-    };
-
-    const handleCloseModal = () => {
-        if (isSubmitting) return;
-        setIsModalOpen(false);
-        setModalMode(null);
-        setSelectedBpd(null);
-        setFormData({});
-    };
-
     const handleFormChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
@@ -260,16 +256,26 @@ const BPDPage = () => {
 
     const confirmDelete = (bpd) => {
         setBpdToDelete(bpd);
+        setSelectedRows(new Set()); // Kosongkan pilihan massal saat hapus tunggal
         setIsDeleteConfirmOpen(true);
     };
 
     const executeDelete = async () => {
-        if (!bpdToDelete) return;
         setIsSubmitting(true);
         try {
-            await deleteItem(bpdToDelete.id);
-            showNotification(`Data BPD "${bpdToDelete.nama}" berhasil dihapus.`, 'success');
-        } catch(error) {
+            if (bpdToDelete) { // Hapus satu data
+                await deleteItem(bpdToDelete.id);
+                showNotification(`Data BPD "${bpdToDelete.nama}" berhasil dihapus.`, 'success');
+            } else if (selectedRows.size > 0) { // Hapus data massal
+                const batch = writeBatch(db);
+                selectedRows.forEach(id => {
+                    batch.delete(doc(db, 'bpd', id));
+                });
+                await batch.commit();
+                showNotification(`${selectedRows.size} data BPD berhasil dihapus.`, 'success');
+                setSelectedRows(new Set());
+            }
+        } catch (error) {
             showNotification(`Gagal menghapus data: ${error.message}`, 'error');
         } finally {
             setIsSubmitting(false);
@@ -278,7 +284,7 @@ const BPDPage = () => {
         }
     };
 
-    const handleFileUpload = (e) => {
+    const handleFileUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
         if (!uploadConfig || Object.values(uploadConfig).every(v => !v)) {
@@ -290,23 +296,28 @@ const BPDPage = () => {
         const reader = new FileReader();
         reader.onload = async (event) => {
             try {
-                const existingDataCheck = new Set(allBpd.map(b => `${String(b.nama || '').toLowerCase().trim()}_${String(b.no_sk_bupati || '').toString().trim()}`));
+                const existingDataMap = new Map(allBpd.map(b => [
+                    `${String(b.nama || '').toLowerCase().trim()}_${String(b.no_sk_bupati || '').toString().trim()}`,
+                    b.id
+                ]));
+    
                 const data = new Uint8Array(event.target.result);
                 const workbook = XLSX.read(data, { type: 'array', cellDates: true });
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
                 const jsonData = XLSX.utils.sheet_to_json(worksheet, {raw: false});
                 if (jsonData.length === 0) throw new Error('File Excel kosong.');
-
+    
                 const batch = writeBatch(db);
-                const duplicates = [];
                 let newEntriesCount = 0;
+                let updatedEntriesCount = 0;
+    
                 const reverseUploadConfig = {};
                 for (const key in uploadConfig) {
                     if (uploadConfig[key]) reverseUploadConfig[uploadConfig[key]] = key;
                 }
-
-                jsonData.forEach(row => {
+    
+                for (const row of jsonData) {
                     const newDoc = {};
                     for (const excelHeader in row) {
                         const firestoreField = reverseUploadConfig[excelHeader.trim()];
@@ -322,33 +333,40 @@ const BPDPage = () => {
                     if (currentUser.role === 'admin_desa') newDoc.desa = currentUser.desa;
                     const nama = String(newDoc.nama || '').toLowerCase().trim();
                     const noSkBupati = String(newDoc.no_sk_bupati || '').toString().trim();
-                    if (!nama || !noSkBupati || !newDoc.desa) return;
-
+                    if (!nama || !noSkBupati || !newDoc.desa) continue;
+    
                     const uniqueKey = `${nama}_${noSkBupati}`;
-                    if (existingDataCheck.has(uniqueKey)) {
-                        duplicates.push(newDoc.nama);
+                    
+                    if (existingDataMap.has(uniqueKey)) {
+                        const docId = existingDataMap.get(uniqueKey);
+                        const docRef = doc(db, 'bpd', docId);
+                        batch.update(docRef, newDoc);
+                        updatedEntriesCount++;
                     } else {
                         const newDocRef = doc(collection(db, 'bpd'));
                         batch.set(newDocRef, newDoc);
-                        existingDataCheck.add(uniqueKey);
+                        existingDataMap.set(uniqueKey, newDocRef.id);
                         newEntriesCount++;
                     }
-                });
-
-                if (newEntriesCount > 0) {
+                }
+    
+                if (newEntriesCount > 0 || updatedEntriesCount > 0) {
                     await batch.commit();
                     
                     if (currentUser.role === 'admin_desa') {
-                        const message = `Sebanyak ${newEntriesCount} data anggota BPD baru telah diimpor untuk Desa ${currentUser.desa}.`;
+                        const message = `Impor BPD Desa ${currentUser.desa}: ${newEntriesCount} data ditambah, ${updatedEntriesCount} data diperbarui.`;
                         const link = `/app/bpd/data?desa=${currentUser.desa}`;
                         await createNotificationForAdmins(message, link, currentUser);
                     }
                 }
-                let notificationMessage = `${newEntriesCount} data baru berhasil diimpor.`;
-                if (duplicates.length > 0) {
-                    notificationMessage += `\n\n${duplicates.length} data duplikat tidak diimpor: ${duplicates.join(', ')}`;
-                }
-                showNotification(notificationMessage, 'info', 10000);
+    
+                let notificationMessage = "";
+                if (newEntriesCount > 0) notificationMessage += `${newEntriesCount} data baru berhasil diimpor. `;
+                if (updatedEntriesCount > 0) notificationMessage += `${updatedEntriesCount} data berhasil diperbarui.`;
+                if (!notificationMessage) notificationMessage = "Tidak ada data baru atau yang perlu diperbarui dari file.";
+                
+                showNotification(notificationMessage, 'success', 8000);
+    
             } catch (error) {
                 showNotification(`Gagal memproses file: ${error.message}`, 'error');
             } finally {
@@ -358,7 +376,7 @@ const BPDPage = () => {
         };
         reader.readAsArrayBuffer(file);
     };
-
+    
     const filteredBpd = useMemo(() => {
         if (!currentUser) return [];
         let data = allBpd;
@@ -384,21 +402,13 @@ const BPDPage = () => {
         return data;
     }, [allBpd, searchTerm, currentUser, currentDesa, periodeFilter]);
     
-    const handleExportClick = () => {
-        if (currentUser.role === 'admin_kecamatan') {
-            setIsExportModalOpen(true);
-        } else {
-            handleExportXLSX('current');
-        }
-    };
-
-    const handleExportXLSX = (scope) => {
+    const handleExportXLSX = useCallback((scope) => {
         setIsExportModalOpen(false);
         let dataToExport;
 
         if (scope === 'all') {
             dataToExport = allBpd;
-        } else { // scope === 'current'
+        } else { 
             dataToExport = filteredBpd;
         }
 
@@ -417,6 +427,40 @@ const BPDPage = () => {
         };
 
         generateBpdXLSX(exportDetails);
+    }, [allBpd, filteredBpd, currentUser, currentDesa, periodeFilter, exportConfig, allPerangkat, showNotification]);
+
+    const handleExportClick = useCallback(() => {
+        if (currentUser.role === 'admin_kecamatan') {
+            setIsExportModalOpen(true);
+        } else {
+            handleExportXLSX('current');
+        }
+    }, [currentUser, handleExportXLSX]);
+
+    const handleSelectRow = (id) => {
+        setSelectedRows(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(id)) {
+                newSet.delete(id);
+            } else {
+                newSet.add(id);
+            }
+            return newSet;
+        });
+    };
+
+    const handleSelectAll = () => {
+        if (selectedRows.size === filteredBpd.length) {
+            setSelectedRows(new Set());
+        } else {
+            setSelectedRows(new Set(filteredBpd.map(p => p.id)));
+        }
+    };
+
+    const confirmDeleteSelected = () => {
+        if (selectedRows.size === 0) return;
+        setBpdToDelete(null); // Pastikan hapus tunggal tidak aktif
+        setIsDeleteConfirmOpen(true);
     };
     
     const getModalTitle = () => {
@@ -435,19 +479,37 @@ const BPDPage = () => {
                 <InputField type="text" placeholder={`Cari nama atau jabatan...`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} icon={<FiSearch />} />
                 <InputField type="text" placeholder="Filter periode (cth: 2019-2025)" value={periodeFilter} onChange={(e) => setPeriodeFilter(e.target.value)} icon={<FiFilter />} />
             </div>
-            <div className="flex flex-wrap justify-end gap-2 mb-4">
-                <label className="btn btn-warning cursor-pointer"><FiUpload className="mr-2"/> 
-                    <input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading}/>
-                    {isUploading ? 'Mengimpor...' : 'Impor Data'}
-                </label>
-                <Button onClick={handleExportClick} variant="success"><FiDownload className="mr-2"/> Ekspor XLSX</Button>
-                <Button onClick={() => handleOpenModal(null, 'add')} variant="primary"><FiPlus className="mr-2"/> Tambah Data</Button>
+            <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
+                <div>
+                    {selectedRows.size > 0 && (
+                        <Button onClick={confirmDeleteSelected} variant="danger">
+                            <FiTrash2 className="mr-2"/> Hapus ({selectedRows.size}) Terpilih
+                        </Button>
+                    )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    <label className="btn btn-warning cursor-pointer"><FiUpload className="mr-2"/> 
+                        <input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading}/>
+                        {isUploading ? 'Mengimpor...' : 'Impor Data'}
+                    </label>
+                    <Button onClick={handleExportClick} variant="success"><FiDownload className="mr-2"/> Ekspor XLSX</Button>
+                    <Button onClick={() => handleOpenModal(null, 'add')} variant="primary"><FiPlus className="mr-2"/> Tambah Data</Button>
+                </div>
             </div>
             
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
                     <thead className="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">
                         <tr>
+                            <th className="p-4">
+                                <input
+                                    type="checkbox"
+                                    className="form-checkbox"
+                                    onChange={handleSelectAll}
+                                    checked={selectedRows.size > 0 && selectedRows.size === filteredBpd.length}
+                                    indeterminate={selectedRows.size > 0 && selectedRows.size < filteredBpd.length}
+                                />
+                            </th>
                             <th className="px-6 py-3">Nama</th>
                             {currentUser.role === 'admin_kecamatan' && <th className="px-6 py-3">Desa</th>}
                             <th className="px-6 py-3">Jabatan</th>
@@ -458,7 +520,15 @@ const BPDPage = () => {
                     <tbody>
                         {filteredBpd.length > 0 ? (
                             filteredBpd.map((p) => (
-                                <tr key={p.id} className={`bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 ${highlightClass(p.id)}`}>
+                                <tr key={p.id} className={`bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 ${highlightClass(p.id)} ${selectedRows.has(p.id) ? 'bg-blue-50 dark:bg-gray-700' : ''}`}>
+                                    <td className="p-4">
+                                        <input
+                                            type="checkbox"
+                                            className="form-checkbox"
+                                            checked={selectedRows.has(p.id)}
+                                            onChange={() => handleSelectRow(p.id)}
+                                        />
+                                    </td>
                                     <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
                                         <p className="font-semibold">{p.nama}</p>
                                         <p className="text-xs text-gray-500 dark:text-gray-400">No. SK: {p.no_sk_bupati || 'N/A'}</p>
@@ -475,7 +545,7 @@ const BPDPage = () => {
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={currentUser.role === 'admin_kecamatan' ? 5 : 4} className="text-center py-10 text-gray-500 dark:text-gray-400">
+                                <td colSpan={currentUser.role === 'admin_kecamatan' ? 6 : 5} className="text-center py-10 text-gray-500 dark:text-gray-400">
                                     Tidak ada data untuk ditampilkan.
                                 </td>
                             </tr>
@@ -548,7 +618,7 @@ const BPDPage = () => {
                         </div>
 
                         <div className="flex justify-end pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
-                            <button type="button" onClick={handleCloseModal} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md mr-2" disabled={isSubmitting}>Tutup</button>
+                            <button type="button" onClick={handleCloseModal} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md mr-2" disabled={isSubmitting}>Batal</button>
                             <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md flex items-center" disabled={isSubmitting}>
                                 {isSubmitting && <Spinner size="sm" />}
                                 {isSubmitting ? 'Menyimpan...' : 'Simpan'}
@@ -563,8 +633,12 @@ const BPDPage = () => {
                 onClose={() => setIsDeleteConfirmOpen(false)}
                 onConfirm={executeDelete}
                 isLoading={isSubmitting}
-                title="Konfirmasi Hapus Anggota BPD"
-                message={`Apakah Anda yakin ingin menghapus data anggota BPD "${bpdToDelete?.nama}"? Tindakan ini tidak dapat dibatalkan.`}
+                title={bpdToDelete ? "Konfirmasi Hapus Anggota BPD" : "Konfirmasi Hapus Data Terpilih"}
+                message={
+                    bpdToDelete
+                        ? `Apakah Anda yakin ingin menghapus data anggota BPD "${bpdToDelete?.nama}"? Tindakan ini tidak dapat dibatalkan.`
+                        : `Apakah Anda yakin ingin menghapus ${selectedRows.size} data BPD yang dipilih? Tindakan ini tidak dapat dibatalkan.`
+                }
             />
 
             {currentUser.role === 'admin_kecamatan' && (

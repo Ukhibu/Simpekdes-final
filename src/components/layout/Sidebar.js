@@ -147,7 +147,9 @@ const Sidebar = ({ currentModule, activeSubModule, isOpen, setIsOpen, onProfileC
         <>
             <div className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">RT / RW</div>
             <NavLink to="/app/rt-rw" end className={navLinkClasses}><FiGrid className="w-5 h-5 mr-3" /><span>Dashboard</span></NavLink>
-            <NavLink to="/app/rt-rw/data" className={navLinkClasses}><FiHome className="w-5 h-5 mr-3" /><span>Manajemen Pengurus</span></NavLink>
+            <NavLink to="/app/rt-rw/rt" className={navLinkClasses}><FiHome className="w-5 h-5 mr-3" /><span>Data RT</span></NavLink>
+            <NavLink to="/app/rt-rw/rw" className={navLinkClasses}><FiHome className="w-5 h-5 mr-3" /><span>Data RW</span></NavLink>
+            <NavLink to="/app/rt-rw/rekapitulasi" className={navLinkClasses}><FiFileText className="w-5 h-5 mr-3" /><span>Rekapitulasi RT/RW</span></NavLink>
         </>
     );
 

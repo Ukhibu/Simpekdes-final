@@ -3,7 +3,9 @@ import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
-// Konfigurasi Firebase Anda dari file .env
+// Konfigurasi Firebase Anda dari variabel lingkungan (.env)
+// Pastikan file .env ada di root proyek Anda dengan format:
+// REACT_APP_FIREBASE_API_KEY=...
 const firebaseConfig = {
   apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
   authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
@@ -16,9 +18,9 @@ const firebaseConfig = {
 // Inisialisasi Firebase
 const app = initializeApp(firebaseConfig);
 
-// Ekspor service yang akan digunakan
+// Ekspor service yang akan digunakan di seluruh aplikasi
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const storage = getStorage(app); // Jika Anda ingin menggunakan Firebase Storage juga
+export const storage = getStorage(app);
 
 export default app;

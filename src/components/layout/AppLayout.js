@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
-// Impor komponen ProfileModal yang baru
 import ProfileModal from '../profile/ProfileModal';
-import { useAuth } from '../../context/AuthContext'; // Impor useAuth
+import { useAuth } from '../../context/AuthContext';
 
+// Fungsi untuk mendapatkan konteks halaman berdasarkan URL
 const getPageContext = (pathname) => {
     // Modul Organisasi Desa
     if (
@@ -16,23 +16,30 @@ const getPageContext = (pathname) => {
         pathname.startsWith('/app/rt-rw')) {
 
         switch (true) {
+            // BPD
             case pathname.startsWith('/app/bpd/data'): return { module: 'organisasi', subModule: 'bpd', title: 'Manajemen Data BPD' };
             case pathname.startsWith('/app/bpd/berita-acara'): return { module: 'organisasi', subModule: 'bpd', title: 'Berita Acara BPD' };
             case pathname.startsWith('/app/bpd/pengaturan'): return { module: 'organisasi', subModule: 'bpd', title: 'Setelan Modul BPD' };
             case pathname.startsWith('/app/bpd'): return { module: 'organisasi', subModule: 'bpd', title: 'Dashboard BPD' };
             
+            // LPM
             case pathname.startsWith('/app/lpm/data'): return { module: 'organisasi', subModule: 'lpm', title: 'Manajemen Data LPM' };
+            case pathname.startsWith('/app/lpm/program'): return { module: 'organisasi', subModule: 'lpm', title: 'Program Kerja LPM' };
             case pathname.startsWith('/app/lpm'): return { module: 'organisasi', subModule: 'lpm', title: 'Dashboard LPM' };
 
+            // PKK
             case pathname.startsWith('/app/pkk/data'): return { module: 'organisasi', subModule: 'pkk', title: 'Manajemen Pengurus PKK' };
             case pathname.startsWith('/app/pkk/program'): return { module: 'organisasi', subModule: 'pkk', title: 'Program Kerja PKK' };
             case pathname.startsWith('/app/pkk'): return { module: 'organisasi', subModule: 'pkk', title: 'Dashboard PKK' };
             
+            // Karang Taruna
             case pathname.startsWith('/app/karang-taruna/data'): return { module: 'organisasi', subModule: 'karang_taruna', title: 'Manajemen Pengurus Karang Taruna' };
             case pathname.startsWith('/app/karang-taruna/kegiatan'): return { module: 'organisasi', subModule: 'karang_taruna', title: 'Kegiatan Karang Taruna' };
             case pathname.startsWith('/app/karang-taruna'): return { module: 'organisasi', subModule: 'karang_taruna', title: 'Dashboard Karang Taruna' };
             
-            case pathname.startsWith('/app/rt-rw/data'): return { module: 'organisasi', subModule: 'rt_rw', title: 'Manajemen Data RT/RW' };
+            case pathname.startsWith('/app/rt-rw/rt'): return { module: 'organisasi', subModule: 'rt_rw', title: 'Manajemen Data RT' };
+            case pathname.startsWith('/app/rt-rw/rw'): return { module: 'organisasi', subModule: 'rt_rw', title: 'Manajemen Data RW' };
+            case pathname.startsWith('/app/rt-rw/rekapitulasi'): return { module: 'organisasi', subModule: 'rt_rw', title: 'Rekapitulasi RT/RW' };
             case pathname.startsWith('/app/rt-rw'): return { module: 'organisasi', subModule: 'rt_rw', title: 'Dashboard RT/RW' };
             
             default: return { module: 'organisasi', title: 'Organisasi Desa' };
@@ -79,6 +86,7 @@ const getPageContext = (pathname) => {
     switch (pathname) {
         case '/app': return { module: 'perangkat', title: 'Dashboard' };
         case '/app/perangkat': return { module: 'perangkat', title: 'Manajemen Data Perangkat' };
+        case '/app/histori-perangkat': return { module: 'perangkat', title: 'Riwayat Purna Tugas' };
         case '/app/rekapitulasi-aparatur': return { module: 'perangkat', title: 'Rekapitulasi Aparatur' };
         case '/app/laporan': return { module: 'perangkat', title: 'Pusat Laporan' };
         case '/app/manajemen-admin': return { module: 'perangkat', title: 'Manajemen Admin Desa' };
@@ -93,12 +101,14 @@ const AppLayout = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const { module, subModule, title } = getPageContext(location.pathname);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-    const { currentUser, updateUserProfile } = useAuth();
+    const { currentUser } = useAuth();
 
+    // Tutup sidebar saat navigasi di perangkat mobile
     useEffect(() => {
         setIsSidebarOpen(false);
     }, [location.pathname]);
 
+    // Pengecualian untuk halaman hub organisasi agar tidak menampilkan layout utama
     if (location.pathname === '/app/organisasi-desa') {
         return <Outlet />;
     }
@@ -113,26 +123,23 @@ const AppLayout = () => {
                 onProfileClick={() => setIsProfileModalOpen(true)}
             />
             
-            {/* [PERBAIKAN] Wrapper untuk konten utama */}
-            <div className="flex-1 flex flex-col md:ml-64 transition-all duration-300 ease-in-out">
+            <div className="flex-1 flex flex-col md:ml-20 lg:ml-64 transition-all duration-300 ease-in-out">
                 <Header 
                     pageTitle={title} 
                     onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} 
                     onProfileClick={() => setIsProfileModalOpen(true)}
                 />
                 
-                {/* [PERBAIKAN] Kontainer konten utama dengan padding atas */}
                 <main className="flex-grow p-4 md:p-8">
                     <Outlet />
                 </main>
             </div>
 
+            {/* Modal profil sekarang dipanggil di sini */}
             {currentUser && (
                 <ProfileModal
                     isOpen={isProfileModalOpen}
                     onClose={() => setIsProfileModalOpen(false)}
-                    user={currentUser}
-                    onSave={updateUserProfile}
                 />
             )}
         </div>

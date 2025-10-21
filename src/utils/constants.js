@@ -3,11 +3,19 @@ export const DESA_LIST = [
     "Sawangan", "Bondolharjo", "Danakerta", "Badakarya", "Tribuana", 
     "Sambong", "Klapa", "Kecepit", "Mlaya", "Sidarata", "Purwasana", "Tlaga"
 ];
+export const KODE_DESA_MAP = {
+    "Sambong": "01", "Tribuana": "02", "Sawangan": "03", "Sidarata": "04",
+    "Badakarya": "05", "Bondolharjo": "06", "Punggelan": "07", "Karangsari": "08",
+    "Kecepit": "09", "Danakerta": "10", "Klapa": "11", "Jembangan": "12",
+    "Purwasana": "13", "Petuguran": "14", "Tanjungtirta": "15", "Tlaga": "16",
+    "Mlaya": "17"
+};
 
 // --- Daftar Bersama ---
 export const PENDIDIKAN_LIST = ["SD", "SLTP", "SLTA", "D1", "D2", "D3", "S1", "S2", "S3"];
-export const JENIS_KELAMIN_LIST = ["L", "P"];
-
+export const JENIS_KELAMIN_LIST = ['Laki-Laki', 'Perempuan'];
+export const JABATAN_RT_LIST = ['Ketua', 'Sekretaris', 'Bendahara'];
+export const JABATAN_RW_LIST = ["Ketua"];
 // --- Kategori Keuangan ---
 export const BIDANG_BELANJA = [
     "Penyelenggaraan Pemerintahan Desa",
@@ -188,25 +196,34 @@ export const KARANG_TARUNA_KEGIATAN_CONFIG = {
     tableColumns: ['nama_kegiatan', 'tanggal', 'penanggung_jawab'],
 };
 
-export const RT_RW_CONFIG = {
+export const RT_CONFIG = {
     collectionName: 'rt_rw',
-    title: 'Pengurus RT/RW',
-    subModule: 'rt-rw',
+    title: 'Ketua RT',
     formFields: [
-        { name: 'nama', label: 'Nama Lengkap Ketua', type: 'text', required: true },
-        { name: 'jabatan', label: 'Jabatan', type: 'select', options: ["Ketua RT", "Ketua RW"], required: true },
-        { name: 'nomor', label: 'Nomor RT/RW', type: 'text', placeholder: 'Contoh: 001/003', required: true },
-        { name: 'dusun', label: 'Dusun / Dukuh', type: 'text', placeholder: 'Contoh: Krajan' },
+        { name: 'nama', label: 'Nama Lengkap', type: 'text', required: true },
+        { name: 'no_rt', label: 'Nomor RT', type: 'text', required: true },
+        { name: 'no_rw', label: 'Nomor RW Induk', type: 'text' },
+        { name: 'dusun', label: 'Dusun', type: 'text' },
         { name: 'periode', label: 'Periode', type: 'text' },
+        { name: 'no_hp', label: 'No. HP / WA', type: 'tel' },
     ],
-    tableColumns: ['nama', 'jabatan', 'nomor', 'dusun'],
-    completenessCriteria: ['nama', 'jabatan', 'nomor', 'periode', 'no_sk'],
-    hierarchy: [
-        { title: 'Ketua RW', keywords: ['Ketua RW'] },
-        { title: 'Ketua RT', keywords: ['Ketua RT'] },
-    ]
+    tableColumns: ['nama', 'no_rt', 'no_rw', 'dusun', 'periode', 'no_hp'],
+    completenessCriteria: ['nama', 'no_rt', 'desa'],
 };
 
+export const RW_CONFIG = {
+    collectionName: 'rt_rw',
+    title: 'Ketua RW',
+    formFields: [
+        { name: 'nama', label: 'Nama Lengkap', type: 'text', required: true },
+        { name: 'no_rw', label: 'Nomor RW', type: 'text', required: true },
+        { name: 'dusun', label: 'Dusun', type: 'text' },
+        { name: 'periode', label: 'Periode', type: 'text' },
+        { name: 'no_hp', label: 'No. HP / WA', type: 'tel' },
+    ],
+    tableColumns: ['nama', 'no_rw', 'dusun', 'periode', 'no_hp'],
+    completenessCriteria: ['nama', 'no_rw', 'desa'],
+};
 // [PENAMBAHAN] Konfigurasi untuk Program Kerja LPM
 export const LPM_PROGRAM_CONFIG = {
     collectionName: 'lpm_program',

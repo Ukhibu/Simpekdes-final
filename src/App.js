@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { BrandingProvider } from './context/BrandingContext';
+import { NotificationProvider } from './context/NotificationContext';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, RadialLinearScale, Title, Tooltip, Legend } from 'chart.js';
 
 import AppLayout from './components/layout/AppLayout';
@@ -46,7 +47,6 @@ import BeritaAcaraBPDPage from './pages/BeritaAcaraBPDPage';
 import PengaturanBPD from './pages/PengaturanBPD';
 import LPMDashboard from './pages/LPMDashboard';
 import LPMPage from './pages/LPMPage';
-// [PENAMBAHAN] Impor halaman baru untuk program kerja LPM
 import LPMProgramPage from './pages/LPMProgramPage';
 import PKKDashboard from './pages/PKKDashboard';
 import PKKPage from './pages/PKKPage';
@@ -55,12 +55,23 @@ import KarangTarunaDashboard from './pages/KarangTarunaDashboard';
 import KarangTarunaPage from './pages/KarangTarunaPage';
 import KarangTarunaKegiatanPage from './pages/KarangTarunaKegiatanPage';
 import RtRwDashboard from './pages/RtRwDashboard';
-import RtRwPage from './pages/RtRwPage';
+import RtPage from './pages/RtPage'; // [BARU] Impor halaman data RT
+import RwPage from './pages/RwPage'; // [BARU] Impor halaman data RW
+import RekapitulasiRtRwPage from './pages/RekapitulasiRtRwPage'; // [BARU] Impor halaman rekapitulasi
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, RadialLinearScale, Title, Tooltip, Legend);
 
+
+// Registrasi semua komponen Chart.js yang dibutuhkan di seluruh aplikasi
+ChartJS.register(
+  CategoryScale, LinearScale, BarElement, PointElement, LineElement, 
+  ArcElement, RadialLinearScale, Title, Tooltip, Legend
+);
+
+// Komponen PrivateRoute untuk melindungi rute yang memerlukan otentikasi
 function PrivateRoute({ children }) {
   const { currentUser, loading } = useAuth();
+  
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
@@ -68,6 +79,7 @@ function PrivateRoute({ children }) {
       </div>
     );
   }
+  
   return currentUser ? children : <Navigate to="/login" replace />;
 }
 
@@ -80,26 +92,31 @@ function App() {
           <BrandingProvider>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
+              
+              {/* Rute terproteksi */}
               <Route path="/" element={<PrivateRoute><HubPage /></PrivateRoute>} />
               <Route path="/app/organisasi-desa" element={<PrivateRoute><OrganisasiDesaHub /></PrivateRoute>} />
+
               <Route path="/app" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
+                {/* Rute default di dalam layout */}
                 <Route index element={<DashboardPage />} />
+                
+                {/* Modul Pemerintahan */}
                 <Route path="perangkat" element={<Perangkat />} />
                 <Route path="histori-perangkat" element={<HistoriPerangkat />} />
                 <Route path="rekapitulasi-aparatur" element={<RekapitulasiAparatur />} />
                 <Route path="kalender-kegiatan" element={<KalenderKegiatanPage />} />
+                <Route path="laporan" element={<LaporanPage />} />
                 <Route path="manajemen-admin" element={<ManajemenAdmin />} />
                 <Route path="pengaturan" element={<PengaturanAplikasi />} />
-                <Route path="laporan" element={<LaporanPage />} />
                 
-                {/* Organisasi Desa */}
+                {/* Rute Organisasi Desa */}
                 <Route path="bpd" element={<BPDDashboard />} />
                 <Route path="bpd/data" element={<BPDPage />} />
                 <Route path="bpd/berita-acara" element={<BeritaAcaraBPDPage />} />
                 <Route path="bpd/pengaturan" element={<PengaturanBPD />} />
                 <Route path="lpm" element={<LPMDashboard />} />
                 <Route path="lpm/data" element={<LPMPage />} />
-                {/* [PENAMBAHAN] Rute baru untuk program kerja LPM */}
                 <Route path="lpm/program" element={<LPMProgramPage />} />
                 <Route path="pkk" element={<PKKDashboard />} />
                 <Route path="pkk/data" element={<PKKPage />} />
@@ -108,25 +125,28 @@ function App() {
                 <Route path="karang-taruna/data" element={<KarangTarunaPage />} />
                 <Route path="karang-taruna/kegiatan" element={<KarangTarunaKegiatanPage />} />
                 <Route path="rt-rw" element={<RtRwDashboard />} />
-                <Route path="rt-rw/data" element={<RtRwPage />} />
+                <Route path="rt-rw/rt" element={<RtPage />} />
+                <Route path="rt-rw/rw" element={<RwPage />} />
+                <Route path="rt-rw/rekapitulasi" element={<RekapitulasiRtRwPage />} />
                 
                 {/* Modul E-File */}
                 <Route path="efile" element={<EFileDashboard />} />
                 <Route path="manajemen-sk" element={<ManajemenSK />} />
                 <Route path="data-sk/:skType" element={<DataSK />} />
 
-                {/* Keuangan */}
+                {/* Modul Keuangan */}
                 <Route path="keuangan" element={<KeuanganDashboard />} />
                 <Route path="keuangan/penganggaran" element={<PenganggaranPage />} />
                 <Route path="keuangan/penatausahaan" element={<PenatausahaanPage />} />
                 <Route path="keuangan/laporan" element={<LaporanRealisasiPage />} />
                 
-                {/* Aset */}
+                {/* Modul Aset */}
                 <Route path="aset" element={<AsetDashboard />} />
                 <Route path="aset/manajemen" element={<AsetDesa />} />
                 <Route path="aset/peta" element={<PetaAsetPage />} />
-
               </Route>
+              
+              {/* Fallback route */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </BrandingProvider>
@@ -137,3 +157,4 @@ function App() {
 }
 
 export default App;
+

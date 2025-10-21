@@ -107,8 +107,10 @@ const Header = ({ pageTitle, onMenuClick, onProfileClick }) => {
     };
 
     return (
-        // [PERUBAHAN] Menambahkan kelas 'sticky top-0 z-50' untuk membuat header tetap di atas saat scroll
-        <header className="flex items-center justify-between p-4 md:p-6 bg-white dark:bg-gray-800 shadow-md sticky top-0 z-50">
+        // [PERBAIKAN] Mengatur z-index header menjadi 10.
+        // Ini memastikan header tetap di atas konten utama (z-index auto),
+        // tetapi akan berada di bawah sidebar (z-30) dan modal/popup (z-40 atau lebih tinggi).
+        <header className="flex items-center justify-between p-4 md:p-6 bg-white dark:bg-gray-800 shadow-md sticky top-0 z-10">
             <div className="flex items-center">
                 <button onClick={onMenuClick} className="text-gray-500 dark:text-gray-300 focus:outline-none md:hidden mr-4">
                     <FiMenu size={24} />
@@ -138,6 +140,7 @@ const Header = ({ pageTitle, onMenuClick, onProfileClick }) => {
                        )}
                    </button>
                    
+                   {/* [PERBAIKAN] Menu dropdown diberi z-index 50 agar muncul di atas semua elemen lain, termasuk header bar itu sendiri */}
                    <div className={`absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-md shadow-lg py-2 z-50 transition-all duration-300 ease-in-out ${isProfileOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
                        <button 
                            onClick={() => {

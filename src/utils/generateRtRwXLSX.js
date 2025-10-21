@@ -1,180 +1,144 @@
-import ExcelJS from 'exceljs';
+import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import { DESA_LIST } from './constants'; // Asumsi DESA_LIST ada di constants
+import { DESA_LIST } from './constants';
 
-/**
- * [PENULISAN ULANG TOTAL]
- * Membuat file XLSX Rekapitulasi RT/RW dan Dusun sesuai format yang diminta.
- * @param {object} exportData - Data yang dibutuhkan untuk ekspor.
- */
-export const generateRtRwXLSX = async (exportData) => {
-    const {
-        dataToExport,
-        role, // 'admin_desa' atau 'admin_kecamatan'
-        desa, // Nama desa spesifik atau 'all'
-    } = exportData;
+const addCell = (ws, address, value, type = 's', style = {}) => {
+    ws[address] = { t: type, v: value, s: style };
+};
 
-    if (!dataToExport || dataToExport.length === 0) {
-        alert("Tidak ada data untuk diekspor.");
-        return;
-    }
+export const generateRtRwXLSX = ({ dataToExport }) => {
+    const wb = XLSX.utils.book_new();
+    const ws = {};
 
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Rekap RT RW');
-
-    // --- Pengaturan Halaman & Cetak ---
-    worksheet.pageSetup = {
-        orientation: 'landscape',
-        paperSize: 9, // A4
-        fitToPage: true, fitToWidth: 1, fitToHeight: 0,
-        margins: { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
+    // --- Styling ---
+    const centerStyle = { alignment: { horizontal: 'center', vertical: 'center', wrapText: true } };
+    const leftStyle = { alignment: { horizontal: 'left', vertical: 'center', wrapText: true } };
+    const boldCenterStyle = { ...centerStyle, font: { bold: true } };
+    const boldLeftStyle = { ...leftStyle, font: { bold: true } };
+    const borderAll = {
+        border: {
+            top: { style: "thin" }, bottom: { style: "thin" },
+            left: { style: "thin" }, right: { style: "thin" }
+        }
     };
-
-    // --- Definisi Styles ---
-    const defaultFont = { name: 'Arial', size: 10 };
-    const titleStyle = { font: { ...defaultFont, size: 14, bold: true }, alignment: { horizontal: 'center' } };
-    const headerStyle = { font: { ...defaultFont, bold: true }, alignment: { horizontal: 'center', vertical: 'middle', wrapText: true }, border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } } };
-    const cellStyle = { font: defaultFont, border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }, alignment: { vertical: 'middle', wrapText: true } };
-    const centerCellStyle = { ...cellStyle, alignment: { ...cellStyle.alignment, horizontal: 'center' } };
-    const keteranganStyle = { font: { ...defaultFont, italic: true } };
     
-    let currentRow = 1;
-
-    // --- Judul Laporan ---
-    const mainTitle = desa === 'all'
-        ? `REKAPITULASI RT, RW DAN DUSUN SE-KECAMATAN PUNGGELAN`
-        : `REKAPITULASI RT, RW DAN DUSUN DESA ${desa.toUpperCase()}`;
-    worksheet.mergeCells(currentRow, 1, currentRow, 11);
-    worksheet.getCell(currentRow, 1).value = mainTitle;
-    worksheet.getCell(currentRow, 1).style = titleStyle;
-    currentRow++;
-
-    worksheet.mergeCells(currentRow, 1, currentRow, 11);
-    worksheet.getCell(currentRow, 1).value = `TAHUN ${new Date().getFullYear()}`;
-    worksheet.getCell(currentRow, 1).style = titleStyle;
-    currentRow += 2;
-
-    const headerStartRow = currentRow;
-
-    // --- Header Tabel ---
-    const headerRow1 = worksheet.getRow(headerStartRow);
-    const headerRow2 = worksheet.getRow(headerStartRow + 1);
-    headerRow1.values = ['KODE DESA', 'KABUPATEN', 'KECAMATAN', 'DESA', 'DUSUN', 'RW', 'NAMA KETUA Rw.', 'RT', 'NAMA KETUA Rt.', 'DUKUH', 'KET'];
-    headerRow2.values = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'];
+    // --- Set Column Widths ---
+    ws['!cols'] = [
+        { wch: 5 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 3 },
+        { wch: 15 }, { wch: 8 }, { wch: 20 }, { wch: 8 }, { wch: 20 },
+        { wch: 18 }, { wch: 12 }
+    ];
     
-    [headerRow1, headerRow2].forEach(row => {
-        row.height = 20;
-        row.eachCell({ includeEmpty: true }, cell => cell.style = headerStyle);
-    });
+    // --- Header Keterangan (Top Right) ---
+    addCell(ws, 'L1', 'KETERANGAN :', 's', { font: { bold: true, underline: true } });
+    addCell(ws, 'L2', 'No. 4. Diisi Nama Dukuh');
+    addCell(ws, 'L3', 'No. 5. Diisi Nama DuSun');
+    addCell(ws, 'L4', 'No. 6. Diisi Nama/ Nomor RW');
+    addCell(ws, 'L5', 'No. 7. Diisi Nama/ Nomor RT');
+
+    // --- Main Title ---
+    const currentYear = new Date().getFullYear();
+    addCell(ws, 'A7', `REKAP DATA RT DAN RW SE-KECAMATAN PUNGGELAN TAHUN ${currentYear}`, 's', { ...boldCenterStyle, font: { sz: 14, bold: true } });
     
-    currentRow += 2;
-    
-    // --- Strukturisasi Data ---
-    const structuredData = {}; // { desa: { dusun: { rw: { ketua: {}, rts: [] } } } }
+    // --- Table Headers ---
+    const headers = [
+        ['KODE DESA', 'KABUPATEN', 'KECAMATAN', 'DESA', '', 'DUSUN', 'RW', 'NAMA KETUA Rw.', 'RT', 'NAMA KETUA Rt.', 'DUKUH', 'KET.'],
+        ['', '1', '2', '3', '', '5', '6', '', '7', '', '4', '']
+    ];
 
-    dataToExport.forEach(item => {
-        if (!item.desa || !item.dusun) return;
-        
-        if (!structuredData[item.desa]) structuredData[item.desa] = {};
-        if (!structuredData[item.desa][item.dusun]) structuredData[item.desa][item.dusun] = {};
-        
-        const rwKey = item.no_rw || 'N/A';
-        if (!structuredData[item.desa][item.dusun][rwKey]) {
-            structuredData[item.desa][item.dusun][rwKey] = { ketua: null, rts: [] };
-        }
-
-        if (item.jabatan === 'Ketua RW') {
-            structuredData[item.desa][item.dusun][rwKey].ketua = item;
-        } else if (item.jabatan === 'Ketua RT') {
-            structuredData[item.desa][item.dusun][rwKey].rts.push(item);
-        }
-    });
-
-    // --- Isi Data ---
-    const desaListToRender = desa === 'all' ? DESA_LIST : [desa];
-
-    desaListToRender.forEach((namaDesa, desaIndex) => {
-        const desaData = structuredData[namaDesa] || {};
-        const dusunKeys = Object.keys(desaData).sort();
-
-        let isFirstRowOfDesa = true;
-
-        dusunKeys.forEach((namaDusun) => {
-            const dusunData = desaData[namaDusun];
-            const rwKeys = Object.keys(dusunData).sort();
-
-            rwKeys.forEach((noRw) => {
-                const rwData = dusunData[noRw];
-                const { ketua, rts } = rwData;
-                
-                // Baris Ketua RW
-                const rwRow = [];
-                if (isFirstRowOfDesa) {
-                    rwRow[0] = String(desaIndex + 1).padStart(2, '0');
-                    rwRow[1] = 'BANJARNEGARA';
-                    rwRow[2] = 'PUNGGELAN';
-                    rwRow[3] = namaDesa;
-                    isFirstRowOfDesa = false;
-                } else {
-                     rwRow[0] = rwRow[1] = rwRow[2] = rwRow[3] = null;
-                }
-                rwRow[4] = namaDusun;
-                rwRow[5] = noRw !== 'N/A' ? noRw : '';
-                rwRow[6] = ketua?.nama || '';
-                rwRow[7] = ''; // RT
-                rwRow[8] = ''; // Nama Ketua RT
-                rwRow[9] = ketua?.dukuh || ''; // Dukuh dari Ketua RW
-                rwRow[10] = '';
-                
-                const addedRwRow = worksheet.addRow(rwRow);
-                addedRwRow.eachCell({ includeEmpty: true }, (cell, col) => {
-                   cell.style = (col <= 4) ? cellStyle : centerCellStyle;
-                });
-                
-                // Baris Ketua RT
-                rts.sort((a,b) => (a.no_rt || '').localeCompare(b.no_rt || '')).forEach(rt => {
-                    const rtRowData = new Array(11).fill(null);
-                    rtRowData[7] = rt.no_rt || '';
-                    rtRowData[8] = rt.nama || '';
-                    rtRowData[9] = rt.dukuh || '';
-
-                    const addedRtRow = worksheet.addRow(rtRowData);
-                    addedRtRow.eachCell({ includeEmpty: true }, (cell, col) => {
-                       cell.style = (col <= 4) ? cellStyle : centerCellStyle;
-                    });
-                });
-            });
-
-             // Baris pemisah antar dusun jika perlu
-             const separatorRow = worksheet.addRow(new Array(11).fill(null));
-             separatorRow.getCell(8).value = 0; // Sesuai contoh, angka 0 ada di kolom RT
-             separatorRow.getCell(8).style = centerCellStyle;
-             separatorRow.eachCell({ includeEmpty: true}, (cell, col) => cell.style = cellStyle)
-
+    headers.forEach((row, rowIndex) => {
+        row.forEach((cell, colIndex) => {
+            const cellAddress = XLSX.utils.encode_cell({ r: 9 + rowIndex, c: colIndex });
+            addCell(ws, cellAddress, cell, 's', { ...boldCenterStyle, ...borderAll });
         });
     });
 
-
-    // --- Lebar Kolom ---
-    worksheet.columns = [
-        { width: 5 },  // Kode Desa
-        { width: 15 }, // Kabupaten
-        { width: 15 }, // Kecamatan
-        { width: 20 }, // Desa
-        { width: 20 }, // Dusun
-        { width: 8 },  // RW
-        { width: 25 }, // Nama Ketua RW
-        { width: 8 },  // RT
-        { width: 25 }, // Nama Ketua RT
-        { width: 20 }, // Dukuh
-        { width: 10 }  // Ket
+    // --- Merged Cells ---
+    ws['!merges'] = [
+        { s: { r: 6, c: 0 }, e: { r: 6, c: 11 } }, // Main Title
+        // Headers
+        { s: { r: 9, c: 0 }, e: { r: 10, c: 0 } }, { s: { r: 9, c: 1 }, e: { r: 9, c: 2 } }, 
+        { s: { r: 9, c: 3 }, e: { r: 10, c: 4 } }, { s: { r: 9, c: 5 }, e: { r: 10, c: 5 } },
+        { s: { r: 9, c: 6 }, e: { r: 10, c: 6 } }, { s: { r: 9, c: 7 }, e: { r: 10, c: 7 } },
+        { s: { r: 9, c: 8 }, e: { r: 10, c: 8 } }, { s: { r: 9, c: 9 }, e: { r: 10, c: 9 } },
+        { s: { r: 9, c: 10 }, e: { r: 10, c: 10 } }, { s: { r: 9, c: 11 }, e: { r: 10, c: 11 } }
     ];
 
-    // --- Simpan File ---
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const fileName = desa === 'all'
-        ? `Rekap_RT_RW_Kecamatan_Punggelan.xlsx`
-        : `Rekap_RT_RW_Desa_${desa}.xlsx`;
-    saveAs(blob, fileName);
+    // --- Data Processing ---
+    let currentRow = 11;
+    const desaDataMap = DESA_LIST.reduce((acc, desa) => {
+        acc[desa] = dataToExport.filter(item => item.desa === desa);
+        return acc;
+    }, {});
+
+    DESA_LIST.forEach((desaName, desaIndex) => {
+        const desaItems = desaDataMap[desaName] || [];
+        if (desaItems.length === 0) return;
+
+        let rtCount = 0;
+        const rwSet = new Set();
+        
+        const dusunMap = desaItems.reduce((acc, item) => {
+            const key = item.dusun || 'Tanpa Dusun';
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(item);
+            return acc;
+        }, {});
+        
+        let isFirstRowOfDesa = true;
+
+        Object.keys(dusunMap).forEach(dusunName => {
+            const itemsInDusun = dusunMap[dusunName];
+
+            itemsInDusun.forEach(item => {
+                const rowData = [
+                    isFirstRowOfDesa ? `${String(desaIndex + 1).padStart(2, '0')}` : '',
+                    isFirstRowOfDesa ? 'BANJARNEGARA' : '',
+                    isFirstRowOfDesa ? 'PUNGGELAN' : '',
+                    desaName, '', dusunName, item.no_rw || '',
+                    item.jabatan === 'Ketua RW' ? item.nama : '',
+                    item.no_rt || '',
+                    item.jabatan === 'Ketua RT' ? item.nama : '',
+                    item.dukuh || '',
+                    1 // Keterangan
+                ];
+
+                rowData.forEach((val, i) => addCell(ws, XLSX.utils.encode_cell({ r: currentRow, c: i }), val, typeof val === 'number' ? 'n' : 's', { ...leftStyle, ...borderAll }));
+                
+                // Merge cell 'DESA'
+                ws['!merges'].push({ s: { r: currentRow, c: 3 }, e: { r: currentRow, c: 4 } });
+
+                if (item.jabatan === 'Ketua RT') rtCount++;
+                if (item.no_rw) rwSet.add(item.no_rw);
+
+                isFirstRowOfDesa = false;
+                currentRow++;
+            });
+
+            // Dusun separator row
+             const separatorRow = ['', '', '', desaName, '', '', '', '', '', '', '', 0];
+             separatorRow.forEach((val, i) => addCell(ws, XLSX.utils.encode_cell({ r: currentRow, c: i }), val, typeof val === 'number' ? 'n' : 's', { ...leftStyle, ...borderAll }));
+             ws['!merges'].push({ s: { r: currentRow, c: 3 }, e: { r: currentRow, c: 4 } });
+             currentRow++;
+        });
+
+        // JUMLAH row for the desa
+        const jumlahRow = [
+            '', 'J U M L A H', '', '', '', '', rwSet.size, '', rtCount, '', '', ''
+        ];
+        jumlahRow.forEach((val, i) => {
+             const style = (i === 1) ? { ...boldCenterStyle, ...borderAll } : { ...centerStyle, ...borderAll };
+             addCell(ws, XLSX.utils.encode_cell({ r: currentRow, c: i }), val, typeof val === 'number' ? 'n' : 's', style);
+        });
+        ws['!merges'].push({ s: { r: currentRow, c: 1 }, e: { r: currentRow, c: 5 } });
+        ws['!merges'].push({ s: { r: currentRow, c: 9 }, e: { r: currentRow, c: 11 } });
+        currentRow++;
+    });
+
+    const range = { s: { c: 0, r: 0 }, e: { c: 11, r: currentRow } };
+    ws['!ref'] = XLSX.utils.encode_range(range);
+
+    XLSX.utils.book_append_sheet(wb, ws, "Rekap RT RW");
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    saveAs(new Blob([wbout], { type: 'application/octet-stream' }), `Rekap Data RT dan RW se-Kecamatan Punggelan tahun ${currentYear}.xlsx`);
 };

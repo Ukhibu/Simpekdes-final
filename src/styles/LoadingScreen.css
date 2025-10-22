@@ -1,0 +1,95 @@
+/*
+ * File ini berisi styling untuk komponen LoadingScreen.
+ * Disesuaikan untuk mencocokkan video (latar belakang hitam, animasi gelombang).
+ */
+
+.loading-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  /* Sesuai video: latar belakang hitam */
+  background: #000;
+  z-index: 9999;
+  color: white;
+  font-family: 'Poppins', sans-serif;
+  overflow: hidden;
+}
+
+.loading-content {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Logo: fade in dan scale. */
+.loading-logo {
+  width: 120px;
+  height: auto;
+  margin-bottom: 30px; /* Sedikit lebih jauh dari teks */
+  animation: fadeInScale 1.5s ease-in-out forwards;
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Kontainer untuk teks bergelombang */
+.loading-title {
+  font-size: 3rem; /* Ukuran besar */
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin: 0;
+  display: flex; /* Penting untuk span agar sejajar */
+  opacity: 0; /* Kontainer mulai transparan */
+  animation: fadeInContainer 1s ease 0.5s forwards; /* Muncul setelah logo */
+}
+
+/* Animasi untuk fade in kontainer teks */
+@keyframes fadeInContainer {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Setiap huruf */
+.loading-title span {
+  display: inline-block;
+  position: relative; /* Diperlukan untuk animasi transform */
+  color: #fff;
+  /* Efek bayangan putih tipis seperti di video */
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+
+  /* Animasi gelombang */
+  animation: wave 1.8s ease-in-out infinite;
+
+  /* Delay dihitung berdasarkan custom property --i dari JS */
+  animation-delay: calc(var(--i) * 0.1s);
+}
+
+/* Animasi "bergelombang" (wave) */
+@keyframes wave {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-15px); /* Mengambang ke atas */
+  }
+}
+

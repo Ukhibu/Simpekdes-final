@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import { collection, query, onSnapshot, where } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
@@ -14,15 +14,15 @@ import { generateRekapLengkapKecamatanXLSX } from '../utils/generateRekapLengkap
 // --- Sub-Komponen untuk Tampilan Tabel ---
 
 const RekapPokokView = ({ data }) => (
-    <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+    <table className="w-full table-fixed text-sm text-left text-gray-500 dark:text-gray-400">
         <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700 dark:text-gray-300">
             <tr>
-                <th className="px-6 py-3">NO</th>
+                <th className="px-6 py-3 w-16">NO</th>
                 <th className="px-6 py-3">NAMA DESA</th>
-                <th className="px-6 py-3 text-center">JUMLAH RW</th>
-                <th className="px-6 py-3 text-center">JUMLAH RT</th>
-                <th className="px-6 py-3 text-center">JUMLAH DUSUN</th>
-                <th className="px-6 py-3 text-center">JUMLAH DUKUH</th>
+                <th className="px-6 py-3 w-32 text-center">JUMLAH RW</th>
+                <th className="px-6 py-3 w-32 text-center">JUMLAH RT</th>
+                <th className="px-6 py-3 w-32 text-center">JUMLAH DUSUN</th>
+                <th className="px-6 py-3 w-32 text-center">JUMLAH DUKUH</th>
             </tr>
         </thead>
         <tbody>
@@ -48,18 +48,18 @@ const RekapPokokView = ({ data }) => (
 );
 
 const RekapDesaView = ({ data }) => (
-     <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+     <table className="w-full table-fixed text-sm text-left text-gray-500 dark:text-gray-400">
         <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700 dark:text-gray-300">
             <tr>
-                <th className="px-4 py-3">NO</th>
-                <th className="px-4 py-3">DUSUN</th>
-                <th className="px-4 py-3">RW</th>
+                <th className="px-4 py-3 w-12">NO</th>
+                <th className="px-4 py-3 w-40">DUSUN</th>
+                <th className="px-4 py-3 w-16">RW</th>
                 <th className="px-4 py-3">NAMA KETUA RW</th>
-                <th className="px-4 py-3">RT</th>
+                <th className="px-4 py-3 w-16">RT</th>
                 <th className="px-4 py-3">NAMA KETUA RT</th>
                 <th className="px-4 py-3">NAMA SEKRETARIS</th>
                 <th className="px-4 py-3">NAMA BENDAHARA</th>
-                <th className="px-4 py-3">DUKUH</th>
+                <th className="px-4 py-3 w-40">DUKUH</th>
             </tr>
         </thead>
         <tbody>
@@ -79,41 +79,55 @@ const RekapDesaView = ({ data }) => (
                 <tr><td colSpan="9" className="text-center py-10">Data tidak ditemukan untuk desa ini.</td></tr>
             )}
         </tbody>
+        <tfoot className="bg-gray-100 dark:bg-gray-700 font-bold">
+            <tr>
+                <td colSpan="8" className="px-4 py-2 text-right">JUMLAH RT</td>
+                <td className="px-4 py-2 text-left">{data.length}</td>
+            </tr>
+        </tfoot>
     </table>
 );
 
 const RekapLengkapView = ({ data }) => (
-    <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+    <table className="w-full table-fixed text-sm text-left text-gray-500 dark:text-gray-400">
         <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700 dark:text-gray-300">
             <tr>
-                <th className="px-2 py-3">KODE DESA</th>
-                <th className="px-2 py-3">DESA</th>
-                <th className="px-2 py-3">DUSUN</th>
-                <th className="px-2 py-3">RW</th>
+                <th className="px-2 py-3 w-20">KODE DESA</th>
+                <th className="px-2 py-3 w-32">DESA</th>
+                <th className="px-2 py-3 w-32">DUSUN</th>
+                <th className="px-2 py-3 w-12">RW</th>
                 <th className="px-2 py-3">NAMA KETUA RW</th>
-                <th className="px-2 py-3">RT</th>
+                <th className="px-2 py-3 w-12">RT</th>
                 <th className="px-2 py-3">NAMA KETUA RT</th>
-                <th className="px-2 py-3">DUKUH</th>
+                <th className="px-2 py-3 w-40">DUKUH</th>
             </tr>
         </thead>
         <tbody>
             {data.map(desa => (
                 <React.Fragment key={desa.namaDesa}>
-                    {desa.entries.map((entry, entryIndex) => (
-                        <tr key={`${desa.namaDesa}-${entry.no_rw}-${entry.no_rt}`} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700">
-                            {entryIndex === 0 ? <td className="px-2 py-2 text-center row-span-{desa.entries.length}">{KODE_DESA_MAP[desa.namaDesa]}</td> : <td className="px-2 py-2"></td>}
-                            {entryIndex === 0 ? <td className="px-2 py-2 row-span-{desa.entries.length}">{desa.namaDesa}</td> : <td className="px-2 py-2"></td>}
-                            <td className="px-2 py-2">{entry.dusun}</td>
-                            <td className="px-2 py-2 text-center">{entry.no_rw}</td>
-                            <td className="px-2 py-2">{entry.namaKetuaRw}</td>
-                            <td className="px-2 py-2 text-center">{entry.no_rt}</td>
-                            <td className="px-2 py-2">{entry.namaKetuaRt}</td>
-                            <td className="px-2 py-2">{entry.dukuh}</td>
-                        </tr>
+                    {desa.dusunGroups.map(dusunGroup => (
+                       <React.Fragment key={dusunGroup.dusunName}>
+                            {dusunGroup.entries.map((entry, entryIndex) => (
+                                <tr key={`${desa.namaDesa}-${entry.no_rw}-${entry.no_rt}`} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700">
+                                    <td className="px-2 py-2 text-center">{entryIndex === 0 ? KODE_DESA_MAP[desa.namaDesa] : ''}</td>
+                                    <td className="px-2 py-2">{entryIndex === 0 ? desa.namaDesa : ''}</td>
+                                    <td className="px-2 py-2">{entry.dusun}</td>
+                                    <td className="px-2 py-2 text-center">{entry.no_rw}</td>
+                                    <td className="px-2 py-2">{entry.namaKetuaRw}</td>
+                                    <td className="px-2 py-2 text-center">{entry.no_rt}</td>
+                                    <td className="px-2 py-2">{entry.namaKetuaRt}</td>
+                                    <td className="px-2 py-2">{entry.dukuh}</td>
+                                </tr>
+                            ))}
+                            <tr className="bg-gray-100 dark:bg-gray-700 font-semibold">
+                                <td colSpan="7" className="px-4 py-2 text-right">JUMLAH RT</td>
+                                <td className="px-4 py-2 text-left">{dusunGroup.rtCount}</td>
+                            </tr>
+                       </React.Fragment>
                     ))}
-                    <tr className="bg-gray-100 dark:bg-gray-700 font-semibold">
-                         <td colSpan="7" className="px-4 py-2 text-right">JUMLAH DUKUH</td>
-                         <td className="px-4 py-2 text-center">{desa.totalDukuh}</td>
+                     <tr className="bg-blue-100 dark:bg-blue-900 font-bold text-blue-800 dark:text-blue-200">
+                        <td colSpan="7" className="px-4 py-2 text-right">JUMLAH TOTAL RT DESA {desa.namaDesa.toUpperCase()}</td>
+                        <td className="px-4 py-2 text-left">{desa.totalRtDesa}</td>
                     </tr>
                 </React.Fragment>
             ))}
@@ -205,22 +219,30 @@ const RekapitulasiRtRwPage = () => {
             const rtData = desaData.filter(d => d.no_rt);
 
             const rwMap = rwData.reduce((acc, curr) => { acc[curr.no_rw] = curr.nama; return acc; }, {});
+            
+            const entries = rtData.map(rt => ({
+                dusun: rt.dusun || '-',
+                no_rw: rt.no_rw || '-',
+                namaKetuaRw: rwMap[rt.no_rw] || '-',
+                no_rt: rt.no_rt || '-',
+                namaKetuaRt: rt.jabatan === 'Ketua' ? rt.nama : '-',
+                dukuh: rt.dukuh || '-',
+            })).sort((a, b) => (a.dusun.localeCompare(b.dusun) || parseInt(a.no_rw) - parseInt(b.no_rw) || parseInt(a.no_rt) - parseInt(b.no_rt)));
 
-            const entries = rtData
-                .map(rt => ({
-                    dusun: rt.dusun || '-',
-                    no_rw: rt.no_rw || '-',
-                    namaKetuaRw: rwMap[rt.no_rw] || '-',
-                    no_rt: rt.no_rt || '-',
-                    namaKetuaRt: rt.jabatan === 'Ketua' ? rt.nama : '-',
-                    dukuh: rt.dukuh || '-',
-                }))
-                .sort((a, b) => (a.dusun.localeCompare(b.dusun) || parseInt(a.no_rw) - parseInt(b.no_rw) || parseInt(a.no_rt) - parseInt(b.no_rt)));
+            const dusunGroups = entries.reduce((acc, entry) => {
+                const dusunName = entry.dusun;
+                if (!acc[dusunName]) acc[dusunName] = { dusunName, entries: [], rtCount: 0 };
+                acc[dusunName].entries.push(entry);
+                acc[dusunName].rtCount++;
+                return acc;
+            }, {});
+
+            const totalRtDesa = Object.values(dusunGroups).reduce((sum, group) => sum + group.rtCount, 0);
 
             return {
                 namaDesa,
-                entries,
-                totalDukuh: new Set(desaData.map(d => d.dukuh).filter(Boolean)).size,
+                dusunGroups: Object.values(dusunGroups),
+                totalRtDesa,
             };
         });
 

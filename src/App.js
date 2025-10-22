@@ -8,6 +8,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement,
 import AppLayout from './components/layout/AppLayout';
 import Spinner from './components/common/Spinner';
 import NotificationContainer from './components/common/NotificationContainer';
+import LoadingScreen from './components/common/LoadingScreen'; // [BARU] Impor LoadingScreen
 
 // Halaman Utama & Otentikasi
 import LoginPage from './pages/LoginPage';
@@ -55,9 +56,9 @@ import KarangTarunaDashboard from './pages/KarangTarunaDashboard';
 import KarangTarunaPage from './pages/KarangTarunaPage';
 import KarangTarunaKegiatanPage from './pages/KarangTarunaKegiatanPage';
 import RtRwDashboard from './pages/RtRwDashboard';
-import RtPage from './pages/RtPage'; // [BARU] Impor halaman data RT
-import RwPage from './pages/RwPage'; // [BARU] Impor halaman data RW
-import RekapitulasiRtRwPage from './pages/RekapitulasiRtRwPage'; // [BARU] Impor halaman rekapitulasi
+import RtPage from './pages/RtPage'; // Impor halaman data RT
+import RwPage from './pages/RwPage'; // Impor halaman data RW
+import RekapitulasiRtRwPage from './pages/RekapitulasiRtRwPage'; // Impor halaman rekapitulasi
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, RadialLinearScale, Title, Tooltip, Legend);
 
@@ -73,11 +74,8 @@ function PrivateRoute({ children }) {
   const { currentUser, loading } = useAuth();
   
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
-        <Spinner size="lg"/>
-      </div>
-    );
+    // [DIGANTI] Tampilkan LoadingScreen profesional saat inisialisasi
+    return <LoadingScreen />;
   }
   
   return currentUser ? children : <Navigate to="/login" replace />;

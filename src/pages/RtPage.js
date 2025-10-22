@@ -246,12 +246,11 @@ const RtPage = () => {
                         tanggal_lahir: formattedDate,
                         pendidikan: pendidikan,
                         periode: String(row['PRIODE'] || ''),
-                        no_rw: String(row['NO RW'] || ''),
                         no_rt: String(row['NO RT'] || ''),
                         dukuh: String(row['DUKUH'] || ''),
                         dusun: String(row['DUSUN'] || ''),
                         no_hp: String(row['No. HP / WA'] || ''),
-                        
+                        no_rw: "",
                     };
                     
                     if (newDoc.nama && newDoc.desa && newDoc.jabatan && newDoc.no_rt) {

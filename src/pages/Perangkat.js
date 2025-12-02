@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { db } from '../firebase';
 import { doc, writeBatch, getDocs, getDoc, collection, query, where, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
@@ -111,15 +111,19 @@ const Perangkat = () => {
     // --- STATE CLICK BOOK & SELECTION ---
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState(new Set());
+    
+    // --- REFS UNTUK GESTURE CONTROL (Scroll Detection) ---
     const longPressTimer = useRef(null);
+    const isScrolling = useRef(false);
+    const touchStartCoords = useRef({ x: 0, y: 0 });
 
     const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
     const [bulkDeleteMode, setBulkDeleteMode] = useState(null); // 'kosongkan' atau 'permanen'
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     
-    // --- DRAGGABLE STATE ---
-    const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
-    const isDraggingRef = useRef(false);
+    // --- DRAGGABLE STATE (SMOOTH VERSION) ---
+    const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
+    const [isDragging, setIsDragging] = useState(false);
     const dragStartPos = useRef({ x: 0, y: 0 });
     
     const [currentDesa, setCurrentDesa] = useState(DESA_LIST[0]);
@@ -150,6 +154,13 @@ const Perangkat = () => {
             setCurrentDesa(currentUser.desa);
         }
     }, [currentUser]);
+
+    // Initial Menu Position (Bottom Center)
+    useEffect(() => {
+        if (isSelectionMode) {
+            setMenuPos({ x: 0, y: 0 }); // Akan diatur relatif oleh CSS 'fixed bottom-6 left-1/2' atau kita reset drag
+        }
+    }, [isSelectionMode]);
 
     useEffect(() => {
         const fetchExportConfig = async () => {
@@ -267,24 +278,51 @@ const Perangkat = () => {
         return data;
     }, [allPerangkat, searchTerm, currentUser, currentDesa]);
 
-    // --- LOGIKA CLICK BOOK / SELECTION ---
+    // --- LOGIKA CLICK BOOK / SELECTION DENGAN ANTI-SCROLL ---
 
     const activateSelectionMode = (id) => {
         if (!isSelectionMode) {
             setIsSelectionMode(true);
             setSelectedIds(new Set([id]));
+            if (navigator.vibrate) navigator.vibrate(50);
             if (longPressTimer.current) clearTimeout(longPressTimer.current);
         }
     };
 
     const handleDoubleClick = (id) => activateSelectionMode(id);
 
-    const handleTouchStart = (id) => {
-        longPressTimer.current = setTimeout(() => activateSelectionMode(id), 800);
+    const handleTouchStart = (id, e) => {
+        isScrolling.current = false;
+        touchStartCoords.current = {
+            x: e.touches[0].clientX,
+            y: e.touches[0].clientY
+        };
+        longPressTimer.current = setTimeout(() => {
+            if (!isScrolling.current) {
+                activateSelectionMode(id);
+            }
+        }, 600); // 600ms long press
+    };
+
+    const handleTouchMove = (e) => {
+        const moveX = Math.abs(e.touches[0].clientX - touchStartCoords.current.x);
+        const moveY = Math.abs(e.touches[0].clientY - touchStartCoords.current.y);
+        
+        // Jika jari bergerak lebih dari 10px, anggap sedang scroll
+        if (moveX > 10 || moveY > 10) {
+            isScrolling.current = true;
+            if (longPressTimer.current) {
+                clearTimeout(longPressTimer.current);
+                longPressTimer.current = null;
+            }
+        }
     };
 
     const handleTouchEnd = () => {
-        if (longPressTimer.current) clearTimeout(longPressTimer.current);
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
     };
 
     const toggleSelection = (id) => {
@@ -297,17 +335,15 @@ const Perangkat = () => {
         setSelectedIds(newSelection);
     };
 
-    // --- LOGIKA SELECT ALL (DIPERBAIKI) ---
+    // --- LOGIKA SELECT ALL ---
     const isAllSelected = filteredPerangkat.length > 0 && filteredPerangkat.every(p => selectedIds.has(p.id));
 
     const handleSelectAll = () => {
         if (isAllSelected) {
-            // Unselect All (Hapus yang sedang tampil dari set)
             const newSelection = new Set(selectedIds);
             filteredPerangkat.forEach(p => newSelection.delete(p.id));
             setSelectedIds(newSelection);
         } else {
-            // Select All (Tambahkan yang sedang tampil ke set)
             const newSelection = new Set(selectedIds);
             filteredPerangkat.forEach(p => newSelection.add(p.id));
             setSelectedIds(newSelection);
@@ -317,7 +353,7 @@ const Perangkat = () => {
     const cancelSelectionMode = () => {
         setIsSelectionMode(false);
         setSelectedIds(new Set());
-        setDragPos({ x: 0, y: 0 }); // Reset posisi drag
+        setMenuPos({ x: 0, y: 0 }); // Reset posisi drag
     };
 
     const toggleSelectionMode = () => {
@@ -329,31 +365,57 @@ const Perangkat = () => {
         }
     };
 
-    // --- DRAG LOGIC FOR ACTION BAR ---
-    const onDragStart = (e) => {
-        isDraggingRef.current = true;
+    // --- SMOOTH DRAG LOGIC FOR ACTION BAR (WINDOW LISTENERS) ---
+    
+    const startDrag = (e) => {
+        // Mencegah scroll default saat drag di mobile
+        // e.preventDefault() tidak dipanggil di sini agar touchstart tidak di-block secara agresif, 
+        // tapi kita tangani di CSS touch-action: none pada elemen popup.
+        setIsDragging(true);
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        dragStartPos.current = { x: clientX - dragPos.x, y: clientY - dragPos.y };
+        dragStartPos.current = {
+            x: clientX - menuPos.x,
+            y: clientY - menuPos.y
+        };
     };
 
-    const onDragMove = (e) => {
-        if (!isDraggingRef.current) return;
+    const onDrag = useCallback((e) => {
+        if (!isDragging) return;
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
         
-        // Prevent scrolling while dragging on mobile
-        if(e.cancelable && e.touches) e.preventDefault(); 
+        // Update posisi state
+        const newX = clientX - dragStartPos.current.x;
+        const newY = clientY - dragStartPos.current.y;
+        
+        setMenuPos({ x: newX, y: newY });
+    }, [isDragging]);
 
-        setDragPos({
-            x: clientX - dragStartPos.current.x,
-            y: clientY - dragStartPos.current.y
-        });
+    const stopDrag = () => {
+        setIsDragging(false);
     };
 
-    const onDragEnd = () => {
-        isDraggingRef.current = false;
-    };
+    // Global event listeners untuk drag yang smooth
+    useEffect(() => {
+        if (isDragging) {
+            window.addEventListener('mousemove', onDrag);
+            window.addEventListener('mouseup', stopDrag);
+            window.addEventListener('touchmove', onDrag, { passive: false });
+            window.addEventListener('touchend', stopDrag);
+        } else {
+            window.removeEventListener('mousemove', onDrag);
+            window.removeEventListener('mouseup', stopDrag);
+            window.removeEventListener('touchmove', onDrag);
+            window.removeEventListener('touchend', stopDrag);
+        }
+        return () => {
+            window.removeEventListener('mousemove', onDrag);
+            window.removeEventListener('mouseup', stopDrag);
+            window.removeEventListener('touchmove', onDrag);
+            window.removeEventListener('touchend', stopDrag);
+        };
+    }, [isDragging, onDrag]);
 
     // --- TRIGGER BULK ACTION ---
     const openBulkDeleteConfirm = (mode) => {
@@ -698,7 +760,7 @@ const Perangkat = () => {
                 
                 {isSelectionMode ? (
                     <>
-                        {/* Tombol massal dipindah ke bawah, tapi tombol batal tetap disini jika user prefer */}
+                        {/* Tombol massal dipindah ke bawah */}
                     </>
                 ) : (
                     <>
@@ -756,8 +818,9 @@ const Perangkat = () => {
                                         ${isSelected ? 'bg-blue-50 dark:bg-blue-900/30' : ''}
                                         hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer select-none
                                     `}
-                                    onDoubleClick={() => activateSelectionMode(p.id)}
-                                    onTouchStart={() => handleTouchStart(p.id)}
+                                    onDoubleClick={() => handleDoubleClick(p.id)}
+                                    onTouchStart={(e) => handleTouchStart(p.id, e)}
+                                    onTouchMove={handleTouchMove}
                                     onTouchEnd={handleTouchEnd}
                                     onClick={(e) => {
                                         if (isSelectionMode) {
@@ -820,16 +883,11 @@ const Perangkat = () => {
                     style={{ 
                         left: '50%', 
                         bottom: '1.5rem', 
-                        transform: `translate(calc(-50% + ${dragPos.x}px), ${dragPos.y}px)`,
+                        transform: `translate(calc(-50% + ${menuPos.x}px), ${menuPos.y}px)`,
                         touchAction: 'none' // Important for dragging on mobile
                     }}
-                    onMouseDown={onDragStart}
-                    onMouseMove={onDragMove}
-                    onMouseUp={onDragEnd}
-                    onMouseLeave={onDragEnd}
-                    onTouchStart={onDragStart}
-                    onTouchMove={onDragMove}
-                    onTouchEnd={onDragEnd}
+                    onMouseDown={startDrag}
+                    onTouchStart={startDrag}
                 >
                     <div className="flex items-center gap-2 text-gray-400">
                         <FiMove /> {/* Drag Handle Icon */}

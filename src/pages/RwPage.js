@@ -10,7 +10,7 @@ import InputField from '../components/common/InputField';
 import Button from '../components/common/Button';
 import OrganisasiDetailView from '../components/common/OrganisasiDetailView';
 import Pagination from '../components/common/Pagination'; 
-import { FiSearch, FiPlus, FiEdit, FiTrash2, FiEye, FiUpload, FiDownload, FiCheckSquare, FiX, FiAlertCircle } from 'react-icons/fi';
+import { FiSearch, FiPlus, FiEdit, FiTrash2, FiEye, FiUpload, FiDownload, FiCheckSquare, FiX, FiAlertCircle, FiMove, FiMoreHorizontal } from 'react-icons/fi';
 import { DESA_LIST, PENDIDIKAN_LIST, JENIS_KELAMIN_LIST } from '../utils/constants';
 import * as XLSX from 'xlsx';
 import { generateRwXLSX } from '../utils/generateRwXLSX';
@@ -88,11 +88,21 @@ const RwPage = () => {
     const [highlightedRow, setHighlightedRow] = useState(null);
     const [hasOpenedModalFromQuery, setHasOpenedModalFromQuery] = useState(false);
 
+    // --- STATE & REFS UNTUK SELEKSI & GESER POPUP (Sama dengan RtPage) ---
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState([]);
+    
+    // Gesture Refs
     const longPressTimer = useRef(null);
+    const isScrolling = useRef(false);
+    const touchStartCoords = useRef({ x: 0, y: 0 });
 
-    // Initial Load
+    // Draggable Menu State
+    const [menuPos, setMenuPos] = useState({ x: 0, y: 0 }); // Posisi popup
+    const [isDragging, setIsDragging] = useState(false);
+    const dragOffset = useRef({ x: 0, y: 0 });
+
+    // Initial Load Config
     useEffect(() => {
         const fetchConfig = async () => {
             try {
@@ -104,11 +114,21 @@ const RwPage = () => {
         fetchConfig();
     }, []);
 
+    // Set Initial Menu Position (Bottom Center)
+    useEffect(() => {
+        if (isSelectionMode) {
+            // Offset X dikurangi agar pas di tengah (asumsi lebar popup ~220px)
+            setMenuPos({ 
+                x: window.innerWidth / 2 - 110, 
+                y: window.innerHeight - 120 
+            });
+        }
+    }, [isSelectionMode]);
+
     // Set Default Desa
     useEffect(() => {
         if (currentUser) {
             if (currentUser.role === 'admin_kecamatan') {
-                // Default ke desa pertama agar pagination bekerja
                 setFilterDesa(SAFE_DESA_LIST[0] || 'all'); 
             } else {
                 setFilterDesa(currentUser.desa);
@@ -124,7 +144,6 @@ const RwPage = () => {
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const list = snapshot.docs
                 .map(doc => ({ id: doc.id, ...doc.data() }))
-                // Filter RW: Punya no_rw dan no_rt kosong
                 .filter(item => item.no_rw && !item.no_rt); 
             setDataList(list);
             setLoading(false);
@@ -138,23 +157,16 @@ const RwPage = () => {
     // --- LOGIKA AUTO-OPEN DARI DASHBOARD ---
     useEffect(() => {
         const editId = searchParams.get('edit');
-        // Pastikan data sudah termuat sebelum mencoba mencari
         if (editId && dataList.length > 0 && !hasOpenedModalFromQuery) {
             const itemToEdit = dataList.find(item => item.id === editId);
             if (itemToEdit) {
-                // 1. Set Filter Desa (admin kecamatan harus pindah ke desa ybs agar data terlihat)
                 if (currentUser.role === 'admin_kecamatan' && itemToEdit.desa) {
                     setFilterDesa(itemToEdit.desa);
                 }
-
-                // 2. Open Modal Edit
                 handleOpenModal('edit', itemToEdit);
                 setHasOpenedModalFromQuery(true);
-                
-                // 3. Highlight Baris
                 setHighlightedRow(editId);
                 
-                // 4. Scroll Otomatis ke Baris
                 setTimeout(() => {
                     const rowElement = document.getElementById(`row-${editId}`);
                     if (rowElement) {
@@ -162,12 +174,10 @@ const RwPage = () => {
                     }
                 }, 500);
 
-                // 5. Bersihkan URL (hapus ?edit=...)
                 const newSearchParams = new URLSearchParams(searchParams);
                 newSearchParams.delete('edit');
                 setSearchParams(newSearchParams, { replace: true });
 
-                // 6. Hapus highlight setelah 3 detik
                 setTimeout(() => setHighlightedRow(null), 3000);
             }
         }
@@ -176,7 +186,6 @@ const RwPage = () => {
     // Filter Data
     const filteredData = useMemo(() => {
         let data = dataList;
-        // Filter Wajib Desa (Kecuali jika 'all' dipilih, tapi pagination memaksa per desa)
         if (filterDesa !== 'all') {
             data = data.filter(item => item.desa === filterDesa);
         }
@@ -188,22 +197,56 @@ const RwPage = () => {
                 (item.no_rw || '').toLowerCase().includes(lowerSearch)
             );
         }
-        // Sort RW secara numerik
         return data.sort((a, b) => (parseInt(a.no_rw) || 0) - (parseInt(b.no_rw) || 0));
     }, [dataList, searchTerm, filterDesa]);
 
-    // --- LOGIKA SELEKSI (CLICK BOOK) ---
+    // --- LOGIKA SELEKSI (CHECKBOX) & GESTURE ---
+
     const activateSelectionMode = (id) => {
         if (!isSelectionMode) {
             setIsSelectionMode(true);
             setSelectedIds([id]);
-            if (longPressTimer.current) clearTimeout(longPressTimer.current);
+            if (navigator.vibrate) navigator.vibrate(50);
         }
     };
 
-    const handleDoubleClick = (id) => activateSelectionMode(id);
-    const handleTouchStart = (id) => { longPressTimer.current = setTimeout(() => activateSelectionMode(id), 800); };
-    const handleTouchEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
+    const handleRowDoubleClick = (id) => {
+        activateSelectionMode(id);
+    };
+
+    const handleRowTouchStart = (id, e) => {
+        isScrolling.current = false;
+        touchStartCoords.current = {
+            x: e.touches[0].clientX,
+            y: e.touches[0].clientY
+        };
+
+        longPressTimer.current = setTimeout(() => {
+            if (!isScrolling.current) {
+                activateSelectionMode(id);
+            }
+        }, 600);
+    };
+
+    const handleRowTouchMove = (e) => {
+        const moveX = Math.abs(e.touches[0].clientX - touchStartCoords.current.x);
+        const moveY = Math.abs(e.touches[0].clientY - touchStartCoords.current.y);
+
+        if (moveX > 10 || moveY > 10) {
+            isScrolling.current = true;
+            if (longPressTimer.current) {
+                clearTimeout(longPressTimer.current);
+                longPressTimer.current = null;
+            }
+        }
+    };
+
+    const handleRowTouchEnd = () => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    };
 
     const toggleSelection = (id) => {
         setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
@@ -214,13 +257,59 @@ const RwPage = () => {
         else setSelectedIds(filteredData.map(item => item.id));
     };
 
-    // Trigger Modal Hapus Massal
+    // --- LOGIKA DRAGGABLE POPUP MENU ---
+
+    const startDrag = (e) => {
+        setIsDragging(true);
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+        dragOffset.current = {
+            x: clientX - menuPos.x,
+            y: clientY - menuPos.y
+        };
+    };
+
+    const onDrag = (e) => {
+        if (!isDragging) return;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+        const newX = clientX - dragOffset.current.x;
+        const newY = clientY - dragOffset.current.y;
+
+        setMenuPos({ x: newX, y: newY });
+    };
+
+    const stopDrag = () => {
+        setIsDragging(false);
+    };
+
+    useEffect(() => {
+        if (isDragging) {
+            window.addEventListener('mousemove', onDrag);
+            window.addEventListener('mouseup', stopDrag);
+            window.addEventListener('touchmove', onDrag, { passive: false });
+            window.addEventListener('touchend', stopDrag);
+        } else {
+            window.removeEventListener('mousemove', onDrag);
+            window.removeEventListener('mouseup', stopDrag);
+            window.removeEventListener('touchmove', onDrag);
+            window.removeEventListener('touchend', stopDrag);
+        }
+        return () => {
+            window.removeEventListener('mousemove', onDrag);
+            window.removeEventListener('mouseup', stopDrag);
+            window.removeEventListener('touchmove', onDrag);
+            window.removeEventListener('touchend', stopDrag);
+        };
+    }, [isDragging]);
+
     const openDeleteSelectedConfirm = () => {
         if (selectedIds.length === 0) return;
         setIsDeleteSelectedConfirmOpen(true);
     };
 
-    // Eksekusi Hapus Massal
     const handleDeleteSelected = async () => {
         setIsSubmitting(true);
         try {
@@ -230,7 +319,6 @@ const RwPage = () => {
             });
             await batch.commit();
             showNotification(`${selectedIds.length} data berhasil dihapus.`, 'success');
-            // Reset Mode
             setIsSelectionMode(false);
             setSelectedIds([]);
         } catch (error) {
@@ -258,7 +346,7 @@ const RwPage = () => {
         if (!formData.desa) return showNotification("Desa wajib diisi!", 'error');
         setIsSubmitting(true);
         try {
-            const dataToSave = { ...formData, no_rt: "" }; // Pastikan ini data RW (no_rt kosong)
+            const dataToSave = { ...formData, no_rt: "" }; // RW tidak punya RT
             ['dusun', 'no_hp', 'tempat_lahir'].forEach(f => { if (!dataToSave[f]) dataToSave[f] = ''; });
 
             if (selectedItem) {
@@ -344,9 +432,9 @@ const RwPage = () => {
                         pendidikan: pendidikan,
                         periode: String(row['P'] || ''),
                         no_rw: String(row['Q'] || ''),
-                        dusun: String(row['R'] || ''), // Kolom R untuk Dusun di format RW
-                        no_hp: String(row['S'] || ''), // Kolom S untuk HP di format RW
-                        no_rt: "" // RW tidak punya RT
+                        dusun: String(row['R'] || ''),
+                        no_hp: String(row['S'] || ''),
+                        no_rt: ""
                     };
 
                     if (newData.nama && newData.no_rw) {
@@ -377,12 +465,6 @@ const RwPage = () => {
         if (filteredData.length === 0) return showNotification("Tidak ada data.", "warning");
         try { await generateRwXLSX(filteredData, db, exportConfig, currentUser); } 
         catch (error) { showNotification(error.message, 'error'); }
-    };
-
-    // Delete Single
-    const openDeleteConfirm = (item) => {
-        setItemToDelete(item);
-        setIsDeleteConfirmOpen(true);
     };
 
     const handleDelete = async () => {
@@ -450,18 +532,21 @@ const RwPage = () => {
                                 <tr><td colSpan="6" className="text-center py-8"><Spinner /></td></tr>
                             ) : filteredData.length > 0 ? filteredData.map((item, index) => (
                                 <tr 
-                                    id={`row-${item.id}`} // Tambahan ID untuk Scroll
+                                    id={`row-${item.id}`}
                                     key={item.id} 
                                     className={`border-b dark:border-gray-700 transition-colors select-none cursor-pointer 
                                         ${selectedIds.includes(item.id) ? 'bg-blue-50 dark:bg-blue-900/30' : ''} 
                                         ${highlightedRow === item.id ? 'bg-yellow-100 dark:bg-yellow-900 ring-2 ring-yellow-400' : 'hover:bg-gray-50 dark:hover:bg-gray-600'}
                                     `}
-                                    onDoubleClick={() => activateSelectionMode(item.id)}
-                                    onTouchStart={() => handleTouchStart(item.id)}
-                                    onTouchEnd={handleTouchEnd}
+                                    // --- INTERAKSI GESTURE ---
+                                    onDoubleClick={() => handleRowDoubleClick(item.id)}
+                                    onTouchStart={(e) => handleRowTouchStart(item.id, e)}
+                                    onTouchMove={handleRowTouchMove}
+                                    onTouchEnd={handleRowTouchEnd}
                                     onClick={() => isSelectionMode && toggleSelection(item.id)}
                                 >
                                     <td className="px-6 py-4 font-medium">
+                                        {/* Tampilan Checkbox (Click book seleksi) */}
                                         {isSelectionMode ? (
                                             <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${selectedIds.includes(item.id) ? 'bg-blue-600 border-blue-600' : 'border-gray-400'}`}>
                                                 {selectedIds.includes(item.id) && <FiCheckSquare className="text-white w-3 h-3" />}
@@ -503,31 +588,58 @@ const RwPage = () => {
                  )}
                  
                  <div className="p-4 text-xs text-gray-400 bg-gray-50 dark:bg-gray-900 text-center flex justify-center gap-1">
-                    <FiAlertCircle/> Tip: Klik 2x (PC) atau Tahan (HP) untuk menghapus banyak data.
+                    <FiAlertCircle/> Tip: Klik 2x (PC) atau Tahan (HP) pada baris data untuk opsi hapus banyak.
                  </div>
             </div>
 
-            {/* ACTION BAR BAWAH */}
+            {/* --- DRAGGABLE ACTION MENU POPUP (Compact Pill Shape) --- */}
             {isSelectionMode && (
-                <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl rounded-full px-6 py-3 flex items-center gap-6 z-50 animate-bounce-in">
-                    <div className="flex items-center gap-2">
-                        <span className="bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-full">{selectedIds.length}</span>
-                        <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Data Terpilih</span>
+                <div 
+                    style={{
+                        position: 'fixed',
+                        left: `${menuPos.x}px`,
+                        top: `${menuPos.y}px`,
+                        zIndex: 9999,
+                        touchAction: 'none' // Mencegah scroll halaman saat drag
+                    }}
+                    // Desain: Lonjong (rounded-full), compact, shadow besar
+                    className="flex items-center gap-3 pl-2 pr-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 shadow-2xl rounded-full animate-in fade-in zoom-in duration-200 backdrop-blur-sm bg-opacity-95"
+                >
+                    {/* Handle Drag (Area Geser) */}
+                    <div 
+                        onMouseDown={startDrag}
+                        onTouchStart={startDrag}
+                        className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-full cursor-move transition-colors group"
+                        title="Geser Menu"
+                    >
+                        <FiMove className="text-gray-500 dark:text-gray-400 group-hover:text-blue-500" size={16} />
+                        <span className="bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center select-none">
+                            {selectedIds.length}
+                        </span>
                     </div>
-                    <div className="h-6 w-px bg-gray-300 dark:bg-gray-600"></div>
-                    <button 
-                        onClick={openDeleteSelectedConfirm}
-                        disabled={selectedIds.length === 0}
-                        className="text-red-600 hover:text-red-700 font-semibold text-sm flex items-center gap-1 disabled:opacity-50"
-                    >
-                        <FiTrash2 /> Hapus
-                    </button>
-                    <button 
-                        onClick={() => { setIsSelectionMode(false); setSelectedIds([]); }}
-                        className="text-gray-500 hover:text-gray-700 dark:text-gray-400 font-medium text-sm flex items-center gap-1"
-                    >
-                        <FiX /> Batal
-                    </button>
+
+                    {/* Pembatas Vertical */}
+                    <div className="h-8 w-px bg-gray-200 dark:bg-gray-700"></div>
+
+                    {/* Tombol Aksi (Icon Only untuk Compactness) */}
+                    <div className="flex items-center gap-1">
+                        <button 
+                            onClick={openDeleteSelectedConfirm}
+                            disabled={selectedIds.length === 0}
+                            title="Hapus Data Terpilih"
+                            className="p-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <FiTrash2 size={20} />
+                        </button>
+                        
+                        <button 
+                            onClick={() => { setIsSelectionMode(false); setSelectedIds([]); }}
+                            title="Batal Seleksi"
+                            className="p-2.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-all active:scale-95"
+                        >
+                            <FiX size={20} />
+                        </button>
+                    </div>
                 </div>
             )}
             
@@ -583,7 +695,7 @@ const RwPage = () => {
                 variant="danger"
             />
 
-            {/* Modal Konfirmasi Hapus Massal (BARU) */}
+            {/* Modal Konfirmasi Hapus Massal */}
             <ConfirmationModal 
                 isOpen={isDeleteSelectedConfirmOpen} 
                 onClose={() => setIsDeleteSelectedConfirmOpen(false)} 

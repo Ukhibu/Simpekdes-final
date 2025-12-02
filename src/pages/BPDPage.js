@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { db } from '../firebase';
-import { collection, query, writeBatch, getDoc, doc, getDocs, onSnapshot, updateDoc, where } from 'firebase/firestore';
+import { collection, query, writeBatch, getDoc, doc, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -21,8 +21,7 @@ import { DESA_LIST } from '../utils/constants';
 import { createNotificationForAdmins, createNotificationForDesaAdmins } from '../utils/notificationService';
 
 // Ikon
-import { FiEdit, FiTrash2, FiSearch, FiFilter, FiPlus, FiUpload, FiDownload, FiEye } from 'react-icons/fi';
-
+import { FiEdit, FiTrash2, FiSearch, FiFilter, FiPlus, FiUpload, FiDownload, FiEye, FiCheckSquare, FiX, FiMove, FiAlertCircle } from 'react-icons/fi';
 
 // Daftar statis & Komponen Detail
 const JABATAN_BPD_LIST = ["Ketua", "Wakil Ketua", "Sekretaris", "Anggota"];
@@ -108,14 +107,30 @@ const BPDPage = () => {
     const [isUploading, setIsUploading] = useState(false);
     const [uploadConfig, setUploadConfig] = useState(null);
     
+    // State Hapus
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [bpdToDelete, setBpdToDelete] = useState(null);
+    const [isDeleteSelectedConfirmOpen, setIsDeleteSelectedConfirmOpen] = useState(false);
+
     const [currentDesa, setCurrentDesa] = useState(DESA_LIST[0]);
     const [searchParams, setSearchParams] = useSearchParams();
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const navigate = useNavigate();
     const [highlightedRow, setHighlightedRow] = useState(null);
-    const [selectedRows, setSelectedRows] = useState(new Set());
+
+    // --- STATE & REFS UNTUK SELEKSI & GESER POPUP (Sama dengan RtPage) ---
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedIds, setSelectedIds] = useState([]);
+    
+    // Gesture Refs
+    const longPressTimer = useRef(null);
+    const isScrolling = useRef(false);
+    const touchStartCoords = useRef({ x: 0, y: 0 });
+
+    // Draggable Menu State
+    const [menuPos, setMenuPos] = useState({ x: 0, y: 0 }); // Posisi popup
+    const [isDragging, setIsDragging] = useState(false);
+    const dragOffset = useRef({ x: 0, y: 0 });
 
     // --- DEKLARASI FUNGSI ---
     const handleOpenModal = useCallback((bpd = null, mode = 'add') => {
@@ -144,6 +159,16 @@ const BPDPage = () => {
             setCurrentDesa(currentUser.desa);
         }
     }, [currentUser]);
+
+    // Set Initial Menu Position (Bottom Center)
+    useEffect(() => {
+        if (isSelectionMode) {
+            setMenuPos({ 
+                x: window.innerWidth / 2 - 110, 
+                y: window.innerHeight - 120 
+            });
+        }
+    }, [isSelectionMode]);
 
     useEffect(() => {
         const fetchExtraData = async () => {
@@ -213,6 +238,162 @@ const BPDPage = () => {
         }
     }, [allBpd, searchParams, currentUser.role, currentDesa, handleOpenModal, setSearchParams]);
     
+    // Filter Data
+    const filteredBpd = useMemo(() => {
+        if (!currentUser) return [];
+        let data = allBpd;
+
+        if (currentUser.role === 'admin_kecamatan') {
+            if (currentDesa !== 'all') {
+                data = data.filter(b => b.desa === currentDesa);
+            }
+        } else {
+            data = data.filter(b => b.desa === currentUser.desa);
+        }
+        
+        if (searchTerm) {
+            const searchLower = searchTerm.toLowerCase();
+            data = data.filter(b =>
+                (b.nama && b.nama.toLowerCase().includes(searchLower)) ||
+                (b.jabatan && b.jabatan.toLowerCase().includes(searchLower))
+            );
+        }
+        if (periodeFilter) {
+            data = data.filter(b => b.periode && b.periode.includes(periodeFilter));
+        }
+        return data;
+    }, [allBpd, searchTerm, currentUser, currentDesa, periodeFilter]);
+
+    // --- LOGIKA SELEKSI (CHECKBOX) & GESTURE ---
+
+    const activateSelectionMode = (id) => {
+        if (!isSelectionMode) {
+            setIsSelectionMode(true);
+            setSelectedIds([id]);
+            if (navigator.vibrate) navigator.vibrate(50);
+        }
+    };
+
+    const handleRowDoubleClick = (id) => {
+        activateSelectionMode(id);
+    };
+
+    const handleRowTouchStart = (id, e) => {
+        isScrolling.current = false;
+        touchStartCoords.current = {
+            x: e.touches[0].clientX,
+            y: e.touches[0].clientY
+        };
+
+        longPressTimer.current = setTimeout(() => {
+            if (!isScrolling.current) {
+                activateSelectionMode(id);
+            }
+        }, 600);
+    };
+
+    const handleRowTouchMove = (e) => {
+        const moveX = Math.abs(e.touches[0].clientX - touchStartCoords.current.x);
+        const moveY = Math.abs(e.touches[0].clientY - touchStartCoords.current.y);
+
+        if (moveX > 10 || moveY > 10) {
+            isScrolling.current = true;
+            if (longPressTimer.current) {
+                clearTimeout(longPressTimer.current);
+                longPressTimer.current = null;
+            }
+        }
+    };
+
+    const handleRowTouchEnd = () => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    };
+
+    const toggleSelection = (id) => {
+        setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.length === filteredBpd.length) setSelectedIds([]);
+        else setSelectedIds(filteredBpd.map(item => item.id));
+    };
+
+    // --- LOGIKA DRAGGABLE POPUP MENU ---
+
+    const startDrag = (e) => {
+        setIsDragging(true);
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+        dragOffset.current = {
+            x: clientX - menuPos.x,
+            y: clientY - menuPos.y
+        };
+    };
+
+    const onDrag = (e) => {
+        if (!isDragging) return;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+        const newX = clientX - dragOffset.current.x;
+        const newY = clientY - dragOffset.current.y;
+
+        setMenuPos({ x: newX, y: newY });
+    };
+
+    const stopDrag = () => {
+        setIsDragging(false);
+    };
+
+    useEffect(() => {
+        if (isDragging) {
+            window.addEventListener('mousemove', onDrag);
+            window.addEventListener('mouseup', stopDrag);
+            window.addEventListener('touchmove', onDrag, { passive: false });
+            window.addEventListener('touchend', stopDrag);
+        } else {
+            window.removeEventListener('mousemove', onDrag);
+            window.removeEventListener('mouseup', stopDrag);
+            window.removeEventListener('touchmove', onDrag);
+            window.removeEventListener('touchend', stopDrag);
+        }
+        return () => {
+            window.removeEventListener('mousemove', onDrag);
+            window.removeEventListener('mouseup', stopDrag);
+            window.removeEventListener('touchmove', onDrag);
+            window.removeEventListener('touchend', stopDrag);
+        };
+    }, [isDragging]);
+
+    const openDeleteSelectedConfirm = () => {
+        if (selectedIds.length === 0) return;
+        setIsDeleteSelectedConfirmOpen(true);
+    };
+
+    const handleDeleteSelected = async () => {
+        setIsSubmitting(true);
+        try {
+            const batch = writeBatch(db);
+            selectedIds.forEach(id => {
+                batch.delete(doc(db, 'bpd', id));
+            });
+            await batch.commit();
+            showNotification(`${selectedIds.length} data BPD berhasil dihapus.`, 'success');
+            setIsSelectionMode(false);
+            setSelectedIds([]);
+        } catch (error) {
+            showNotification(`Gagal menghapus: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
+            setIsDeleteSelectedConfirmOpen(false);
+        }
+    };
+    
+    // --- FORM HANDLING ---
     const handleFormChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
@@ -256,25 +437,15 @@ const BPDPage = () => {
 
     const confirmDelete = (bpd) => {
         setBpdToDelete(bpd);
-        setSelectedRows(new Set()); // Kosongkan pilihan massal saat hapus tunggal
         setIsDeleteConfirmOpen(true);
     };
 
     const executeDelete = async () => {
+        if (!bpdToDelete) return;
         setIsSubmitting(true);
         try {
-            if (bpdToDelete) { // Hapus satu data
-                await deleteItem(bpdToDelete.id);
-                showNotification(`Data BPD "${bpdToDelete.nama}" berhasil dihapus.`, 'success');
-            } else if (selectedRows.size > 0) { // Hapus data massal
-                const batch = writeBatch(db);
-                selectedRows.forEach(id => {
-                    batch.delete(doc(db, 'bpd', id));
-                });
-                await batch.commit();
-                showNotification(`${selectedRows.size} data BPD berhasil dihapus.`, 'success');
-                setSelectedRows(new Set());
-            }
+            await deleteItem(bpdToDelete.id);
+            showNotification(`Data BPD "${bpdToDelete.nama}" berhasil dihapus.`, 'success');
         } catch (error) {
             showNotification(`Gagal menghapus data: ${error.message}`, 'error');
         } finally {
@@ -283,6 +454,42 @@ const BPDPage = () => {
             setBpdToDelete(null);
         }
     };
+
+    // --- XLSX EXPORT & IMPORT ---
+    const handleExportXLSX = useCallback((scope) => {
+        setIsExportModalOpen(false);
+        let dataToExport;
+
+        if (scope === 'all') {
+            dataToExport = allBpd;
+        } else { 
+            dataToExport = filteredBpd;
+        }
+
+        if (dataToExport.length === 0) {
+            showNotification("Tidak ada data untuk diekspor.", "warning");
+            return;
+        }
+        
+        const exportDetails = {
+            bpdData: dataToExport,
+            role: currentUser.role,
+            desa: scope === 'all' ? 'all' : (currentUser.desa || currentDesa),
+            periodeFilter: periodeFilter,
+            exportConfig: exportConfig,
+            allPerangkat: allPerangkat
+        };
+
+        generateBpdXLSX(exportDetails);
+    }, [allBpd, filteredBpd, currentUser, currentDesa, periodeFilter, exportConfig, allPerangkat, showNotification]);
+
+    const handleExportClick = useCallback(() => {
+        if (currentUser.role === 'admin_kecamatan') {
+            setIsExportModalOpen(true);
+        } else {
+            handleExportXLSX('current');
+        }
+    }, [currentUser, handleExportXLSX]);
 
     const handleFileUpload = async (e) => {
         const file = e.target.files[0];
@@ -377,117 +584,24 @@ const BPDPage = () => {
         reader.readAsArrayBuffer(file);
     };
     
-    const filteredBpd = useMemo(() => {
-        if (!currentUser) return [];
-        let data = allBpd;
-
-        if (currentUser.role === 'admin_kecamatan') {
-            if (currentDesa !== 'all') {
-                data = data.filter(b => b.desa === currentDesa);
-            }
-        } else {
-            data = data.filter(b => b.desa === currentUser.desa);
-        }
-        
-        if (searchTerm) {
-            const searchLower = searchTerm.toLowerCase();
-            data = data.filter(b =>
-                (b.nama && b.nama.toLowerCase().includes(searchLower)) ||
-                (b.jabatan && b.jabatan.toLowerCase().includes(searchLower))
-            );
-        }
-        if (periodeFilter) {
-            data = data.filter(b => b.periode && b.periode.includes(periodeFilter));
-        }
-        return data;
-    }, [allBpd, searchTerm, currentUser, currentDesa, periodeFilter]);
-    
-    const handleExportXLSX = useCallback((scope) => {
-        setIsExportModalOpen(false);
-        let dataToExport;
-
-        if (scope === 'all') {
-            dataToExport = allBpd;
-        } else { 
-            dataToExport = filteredBpd;
-        }
-
-        if (dataToExport.length === 0) {
-            showNotification("Tidak ada data untuk diekspor.", "warning");
-            return;
-        }
-        
-        const exportDetails = {
-            bpdData: dataToExport,
-            role: currentUser.role,
-            desa: scope === 'all' ? 'all' : (currentUser.desa || currentDesa),
-            periodeFilter: periodeFilter,
-            exportConfig: exportConfig,
-            allPerangkat: allPerangkat
-        };
-
-        generateBpdXLSX(exportDetails);
-    }, [allBpd, filteredBpd, currentUser, currentDesa, periodeFilter, exportConfig, allPerangkat, showNotification]);
-
-    const handleExportClick = useCallback(() => {
-        if (currentUser.role === 'admin_kecamatan') {
-            setIsExportModalOpen(true);
-        } else {
-            handleExportXLSX('current');
-        }
-    }, [currentUser, handleExportXLSX]);
-
-    const handleSelectRow = (id) => {
-        setSelectedRows(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(id)) {
-                newSet.delete(id);
-            } else {
-                newSet.add(id);
-            }
-            return newSet;
-        });
-    };
-
-    const handleSelectAll = () => {
-        if (selectedRows.size === filteredBpd.length) {
-            setSelectedRows(new Set());
-        } else {
-            setSelectedRows(new Set(filteredBpd.map(p => p.id)));
-        }
-    };
-
-    const confirmDeleteSelected = () => {
-        if (selectedRows.size === 0) return;
-        setBpdToDelete(null); // Pastikan hapus tunggal tidak aktif
-        setIsDeleteConfirmOpen(true);
-    };
-    
     const getModalTitle = () => {
         if (modalMode === 'view') return 'Detail Data Anggota BPD';
         if (modalMode === 'edit') return 'Edit Data BPD';
         return 'Tambah Data BPD';
     };
     
-    const highlightClass = (id) => highlightedRow === id ? 'highlight-row' : '';
+    const highlightClass = (id) => highlightedRow === id ? 'bg-yellow-100 dark:bg-yellow-900 ring-2 ring-yellow-400' : '';
 
     if (loading || loadingExtras) return <Spinner size="lg" />;
 
     return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md pb-20">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <InputField type="text" placeholder={`Cari nama atau jabatan...`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} icon={<FiSearch />} />
                 <InputField type="text" placeholder="Filter periode (cth: 2019-2025)" value={periodeFilter} onChange={(e) => setPeriodeFilter(e.target.value)} icon={<FiFilter />} />
             </div>
             <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
-                <div>
-                    {selectedRows.size > 0 && (
-                        <Button onClick={confirmDeleteSelected} variant="danger">
-                            <FiTrash2 className="mr-2"/> Hapus ({selectedRows.size}) Terpilih
-                        </Button>
-                    )}
-                </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 justify-end w-full">
                     <label className="btn btn-warning cursor-pointer"><FiUpload className="mr-2"/> 
                         <input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading}/>
                         {isUploading ? 'Mengimpor...' : 'Impor Data'}
@@ -497,37 +611,46 @@ const BPDPage = () => {
                 </div>
             </div>
             
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto min-h-[400px]">
                 <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
                     <thead className="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">
                         <tr>
-                            <th className="p-4">
-                                <input
-                                    type="checkbox"
-                                    className="form-checkbox"
-                                    onChange={handleSelectAll}
-                                    checked={selectedRows.size > 0 && selectedRows.size === filteredBpd.length}
-                                    indeterminate={selectedRows.size > 0 && selectedRows.size < filteredBpd.length}
-                                />
+                            <th className="p-4 w-10">
+                                {isSelectionMode ? (
+                                    <button onClick={toggleSelectAll} className="text-gray-600">
+                                        {selectedIds.length === filteredBpd.length ? <FiCheckSquare size={18} className="text-blue-600"/> : <div className="w-4 h-4 border-2 border-gray-400 rounded"></div>}
+                                    </button>
+                                ) : 'No'}
                             </th>
                             <th className="px-6 py-3">Nama</th>
                             {currentUser.role === 'admin_kecamatan' && <th className="px-6 py-3">Desa</th>}
                             <th className="px-6 py-3">Jabatan</th>
                             <th className="px-6 py-3">Periode</th>
-                            <th className="px-6 py-3">Aksi</th>
+                            <th className="px-6 py-3 text-center">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
                         {filteredBpd.length > 0 ? (
-                            filteredBpd.map((p) => (
-                                <tr key={p.id} className={`bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 ${highlightClass(p.id)} ${selectedRows.has(p.id) ? 'bg-blue-50 dark:bg-gray-700' : ''}`}>
-                                    <td className="p-4">
-                                        <input
-                                            type="checkbox"
-                                            className="form-checkbox"
-                                            checked={selectedRows.has(p.id)}
-                                            onChange={() => handleSelectRow(p.id)}
-                                        />
+                            filteredBpd.map((p, index) => (
+                                <tr 
+                                    key={p.id} 
+                                    className={`bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors select-none cursor-pointer
+                                        ${highlightClass(p.id)} 
+                                        ${selectedIds.includes(p.id) ? 'bg-blue-50 dark:bg-blue-900/30' : ''}
+                                    `}
+                                    // --- INTERAKSI GESTURE ---
+                                    onDoubleClick={() => handleRowDoubleClick(p.id)}
+                                    onTouchStart={(e) => handleRowTouchStart(p.id, e)}
+                                    onTouchMove={handleRowTouchMove}
+                                    onTouchEnd={handleRowTouchEnd}
+                                    onClick={() => isSelectionMode && toggleSelection(p.id)}
+                                >
+                                    <td className="p-4 font-medium">
+                                        {isSelectionMode ? (
+                                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${selectedIds.includes(p.id) ? 'bg-blue-600 border-blue-600' : 'border-gray-400'}`}>
+                                                {selectedIds.includes(p.id) && <FiCheckSquare className="text-white w-3 h-3" />}
+                                            </div>
+                                        ) : index + 1}
                                     </td>
                                     <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
                                         <p className="font-semibold">{p.nama}</p>
@@ -536,10 +659,12 @@ const BPDPage = () => {
                                     {currentUser.role === 'admin_kecamatan' && <td className="px-6 py-4">{p.desa}</td>}
                                     <td className="px-6 py-4">{p.jabatan}</td>
                                     <td className="px-6 py-4">{p.periode}</td>
-                                    <td className="px-6 py-4 flex space-x-3">
-                                        <button onClick={() => handleOpenModal(p, 'view')} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" title="Lihat Detail"><FiEye /></button>
-                                        <button onClick={() => handleOpenModal(p, 'edit')} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300" title="Edit"><FiEdit /></button>
-                                        <button onClick={() => confirmDelete(p)} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Hapus"><FiTrash2 /></button>
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center justify-center space-x-2">
+                                            <button onClick={(e) => { e.stopPropagation(); handleOpenModal(p, 'view'); }} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" title="Lihat Detail"><FiEye size={18}/></button>
+                                            <button onClick={(e) => { e.stopPropagation(); handleOpenModal(p, 'edit'); }} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300" title="Edit"><FiEdit size={18}/></button>
+                                            <button onClick={(e) => { e.stopPropagation(); confirmDelete(p); }} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Hapus"><FiTrash2 size={18}/></button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))
@@ -554,12 +679,68 @@ const BPDPage = () => {
                 </table>
             </div>
 
+            {/* --- DRAGGABLE ACTION MENU POPUP (Compact Pill Shape) --- */}
+            {isSelectionMode && (
+                <div 
+                    style={{
+                        position: 'fixed',
+                        left: `${menuPos.x}px`,
+                        top: `${menuPos.y}px`,
+                        zIndex: 9999,
+                        touchAction: 'none' // Mencegah scroll halaman saat drag
+                    }}
+                    className="flex items-center gap-3 pl-2 pr-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 shadow-2xl rounded-full animate-in fade-in zoom-in duration-200 backdrop-blur-sm bg-opacity-95"
+                >
+                    {/* Handle Drag (Area Geser) */}
+                    <div 
+                        onMouseDown={startDrag}
+                        onTouchStart={startDrag}
+                        className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-full cursor-move transition-colors group"
+                        title="Geser Menu"
+                    >
+                        <FiMove className="text-gray-500 dark:text-gray-400 group-hover:text-blue-500" size={16} />
+                        <span className="bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center select-none">
+                            {selectedIds.length}
+                        </span>
+                    </div>
+
+                    {/* Pembatas Vertical */}
+                    <div className="h-8 w-px bg-gray-200 dark:bg-gray-700"></div>
+
+                    {/* Tombol Aksi (Icon Only untuk Compactness) */}
+                    <div className="flex items-center gap-1">
+                        <button 
+                            onClick={openDeleteSelectedConfirm}
+                            disabled={selectedIds.length === 0}
+                            title="Hapus Data Terpilih"
+                            className="p-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <FiTrash2 size={20} />
+                        </button>
+                        
+                        <button 
+                            onClick={() => { setIsSelectionMode(false); setSelectedIds([]); }}
+                            title="Batal Seleksi"
+                            className="p-2.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-all active:scale-95"
+                        >
+                            <FiX size={20} />
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            <div className="p-4 text-xs text-gray-400 bg-gray-50 dark:bg-gray-900 text-center flex justify-center gap-1 mt-4 rounded-lg">
+                <FiAlertCircle/> Tip: Klik 2x (PC) atau Tahan (HP) pada baris data untuk opsi hapus banyak.
+            </div>
+
             {currentUser?.role === 'admin_kecamatan' && (
-                <Pagination
-                    desaList={DESA_LIST}
-                    currentDesa={currentDesa}
-                    onPageChange={setCurrentDesa}
-                />
+                <div className="mt-4">
+                    <Pagination
+                        desaList={DESA_LIST}
+                        currentDesa={currentDesa}
+                        onPageChange={setCurrentDesa}
+                    />
+                </div>
             )}
 
             <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={getModalTitle()}>
@@ -633,12 +814,19 @@ const BPDPage = () => {
                 onClose={() => setIsDeleteConfirmOpen(false)}
                 onConfirm={executeDelete}
                 isLoading={isSubmitting}
-                title={bpdToDelete ? "Konfirmasi Hapus Anggota BPD" : "Konfirmasi Hapus Data Terpilih"}
-                message={
-                    bpdToDelete
-                        ? `Apakah Anda yakin ingin menghapus data anggota BPD "${bpdToDelete?.nama}"? Tindakan ini tidak dapat dibatalkan.`
-                        : `Apakah Anda yakin ingin menghapus ${selectedRows.size} data BPD yang dipilih? Tindakan ini tidak dapat dibatalkan.`
-                }
+                title="Konfirmasi Hapus Anggota BPD"
+                message={`Apakah Anda yakin ingin menghapus data anggota BPD "${bpdToDelete?.nama}"? Tindakan ini tidak dapat dibatalkan.`}
+            />
+
+            {/* Modal Hapus Massal */}
+            <ConfirmationModal 
+                isOpen={isDeleteSelectedConfirmOpen} 
+                onClose={() => setIsDeleteSelectedConfirmOpen(false)} 
+                onConfirm={handleDeleteSelected} 
+                isLoading={isSubmitting} 
+                title="Hapus Data Terpilih" 
+                message={`Yakin ingin menghapus ${selectedIds.length} data terpilih? Tindakan ini tidak dapat dibatalkan.`} 
+                variant="danger"
             />
 
             {currentUser.role === 'admin_kecamatan' && (
@@ -659,4 +847,3 @@ const BPDPage = () => {
 };
 
 export default BPDPage;
-

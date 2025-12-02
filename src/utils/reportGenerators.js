@@ -68,15 +68,19 @@ const generatePDF = (options) => {
     const pageHeight = doc.internal.pageSize.getHeight();
     const pageWidth = doc.internal.pageSize.getWidth();
 
+    // Logic Tanda Tangan
+    // Jika desa === 'all', gunakan konfigurasi Camat dari exportConfig
     const signer = (desa === 'all' || !desa) ? {
         location: 'Punggelan',
         jabatan: exportConfig?.jabatanPenandaTangan || 'CAMAT PUNGGELAN',
         nama: exportConfig?.namaPenandaTangan || '(..................)',
+        pangkat: exportConfig?.pangkatPenandaTangan || '', // Mengambil Pangkat dari Config
         nip: exportConfig?.nipPenandaTangan ? `NIP. ${exportConfig.nipPenandaTangan}` : ''
     } : {
         location: desa,
         jabatan: `KEPALA DESA ${desa.toUpperCase()}`,
         nama: allPerangkat?.find(p => p.desa === desa && p.jabatan?.toLowerCase().includes('kepala desa'))?.nama || '(..................)',
+        pangkat: '',
         nip: ''
     };
 
@@ -90,10 +94,21 @@ const generatePDF = (options) => {
     doc.setFontSize(12);
     doc.text(`${signer.location}, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`, signatureX, startY_signature, { align: 'center' });
     doc.text(signer.jabatan, signatureX, startY_signature + 7, { align: 'center' });
+    
+    // Nama (Bold)
     doc.setFont('helvetica', 'bold');
     doc.text(signer.nama, signatureX, startY_signature + 28, { align: 'center' });
     doc.setFont('helvetica', 'normal');
-    if (signer.nip) doc.text(signer.nip, signatureX, startY_signature + 35, { align: 'center' });
+
+    // Pangkat & NIP
+    // Jika ada pangkat, tampilkan di bawah nama, lalu NIP di bawahnya
+    if (signer.pangkat) {
+        doc.text(signer.pangkat, signatureX, startY_signature + 34, { align: 'center' });
+        if (signer.nip) doc.text(signer.nip, signatureX, startY_signature + 40, { align: 'center' });
+    } else {
+        // Fallback jika tidak ada pangkat (posisi NIP seperti semula)
+        if (signer.nip) doc.text(signer.nip, signatureX, startY_signature + 35, { align: 'center' });
+    }
 
     doc.save(`${title.replace(/ /g, '_')}_${desa || 'Kecamatan'}.pdf`);
 };
@@ -127,17 +142,60 @@ export const generateAsetPDF = (data, desa, exportConfig, allPerangkat) => {
 };
 
 export const generateRekapRtRwPDF = (data, exportConfig, allPerangkat) => {
-    const headers = [['No', 'Desa', 'Jabatan', 'Nomor', 'Nama Ketua', 'Dusun/Dukuh']];
-    const body = data.map((item, index) => [
-        index + 1,
-        item.desa || '-',
-        item.jabatan || '-',
-        item.nomor || '-',
-        item.nama || '-',
-        item.dusun || '-'
+    // Definisi Header sesuai dengan Preview LaporanPage.js
+    const headers = [['NO', 'NAMA DESA', 'JML RW', 'JML RT', 'JML DUSUN', 'JML DUKUH']];
+
+    // Variabel untuk menghitung Total
+    let totalRw = 0;
+    let totalRt = 0;
+    let totalDusun = 0;
+    let totalDukuh = 0;
+
+    // Mapping Data Body
+    // Kita asumsikan 'data' sudah dalam bentuk ter-agregasi (processed) dari LaporanPage.js
+    // yaitu array object: { namaDesa, jumlahRw, jumlahRt, jumlahDusun, jumlahDukuh }
+    const body = data.map((item, index) => {
+        const rw = item.jumlahRw || 0;
+        const rt = item.jumlahRt || 0;
+        const dusun = item.jumlahDusun || 0;
+        const dukuh = item.jumlahDukuh || 0;
+
+        // Akumulasi Total
+        totalRw += rw;
+        totalRt += rt;
+        totalDusun += dusun;
+        totalDukuh += dukuh;
+
+        return [
+            index + 1,
+            item.namaDesa || '-',
+            rw,
+            rt,
+            dusun,
+            dukuh
+        ];
+    });
+
+    // Menambahkan Baris TOTAL KECAMATAN di bagian bawah
+    // colSpan: 2 pada kolom pertama untuk menggabungkan "NO" dan "NAMA DESA" agar teks "TOTAL KECAMATAN" muat
+    body.push([
+        { content: 'TOTAL KECAMATAN', colSpan: 2, styles: { fontStyle: 'bold', halign: 'center', fillColor: [230, 230, 230] } },
+        { content: totalRw, styles: { fontStyle: 'bold', halign: 'center', fillColor: [230, 230, 230] } },
+        { content: totalRt, styles: { fontStyle: 'bold', halign: 'center', fillColor: [230, 230, 230] } },
+        { content: totalDusun, styles: { fontStyle: 'bold', halign: 'center', fillColor: [230, 230, 230] } },
+        { content: totalDukuh, styles: { fontStyle: 'bold', halign: 'center', fillColor: [230, 230, 230] } }
     ]);
 
-    generatePDF({ title: 'Laporan Rekapitulasi Data RT/RW', headers, body, desa: 'all', exportConfig, allPerangkat });
+    // Generate PDF
+    // desa: 'all' dikirim agar footer menggunakan tanda tangan Camat dari exportConfig
+    generatePDF({ 
+        title: 'REKAPITULASI DATA RT/RW KECAMATAN PUNGGELAN', 
+        headers, 
+        body, 
+        desa: 'all', 
+        exportConfig, 
+        allPerangkat 
+    });
 };
 
 export const generateRekapLembagaPDF = (data, exportConfig, allPerangkat) => {
@@ -278,4 +336,3 @@ export const generateKeuanganPDF = (data, desa, exportConfig, allPerangkat) => {
 
     generatePDF({ title: 'Laporan Rekapitulasi Keuangan', headers, body, desa, exportConfig, allPerangkat });
 };
-

@@ -9,14 +9,13 @@ import {
     generateAsetPDF,
     generateRekapLembagaPDF,
     generateRekapRtRwPDF,
-    generateRealisasiPDF // Fungsi baru untuk laporan realisasi
+    generateRealisasiPDF 
 } from '../utils/reportGenerators';
 import { FiDownload, FiBarChart2 } from 'react-icons/fi';
 import { useNotification } from '../context/NotificationContext';
 
 const DESA_LIST = [ "Punggelan", "Petuguran", "Karangsari", "Jembangan", "Tanjungtirta", "Sawangan", "Bondolharjo", "Danakerta", "Badakarya", "Tribuana", "Sambong", "Klapa", "Kecepit", "Mlaya", "Sidarata", "Purwasana", "Tlaga" ];
 
-// Objek Konfigurasi diperbarui untuk menyertakan Laporan Realisasi
 const reportConfigs = {
   demografi_perangkat: { label: 'Demografi Usia Perangkat', collection: 'perangkat', type: 'demografi' },
   demografi_bpd: { label: 'Demografi Usia BPD', collection: 'bpd', type: 'demografi' },
@@ -26,7 +25,7 @@ const reportConfigs = {
   demografi_rt_rw: { label: 'Demografi Usia RT/RW', collection: 'rt_rw', type: 'demografi' },
   laporan_realisasi: { label: 'Laporan Realisasi APBDes', collection: 'anggaran_tahunan', type: 'realisasi' },
   inventaris_aset: { label: 'Inventaris Aset Desa', collection: 'aset', type: 'aset' },
-  rekap_rt_rw: { label: 'Data RT/RW per Desa', collection: 'rt_rw', type: 'rekap_rt_rw' },
+  rekap_rt_rw: { label: 'Rekap Data RT/RW per Desa', collection: 'rt_rw', type: 'rekap_rt_rw' },
   rekap_jumlah_lembaga: { label: 'Jumlah Kelembagaan per Desa', collection: null, type: 'agregat' },
 };
 
@@ -44,7 +43,6 @@ const getAge = (item) => {
     return age;
 };
 
-// Format tanggal yang aman: menerima Date, ISO string, atau Firestore Timestamp
 const formatDate = (input) => {
     if (!input) return '';
     try {
@@ -59,21 +57,28 @@ const formatDate = (input) => {
 const safeFormatDate = (dateField) => dateField ? formatDate(dateField) : '-';
 
 // --- Komponen Tabel Pratinjau ---
+
 const DemografiPreviewTable = ({ data, showDesa }) => (
-    <table className="w-full text-sm">
-      <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700">
+    <table className="w-full text-sm border-collapse">
+      <thead className="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">
         <tr>
-          <th className="px-4 py-2">No</th><th className="px-4 py-2">Nama</th>
-          {showDesa && <th className="px-4 py-2">Desa</th>}
-          <th className="px-4 py-2">Jabatan</th><th className="px-4 py-2">Pendidikan</th><th className="px-4 py-2">Usia</th>
+          <th className="px-4 py-3 border dark:border-gray-600">No</th>
+          <th className="px-4 py-3 border dark:border-gray-600">Nama</th>
+          {showDesa && <th className="px-4 py-3 border dark:border-gray-600">Desa</th>}
+          <th className="px-4 py-3 border dark:border-gray-600">Jabatan</th>
+          <th className="px-4 py-3 border dark:border-gray-600">Pendidikan</th>
+          <th className="px-4 py-3 border dark:border-gray-600">Usia</th>
         </tr>
       </thead>
       <tbody>
         {data.map((item, index) => (
-          <tr key={item.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700">
-            <td className="px-4 py-2">{index + 1}</td><td className="px-4 py-2 font-medium">{item.nama}</td>
-            {showDesa && <td className="px-4 py-2">{item.desa}</td>}
-            <td className="px-4 py-2">{item.jabatan}</td><td className="px-4 py-2">{item.pendidikan || '-'}</td><td className="px-4 py-2">{getAge(item)}</td>
+          <tr key={item.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+            <td className="px-4 py-2 border dark:border-gray-600 text-center text-gray-800 dark:text-gray-300">{index + 1}</td>
+            <td className="px-4 py-2 border dark:border-gray-600 font-medium text-gray-900 dark:text-white">{item.nama}</td>
+            {showDesa && <td className="px-4 py-2 border dark:border-gray-600 text-gray-800 dark:text-gray-300">{item.desa}</td>}
+            <td className="px-4 py-2 border dark:border-gray-600 text-gray-800 dark:text-gray-300">{item.jabatan}</td>
+            <td className="px-4 py-2 border dark:border-gray-600 text-gray-800 dark:text-gray-300">{item.pendidikan || '-'}</td>
+            <td className="px-4 py-2 border dark:border-gray-600 text-center text-gray-800 dark:text-gray-300">{getAge(item)}</td>
           </tr>
         ))}
       </tbody>
@@ -101,52 +106,54 @@ const RealisasiPreviewTable = ({ data }) => {
             const sisa = item.jumlah - item.totalRealisasi;
             const persentase = item.jumlah > 0 ? (item.totalRealisasi / item.jumlah) * 100 : 0;
             return (
-                <tr key={item.id} className="border-b dark:border-gray-700">
-                    <td className="pl-8 pr-4 py-2">{item.uraian}</td>
-                    <td className="px-4 py-2 text-right">{formatCurrency(item.jumlah)}</td>
-                    <td className="px-4 py-2 text-right">{formatCurrency(item.totalRealisasi)}</td>
-                    <td className="px-4 py-2 text-right">{formatCurrency(sisa)}</td>
-                    <td className="px-4 py-2 text-center">{persentase.toFixed(2)}%</td>
+                <tr key={item.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                    <td className="pl-8 pr-4 py-2 border dark:border-gray-600 text-gray-800 dark:text-gray-300">{item.uraian}</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-right text-gray-800 dark:text-gray-300">{formatCurrency(item.jumlah)}</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-right text-gray-800 dark:text-gray-300">{formatCurrency(item.totalRealisasi)}</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-right text-gray-800 dark:text-gray-300">{formatCurrency(sisa)}</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-center text-gray-800 dark:text-gray-300">{persentase.toFixed(2)}%</td>
                 </tr>
             );
         })
     );
     
     return (
-        <table className="w-full text-sm">
-            <thead className="text-xs text-gray-700 uppercase bg-gray-200 dark:bg-gray-700 dark:text-gray-300 sticky top-0 z-10">
+        <table className="w-full text-sm border-collapse">
+            <thead className="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-200 dark:bg-gray-700 sticky top-0 z-10">
                 <tr>
-                    <th className="px-4 py-3">Uraian</th>
-                    <th className="px-4 py-3 text-right">Anggaran</th><th className="px-4 py-3 text-right">Realisasi</th>
-                    <th className="px-4 py-3 text-right">Sisa</th><th className="px-4 py-3 text-center">%</th>
+                    <th className="px-4 py-3 border dark:border-gray-600 text-left">Uraian</th>
+                    <th className="px-4 py-3 border dark:border-gray-600 text-right">Anggaran</th>
+                    <th className="px-4 py-3 border dark:border-gray-600 text-right">Realisasi</th>
+                    <th className="px-4 py-3 border dark:border-gray-600 text-right">Sisa</th>
+                    <th className="px-4 py-3 border dark:border-gray-600 text-center">%</th>
                 </tr>
             </thead>
             <tbody>
-                <tr className="bg-gray-100 dark:bg-gray-800"><th colSpan="5" className="px-4 py-2 text-left font-bold text-lg text-gray-900 dark:text-white">PENDAPATAN</th></tr>
-                {Object.entries(pendapatan).map(([bidang, items]) => <React.Fragment key={bidang}><tr className="bg-gray-50 dark:bg-gray-700"><td colSpan="5" className="px-4 py-2 font-bold">{bidang}</td></tr>{renderSection(items)}</React.Fragment>)}
-                <tr className="bg-gray-200 dark:bg-gray-600 font-bold">
-                    <td className="px-4 py-2">JUMLAH PENDAPATAN</td>
-                    <td className="px-4 py-2 text-right">{formatCurrency(totalAnggaranPendapatan)}</td>
-                    <td className="px-4 py-2 text-right">{formatCurrency(totalRealisasiPendapatan)}</td>
-                    <td className="px-4 py-2 text-right">{formatCurrency(totalAnggaranPendapatan - totalRealisasiPendapatan)}</td>
-                    <td className="px-4 py-2 text-center">{(totalAnggaranPendapatan > 0 ? (totalRealisasiPendapatan / totalAnggaranPendapatan) * 100 : 0).toFixed(2)}%</td>
+                <tr className="bg-gray-100 dark:bg-gray-800 border dark:border-gray-600"><th colSpan="5" className="px-4 py-2 border dark:border-gray-600 text-left font-bold text-lg text-gray-900 dark:text-white">PENDAPATAN</th></tr>
+                {Object.entries(pendapatan).map(([bidang, items]) => <React.Fragment key={bidang}><tr className="bg-gray-50 dark:bg-gray-700"><td colSpan="5" className="px-4 py-2 border dark:border-gray-600 font-bold text-gray-800 dark:text-gray-200">{bidang}</td></tr>{renderSection(items)}</React.Fragment>)}
+                <tr className="bg-gray-200 dark:bg-gray-600 font-bold text-gray-900 dark:text-white">
+                    <td className="px-4 py-2 border dark:border-gray-600">JUMLAH PENDAPATAN</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-right">{formatCurrency(totalAnggaranPendapatan)}</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-right">{formatCurrency(totalRealisasiPendapatan)}</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-right">{formatCurrency(totalAnggaranPendapatan - totalRealisasiPendapatan)}</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-center">{(totalAnggaranPendapatan > 0 ? (totalRealisasiPendapatan / totalAnggaranPendapatan) * 100 : 0).toFixed(2)}%</td>
                 </tr>
-                <tr className="h-4"></tr>
-                <tr className="bg-gray-100 dark:bg-gray-800"><th colSpan="5" className="px-4 py-2 text-left font-bold text-lg text-gray-900 dark:text-white">BELANJA</th></tr>
-                {Object.entries(belanja).map(([bidang, items]) => <React.Fragment key={bidang}><tr className="bg-gray-50 dark:bg-gray-700"><td colSpan="5" className="px-4 py-2 font-bold">{bidang}</td></tr>{renderSection(items)}</React.Fragment>)}
-                <tr className="bg-gray-200 dark:bg-gray-600 font-bold">
-                    <td className="px-4 py-2">JUMLAH BELANJA</td>
-                    <td className="px-4 py-2 text-right">{formatCurrency(totalAnggaranBelanja)}</td>
-                    <td className="px-4 py-2 text-right">{formatCurrency(totalRealisasiBelanja)}</td>
-                    <td className="px-4 py-2 text-right">{formatCurrency(totalAnggaranBelanja - totalRealisasiBelanja)}</td>
-                    <td className="px-4 py-2 text-center">{(totalAnggaranBelanja > 0 ? (totalRealisasiBelanja / totalAnggaranBelanja) * 100 : 0).toFixed(2)}%</td>
+                <tr className="h-4 bg-white dark:bg-gray-900 border-none"><td colSpan="5" className="border-none"></td></tr>
+                <tr className="bg-gray-100 dark:bg-gray-800 border dark:border-gray-600"><th colSpan="5" className="px-4 py-2 border dark:border-gray-600 text-left font-bold text-lg text-gray-900 dark:text-white">BELANJA</th></tr>
+                {Object.entries(belanja).map(([bidang, items]) => <React.Fragment key={bidang}><tr className="bg-gray-50 dark:bg-gray-700"><td colSpan="5" className="px-4 py-2 border dark:border-gray-600 font-bold text-gray-800 dark:text-gray-200">{bidang}</td></tr>{renderSection(items)}</React.Fragment>)}
+                <tr className="bg-gray-200 dark:bg-gray-600 font-bold text-gray-900 dark:text-white">
+                    <td className="px-4 py-2 border dark:border-gray-600">JUMLAH BELANJA</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-right">{formatCurrency(totalAnggaranBelanja)}</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-right">{formatCurrency(totalRealisasiBelanja)}</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-right">{formatCurrency(totalAnggaranBelanja - totalRealisasiBelanja)}</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-center">{(totalAnggaranBelanja > 0 ? (totalRealisasiBelanja / totalAnggaranBelanja) * 100 : 0).toFixed(2)}%</td>
                 </tr>
-                <tr className="h-4"></tr>
+                <tr className="h-4 bg-white dark:bg-gray-900 border-none"><td colSpan="5" className="border-none"></td></tr>
                 <tr className="bg-gray-800 dark:bg-black text-white font-bold text-base">
-                    <td className="px-4 py-3">SURPLUS / (DEFISIT)</td>
-                    <td className="px-4 py-3 text-right">{formatCurrency(totalAnggaranPendapatan - totalAnggaranBelanja)}</td>
-                    <td className="px-4 py-3 text-right">{formatCurrency(totalRealisasiPendapatan - totalRealisasiBelanja)}</td>
-                    <td colSpan="2"></td>
+                    <td className="px-4 py-3 border border-gray-700">SURPLUS / (DEFISIT)</td>
+                    <td className="px-4 py-3 border border-gray-700 text-right">{formatCurrency(totalAnggaranPendapatan - totalAnggaranBelanja)}</td>
+                    <td className="px-4 py-3 border border-gray-700 text-right">{formatCurrency(totalRealisasiPendapatan - totalRealisasiBelanja)}</td>
+                    <td colSpan="2" className="border border-gray-700"></td>
                 </tr>
             </tbody>
         </table>
@@ -154,82 +161,93 @@ const RealisasiPreviewTable = ({ data }) => {
 };
 
 const AsetPreviewTable = ({ data, showDesa }) => (
-    <table className="w-full text-sm">
-       <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700">
+    <table className="w-full text-sm border-collapse">
+       <thead className="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">
         <tr>
-          <th className="px-4 py-2">No</th>
-          {showDesa && <th className="px-4 py-2">Desa</th>}
-          <th className="px-4 py-2">Nama Aset</th>
-          <th className="px-4 py-2">Kategori</th>
-          <th className="px-4 py-2">Tgl Perolehan</th>
-          <th className="px-4 py-2 text-right">Nilai (Rp)</th>
+          <th className="px-4 py-3 border dark:border-gray-600">No</th>
+          {showDesa && <th className="px-4 py-3 border dark:border-gray-600">Desa</th>}
+          <th className="px-4 py-3 border dark:border-gray-600">Nama Aset</th>
+          <th className="px-4 py-3 border dark:border-gray-600">Kategori</th>
+          <th className="px-4 py-3 border dark:border-gray-600">Tgl Perolehan</th>
+          <th className="px-4 py-3 border dark:border-gray-600 text-right">Nilai (Rp)</th>
         </tr>
       </thead>
       <tbody>
         {data.map((item, index) => (
-          <tr key={item.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700">
-            <td className="px-4 py-2">{index + 1}</td>
-            {showDesa && <td className="px-4 py-2">{item.desa}</td>}
-            <td className="px-4 py-2">{item.namaAset}</td>
-            <td className="px-4 py-2">{item.kategori}</td>
-            <td className="px-4 py-2">{safeFormatDate(item.tanggalPerolehan)}</td>
-            <td className="px-4 py-2 text-right">{formatCurrency(Number(item.nilaiAset))}</td>
+          <tr key={item.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+            <td className="px-4 py-2 border dark:border-gray-600 text-center text-gray-800 dark:text-gray-300">{index + 1}</td>
+            {showDesa && <td className="px-4 py-2 border dark:border-gray-600 text-gray-800 dark:text-gray-300">{item.desa}</td>}
+            <td className="px-4 py-2 border dark:border-gray-600 text-gray-800 dark:text-gray-300">{item.namaAset}</td>
+            <td className="px-4 py-2 border dark:border-gray-600 text-gray-800 dark:text-gray-300">{item.kategori}</td>
+            <td className="px-4 py-2 border dark:border-gray-600 text-gray-800 dark:text-gray-300">{safeFormatDate(item.tanggalPerolehan)}</td>
+            <td className="px-4 py-2 border dark:border-gray-600 text-right text-gray-800 dark:text-gray-300">{formatCurrency(Number(item.nilaiAset))}</td>
           </tr>
         ))}
       </tbody>
     </table>
 );
+
+// --- PERBAIKAN: Tabel Rekap RT RW ---
+// Menyamakan tampilan dan logika jumlah dengan RekapitulasiRtRwPage.js
 const RekapRtRwPreviewTable = ({ data }) => (
-    <table className="w-full text-sm">
-        <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700">
+    <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 border-collapse">
+        <thead className="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 sticky top-0 z-10">
             <tr>
-                <th className="px-4 py-2">No</th>
-                <th className="px-4 py-2">Desa</th>
-                <th className="px-4 py-2">Jabatan</th>
-                <th className="px-4 py-2">Nomor</th>
-                <th className="px-4 py-2">Nama Ketua</th>
-                <th className="px-4 py-2">Dusun/Dukuh</th>
+                <th className="px-6 py-4 text-center w-16 border dark:border-gray-600">NO</th>
+                <th className="px-6 py-4 whitespace-nowrap border dark:border-gray-600">NAMA DESA</th>
+                <th className="px-6 py-4 text-center border dark:border-gray-600">JML RW</th>
+                <th className="px-6 py-4 text-center border dark:border-gray-600">JML RT</th>
+                <th className="px-6 py-4 text-center border dark:border-gray-600">JML DUSUN</th>
+                <th className="px-6 py-4 text-center border dark:border-gray-600">JML DUKUH</th>
             </tr>
         </thead>
         <tbody>
-            {data.map((item, index) => (
-                <tr key={item.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700">
-                    <td className="px-4 py-2">{index + 1}</td>
-                    <td className="px-4 py-2">{item.desa}</td>
-                    <td className="px-4 py-2">{item.jabatan}</td>
-                    <td className="px-4 py-2">{item.nomor}</td>
-                    <td className="px-4 py-2">{item.nama}</td>
-                    <td className="px-4 py-2">{item.dusun || '-'}</td>
+            {data.map((row, index) => (
+                <tr key={row.namaDesa} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors">
+                    <td className="px-6 py-4 text-center border dark:border-gray-600 text-gray-900 dark:text-white">{index + 1}</td>
+                    <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap border dark:border-gray-600">{row.namaDesa}</td>
+                    <td className="px-6 py-4 text-center border dark:border-gray-600 text-gray-800 dark:text-gray-300">{row.jumlahRw}</td>
+                    <td className="px-6 py-4 text-center border dark:border-gray-600 text-gray-800 dark:text-gray-300">{row.jumlahRt}</td>
+                    <td className="px-6 py-4 text-center border dark:border-gray-600 text-gray-800 dark:text-gray-300">{row.jumlahDusun}</td>
+                    <td className="px-6 py-4 text-center border dark:border-gray-600 text-gray-800 dark:text-gray-300">{row.jumlahDukuh}</td>
                 </tr>
             ))}
+            <tr className="bg-gray-200 dark:bg-gray-900 font-bold text-gray-900 dark:text-white border-t-2 border-gray-300 dark:border-gray-500">
+                <td colSpan="2" className="px-6 py-4 text-center border dark:border-gray-600">TOTAL KECAMATAN</td>
+                <td className="px-6 py-4 text-center border dark:border-gray-600">{data.reduce((sum, row) => sum + row.jumlahRw, 0)}</td>
+                <td className="px-6 py-4 text-center border dark:border-gray-600">{data.reduce((sum, row) => sum + row.jumlahRt, 0)}</td>
+                <td className="px-6 py-4 text-center border dark:border-gray-600">{data.reduce((sum, row) => sum + row.jumlahDusun, 0)}</td>
+                <td className="px-6 py-4 text-center border dark:border-gray-600">{data.reduce((sum, row) => sum + row.jumlahDukuh, 0)}</td>
+            </tr>
         </tbody>
     </table>
 );
+
 const RekapLembagaPreviewTable = ({ data }) => (
-    <table className="w-full text-sm">
-        <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700">
+    <table className="w-full text-sm border-collapse">
+        <thead className="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 sticky top-0 z-10">
             <tr>
-                <th className="px-4 py-2">No</th>
-                <th className="px-4 py-2">Nama Desa</th>
-                <th className="px-4 py-2 text-center">Perangkat</th>
-                <th className="px-4 py-2 text-center">BPD</th>
-                <th className="px-4 py-2 text-center">LPM</th>
-                <th className="px-4 py-2 text-center">PKK</th>
-                <th className="px-4 py-2 text-center">Karang Taruna</th>
-                <th className="px-4 py-2 text-center">RT/RW</th>
+                <th className="px-4 py-3 border dark:border-gray-600">No</th>
+                <th className="px-4 py-3 border dark:border-gray-600">Nama Desa</th>
+                <th className="px-4 py-3 text-center border dark:border-gray-600">Perangkat</th>
+                <th className="px-4 py-3 text-center border dark:border-gray-600">BPD</th>
+                <th className="px-4 py-3 text-center border dark:border-gray-600">LPM</th>
+                <th className="px-4 py-3 text-center border dark:border-gray-600">PKK</th>
+                <th className="px-4 py-3 text-center border dark:border-gray-600">Karang Taruna</th>
+                <th className="px-4 py-3 text-center border dark:border-gray-600">RT/RW</th>
             </tr>
         </thead>
         <tbody>
             {data.map((item, index) => (
-                <tr key={item.desa} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700">
-                    <td className="px-4 py-2">{index + 1}</td>
-                    <td className="px-4 py-2 font-medium">{item.desa}</td>
-                    <td className="px-4 py-2 text-center">{item.perangkat}</td>
-                    <td className="px-4 py-2 text-center">{item.bpd}</td>
-                    <td className="px-4 py-2 text-center">{item.lpm}</td>
-                    <td className="px-4 py-2 text-center">{item.pkk}</td>
-                    <td className="px-4 py-2 text-center">{item.karang_taruna}</td>
-                    <td className="px-4 py-2 text-center">{item.rt_rw}</td>
+                <tr key={item.desa} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                    <td className="px-4 py-2 border dark:border-gray-600 text-gray-800 dark:text-gray-300">{index + 1}</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 font-medium text-gray-900 dark:text-white">{item.desa}</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-center text-gray-800 dark:text-gray-300">{item.perangkat}</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-center text-gray-800 dark:text-gray-300">{item.bpd}</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-center text-gray-800 dark:text-gray-300">{item.lpm}</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-center text-gray-800 dark:text-gray-300">{item.pkk}</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-center text-gray-800 dark:text-gray-300">{item.karang_taruna}</td>
+                    <td className="px-4 py-2 border dark:border-gray-600 text-center text-gray-800 dark:text-gray-300">{item.rt_rw}</td>
                 </tr>
             ))}
         </tbody>
@@ -253,7 +271,6 @@ const LaporanPage = () => {
         const fetchPrerequisites = async () => {
             setIsDataReady(false);
             try {
-                // Hanya mengambil data yang relevan untuk semua laporan
                 const [perangkatSnapshot, exportSnap] = await Promise.all([
                     getDocs(query(collection(db, 'perangkat'))),
                     getDoc(doc(db, 'settings', 'exportConfig'))
@@ -288,6 +305,7 @@ const LaporanPage = () => {
             if (config.type === 'realisasi') {
                 if (filters.desa === 'all' && currentUser.role === 'admin_kecamatan') {
                     showNotification('Silakan pilih satu desa spesifik untuk Laporan Realisasi.', 'warning');
+                    setLoading(false);
                     return;
                 }
                 const anggaranQuery = query(
@@ -308,7 +326,7 @@ const LaporanPage = () => {
                 const fullData = await Promise.all(realisasiPromises);
                 setReportData(fullData);
 
-            } else if (config.type === 'agregat' || config.type === 'rekap_rt_rw') {
+            } else if (config.type === 'agregat') {
                 const collectionsToFetch = ['perangkat', 'bpd', 'lpm', 'pkk', 'karang_taruna', 'rt_rw'];
                 const promises = collectionsToFetch.map(coll => getDocs(query(collection(db, coll))));
                 const snapshots = await Promise.all(promises);
@@ -318,18 +336,43 @@ const LaporanPage = () => {
                     allData[collectionsToFetch[index]] = snap.docs.map(d => d.data());
                 });
 
-                if (config.type === 'agregat') {
-                    const rekapData = DESA_LIST.map(desaName => {
-                        const counts = {};
-                        collectionsToFetch.forEach(coll => {
-                            counts[coll] = allData[coll].filter(item => item.desa === desaName).length;
-                        });
-                        return { desa: desaName, ...counts };
+                const rekapData = DESA_LIST.map(desaName => {
+                    const counts = {};
+                    collectionsToFetch.forEach(coll => {
+                        counts[coll] = allData[coll].filter(item => item.desa === desaName).length;
                     });
-                    setReportData(rekapData);
-                } else { // rekap_rt_rw
-                    setReportData(allData.rt_rw);
-                }
+                    return { desa: desaName, ...counts };
+                });
+                setReportData(rekapData);
+                
+            } else if (config.type === 'rekap_rt_rw') {
+                // PERBAIKAN: Logika hitung yang sinkron dengan RekapitulasiRtRwPage.js
+                // Hanya menghitung "Ketua" sebagai jumlah unit RT/RW
+                const q = query(collection(db, 'rt_rw'));
+                const snapshot = await getDocs(q);
+                const rawData = snapshot.docs.map(doc => doc.data());
+
+                const rekapPokokData = DESA_LIST.map(desaName => {
+                    const desaData = rawData.filter(item => item.desa === desaName);
+                    
+                    // Filter RT: Punya no_rt, bukan rw_only
+                    const rtList = desaData.filter(item => item.no_rt && !item.no_rw_only);
+                    // Filter RW: Punya no_rw, tidak punya no_rt
+                    const rwList = desaData.filter(item => item.no_rw && !item.no_rt);
+                    
+                    // HITUNG HANYA JABATAN 'KETUA'
+                    const countRt = rtList.filter(p => p.jabatan && p.jabatan.toLowerCase().includes('ketua')).length;
+                    const countRw = rwList.filter(p => p.jabatan && p.jabatan.toLowerCase().includes('ketua')).length;
+
+                    return {
+                        namaDesa: desaName,
+                        jumlahRw: countRw,
+                        jumlahRt: countRt,
+                        jumlahDusun: new Set(desaData.filter(d => d.dusun).map(d => d.dusun)).size,
+                        jumlahDukuh: new Set(desaData.filter(d => d.dukuh).map(d => d.dukuh)).size,
+                    };
+                });
+                setReportData(rekapPokokData);
 
             } else { // demografi, aset
                 let q;
@@ -384,7 +427,7 @@ const LaporanPage = () => {
     const renderPreviewTable = () => {
         if (!reportData) return null;
         if (reportData.length === 0) {
-            return <p className="text-center text-gray-500 py-10">Tidak ada data yang ditemukan untuk filter yang dipilih.</p>;
+            return <p className="text-center text-gray-500 dark:text-gray-400 py-10">Tidak ada data yang ditemukan untuk filter yang dipilih.</p>;
         }
         const config = reportConfigs[reportType];
         const showDesa = currentUser.role === 'admin_kecamatan' && filters.desa === 'all';
@@ -457,4 +500,3 @@ const LaporanPage = () => {
 };
 
 export default LaporanPage;
-

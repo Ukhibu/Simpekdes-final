@@ -189,23 +189,31 @@ const RekapitulasiRtRwPage = () => {
     const getRtData = (data) => data.filter(item => item.no_rt && !item.no_rw_only);
     const getRwData = (data) => data.filter(item => item.no_rw && !item.no_rt);
 
+    // --- PERBAIKAN DI SINI (RekapPokokData) ---
     const rekapPokokData = useMemo(() => {
         return DESA_LIST.map(desa => {
             const desaData = allData.filter(item => item.desa === desa);
             const rtList = getRtData(desaData);
             const rwList = getRwData(desaData);
             
+            // Hitung HANYA yang jabatannya mengandung kata 'Ketua'
+            // Ini agar sinkron dengan RekapLengkapView yang hanya menampilkan baris Ketua RT
+            const countRt = rtList.filter(p => p.jabatan && p.jabatan.toLowerCase().includes('ketua')).length;
+            
+            // RW juga sebaiknya dihitung ketuanya saja untuk konsistensi
+            const countRw = rwList.filter(p => p.jabatan && p.jabatan.toLowerCase().includes('ketua')).length;
+
             return {
                 namaDesa: desa,
-                jumlahRw: rwList.length, 
-                jumlahRt: rtList.length,
+                jumlahRw: countRw, 
+                jumlahRt: countRt, // Jumlah RT sekarang hanya menghitung Ketua RT
                 jumlahDusun: new Set(desaData.filter(d => d.dusun).map(d => d.dusun)).size,
                 jumlahDukuh: new Set(desaData.filter(d => d.dukuh).map(d => d.dukuh)).size,
             };
         });
     }, [allData]);
 
-    // -- PERBAIKAN PENGURUTAN: UTAMAKAN RW -> RT --
+    // Grouping Sekretaris & Bendahara ke baris Ketua RT
     const rekapDesaData = useMemo(() => {
         const desaToFilter = currentUser.role === 'admin_desa' ? currentUser.desa : selectedDesa;
         if (!desaToFilter) return [];
@@ -214,7 +222,6 @@ const RekapitulasiRtRwPage = () => {
         const rtList = getRtData(desaData);
         const rwList = getRwData(desaData);
 
-        // Helper: Cari perangkat RT (Sekretaris & Bendahara) dengan RT/RW/Dusun yang sama
         const findPerangkatRt = (jabatan, rtRef) => {
             return desaData.find(p => 
                 p.jabatan?.toLowerCase().includes(jabatan) && 
@@ -238,27 +245,24 @@ const RekapitulasiRtRwPage = () => {
 
             return {
                 ...rt,
-                Ketua: rt.nama, // Nama Ketua RT
+                Ketua: rt.nama,
                 namaKetuaRw: rwMap[rt.no_rw] || '(Kosong)',
                 Sekretaris: sekretarisData ? sekretarisData.nama : '-',
                 Bendahara: bendaharaData ? bendaharaData.nama : '-'
             };
         }).sort((a, b) => {
-            // PRIORITAS PENGURUTAN BARU:
-            // 1. Nomor RW (Ascending)
+            // Sort Dusun -> RW -> RT
+            const dusunA = a.dusun || '';
+            const dusunB = b.dusun || '';
+            if (dusunA !== dusunB) return dusunA.localeCompare(dusunB);
+            
             const rwA = parseInt(a.no_rw) || 0;
             const rwB = parseInt(b.no_rw) || 0;
             if (rwA !== rwB) return rwA - rwB;
 
-            // 2. Nomor RT (Ascending)
             const rtA = parseInt(a.no_rt) || 0;
             const rtB = parseInt(b.no_rt) || 0;
-            if (rtA !== rtB) return rtA - rtB;
-
-            // 3. Dusun (Jika perlu sebagai opsi terakhir)
-            const dusunA = a.dusun || '';
-            const dusunB = b.dusun || '';
-            return dusunA.localeCompare(dusunB);
+            return rtA - rtB;
         });
     }, [allData, selectedDesa, currentUser]);
 
@@ -269,7 +273,8 @@ const RekapitulasiRtRwPage = () => {
 
         const result = Object.keys(groupedByDesa).map(namaDesa => {
             const desaData = groupedByDesa[namaDesa];
-            const rtList = getRtData(desaData); // Ambil semua data RT
+            const rtList = getRtData(desaData); 
+            // Filter hanya ketua RT untuk baris utama agar jumlahnya sinkron dengan rekapPokokData
             const ketuaRtOnly = rtList.filter(p => p.jabatan?.toLowerCase().includes('ketua'));
             
             const rwList = getRwData(desaData);
@@ -283,14 +288,8 @@ const RekapitulasiRtRwPage = () => {
                 namaKetuaRt: rt.nama,
                 dukuh: rt.dukuh || '-',
             })).sort((a, b) => {
-                // Urutkan RW -> RT untuk rekap lengkap juga
-                const rwA = parseInt(a.no_rw) || 0;
-                const rwB = parseInt(b.no_rw) || 0;
-                if(rwA !== rwB) return rwA - rwB;
-                
-                const rtA = parseInt(a.no_rt) || 0;
-                const rtB = parseInt(b.no_rt) || 0;
-                return rtA - rtB;
+                if(a.dusun !== b.dusun) return a.dusun.localeCompare(b.dusun);
+                return (parseInt(a.no_rw)||0) - (parseInt(b.no_rw)||0) || (parseInt(a.no_rt)||0) - (parseInt(b.no_rt)||0);
             });
 
             const dusunGroups = entries.reduce((acc, entry) => {
@@ -352,8 +351,6 @@ const RekapitulasiRtRwPage = () => {
         if (index !== -1) setViewModeIndex(index);
     };
 
-    // --- LAYOUT STRATEGY: Fixed Height Container ---
-    
     return (
         <div 
             className="flex flex-col h-[calc(100vh-120px)] md:h-[calc(100vh-140px)] gap-4" 
@@ -399,12 +396,10 @@ const RekapitulasiRtRwPage = () => {
                 </div>
             </div>
 
-            {/* Mobile Swipe Hint */}
             <div className="flex-none lg:hidden text-center text-xs text-gray-400 italic -mt-2">
                 Geser layar kiri/kanan untuk ganti tampilan rekap
             </div>
 
-            {/* Content Area */}
             {loading ? <div className="flex justify-center py-20"><Spinner/></div> : (
                 <div className="flex-1 min-h-0 relative transition-all duration-300 ease-in-out">
                     <div className="absolute inset-0">

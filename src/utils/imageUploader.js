@@ -15,7 +15,13 @@ export const uploadImageToCloudinary = async (file, uploadPreset, cloudName) => 
 
     try {
         // Langkah 1: Kompres gambar terlebih dahulu untuk efisiensi.
-        const compressedFile = await compressImage(file, { maxWidth: 800, maxHeight: 800, quality: 0.75 });
+        // PENTING: Compressor sekarang akan mendeteksi jika file adalah PNG dan menjaga transparansi.
+        // Kita set maxWidth/Height agar tidak terlalu besar ukurannya.
+        const compressedFile = await compressImage(file, { 
+            maxWidth: 1024, // Ditingkatkan sedikit agar kualitas logo tetap tajam (HD)
+            maxHeight: 1024, 
+            quality: 0.85 
+        });
 
         // Langkah 2: Buat FormData dengan file yang sudah dikompres.
         const data = new FormData();

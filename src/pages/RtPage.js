@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '../firebase';
-import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, where, writeBatch, getDocs } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, writeBatch, getDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
 import Modal from '../components/common/Modal';
@@ -9,12 +9,16 @@ import Spinner from '../components/common/Spinner';
 import InputField from '../components/common/InputField';
 import Button from '../components/common/Button';
 import OrganisasiDetailView from '../components/common/OrganisasiDetailView';
-import { FiSearch, FiFilter, FiPlus, FiEdit, FiTrash2, FiEye, FiUpload, FiDownload } from 'react-icons/fi';
-import { DESA_LIST, PENDIDIKAN_LIST, JENIS_KELAMIN_LIST, JABATAN_RT_LIST } from '../utils/constants';
+import Pagination from '../components/common/Pagination'; 
+import { FiSearch, FiPlus, FiEdit, FiTrash2, FiEye, FiUpload, FiDownload, FiCheckSquare, FiX, FiAlertCircle } from 'react-icons/fi';
+import { DESA_LIST, PENDIDIKAN_LIST, JENIS_KELAMIN_LIST } from '../utils/constants';
 import * as XLSX from 'xlsx';
 import { generateRtXLSX } from '../utils/generateRtXLSX';
 import { createNotificationForAdmins } from '../utils/notificationService';
 import { useSearchParams } from 'react-router-dom';
+
+const SAFE_DESA_LIST = Array.isArray(DESA_LIST) ? DESA_LIST : [];
+const JABATAN_RT_LIST = ["Ketua", "Sekretaris", "Bendahara", "Anggota"];
 
 const RT_CONFIG = {
     collectionName: 'rt_rw',
@@ -23,18 +27,28 @@ const RT_CONFIG = {
         { name: 'nama', label: 'Nama Lengkap', type: 'text', required: true },
         { name: 'jabatan', label: 'Jabatan', type: 'select', options: JABATAN_RT_LIST, required: true },
         { name: 'no_rt', label: 'Nomor RT', type: 'text', required: true },
-        { name: 'no_rw', label: 'Nomor RW Induk', type: 'text' },
+        { name: 'no_rw', label: 'Nomor RW (Induk)', type: 'text' },
         { name: 'dusun', label: 'Dusun', type: 'text' },
         { name: 'dukuh', label: 'Dukuh', type: 'text' },
-        { name: 'jenis_kelamin', label: 'Jenis Kelamin', type: 'select', options: JENIS_KELAMIN_LIST },
+        { name: 'jenis_kelamin', label: 'Jenis Kelamin', type: 'select', options: JENIS_KELAMIN_LIST, required: true },
         { name: 'tempat_lahir', label: 'Tempat Lahir', type: 'text' },
         { name: 'tanggal_lahir', label: 'Tanggal Lahir', type: 'date' },
         { name: 'pendidikan', label: 'Pendidikan Terakhir', type: 'select', options: PENDIDIKAN_LIST },
-        { name: 'periode', label: 'Periode', type: 'text' },
+        { name: 'periode', label: 'Periode Jabatan', type: 'text' },
         { name: 'no_hp', label: 'No. HP / WA', type: 'tel' },
     ],
-    tableColumns: ['nama', 'jabatan', 'no_rt', 'no_rw', 'dusun', 'jenis_kelamin', 'pendidikan'],
-    completenessCriteria: ['nama', 'jabatan', 'no_rt', 'desa', 'jenis_kelamin', 'pendidikan'],
+    tableColumns: ['nama', 'jabatan', 'no_rt', 'desa', 'dusun'],
+    completenessCriteria: ['nama', 'jabatan', 'no_rt', 'desa', 'jenis_kelamin'],
+};
+
+// Helper Functions
+const formatDateIndo = (dateString) => {
+    if (!dateString) return "-";
+    try {
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return dateString;
+        return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }).format(date).replace(/ /g, '-');
+    } catch (e) { return dateString; }
 };
 
 const parseExcelDate = (excelDate) => {
@@ -46,10 +60,8 @@ const parseExcelDate = (excelDate) => {
         date = new Date(excelDate);
     }
     if (isNaN(date.getTime())) return "";
-    
     const tzoffset = date.getTimezoneOffset() * 60000;
     const localDate = new Date(date.getTime() - tzoffset);
-
     return localDate.toISOString().split('T')[0];
 };
 
@@ -63,79 +75,179 @@ const RtPage = () => {
     const [selectedItem, setSelectedItem] = useState(null);
     const [formData, setFormData] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
+    
+    // Konfirmasi Hapus State
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState(null);
+    const [isDeleteSelectedConfirmOpen, setIsDeleteSelectedConfirmOpen] = useState(false);
+
     const [searchTerm, setSearchTerm] = useState('');
     const [filterDesa, setFilterDesa] = useState('all');
+    const [exportConfig, setExportConfig] = useState({});
+
+    // STATE UNTUK AUTO-OPEN & SELEKSI
     const [searchParams, setSearchParams] = useSearchParams();
     const [highlightedRow, setHighlightedRow] = useState(null);
     const [hasOpenedModalFromQuery, setHasOpenedModalFromQuery] = useState(false);
+
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState([]);
-    const [isDeleteSelectedConfirmOpen, setIsDeleteSelectedConfirmOpen] = useState(false);
+    const longPressTimer = useRef(null);
 
-    const config = RT_CONFIG;
+    // Initial Load Config
+    useEffect(() => {
+        const fetchConfig = async () => {
+            try {
+                const docRef = doc(db, 'settings', 'exportConfig');
+                const snap = await getDoc(docRef);
+                if (snap.exists()) setExportConfig(snap.data());
+            } catch (err) { console.error(err); }
+        };
+        fetchConfig();
+    }, []);
 
+    // Set Default Desa
+    useEffect(() => {
+        if (currentUser) {
+            if (currentUser.role === 'admin_kecamatan') {
+                setFilterDesa(SAFE_DESA_LIST[0] || 'all'); 
+            } else {
+                setFilterDesa(currentUser.desa);
+            }
+        }
+    }, [currentUser]);
+
+    // Load Data
+    useEffect(() => {
+        if (!currentUser) return setLoading(false);
+        setLoading(true);
+        const q = query(collection(db, RT_CONFIG.collectionName)); 
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const list = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() }))
+                // Filter Data RT: Punya no_rt dan BUKAN no_rw_only
+                .filter(item => item.no_rt && !item.no_rw_only); 
+            setDataList(list);
+            setLoading(false);
+        }, (error) => {
+            showNotification(`Gagal memuat data: ${error.message}`, 'error');
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, [currentUser, showNotification]);
+
+    // --- LOGIKA AUTO-OPEN DARI DASHBOARD ---
     useEffect(() => {
         const editId = searchParams.get('edit');
         if (editId && dataList.length > 0 && !hasOpenedModalFromQuery) {
             const itemToEdit = dataList.find(item => item.id === editId);
             if (itemToEdit) {
-                setHighlightedRow(editId);
+                // 1. Set Filter Desa (admin kecamatan)
+                if (currentUser.role === 'admin_kecamatan' && itemToEdit.desa) {
+                    setFilterDesa(itemToEdit.desa);
+                }
+
+                // 2. Open Modal
                 handleOpenModal('edit', itemToEdit);
                 setHasOpenedModalFromQuery(true);
+                
+                // 3. Highlight
+                setHighlightedRow(editId);
+                
+                // 4. Scroll
+                setTimeout(() => {
+                    const rowElement = document.getElementById(`row-${editId}`);
+                    if (rowElement) {
+                        rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }, 500);
+
+                // 5. Clean URL
                 const newSearchParams = new URLSearchParams(searchParams);
                 newSearchParams.delete('edit');
                 setSearchParams(newSearchParams, { replace: true });
-                const timer = setTimeout(() => setHighlightedRow(null), 3000);
-                return () => clearTimeout(timer);
+
+                setTimeout(() => setHighlightedRow(null), 3000);
             }
         }
-    }, [searchParams, dataList, hasOpenedModalFromQuery, setSearchParams]);
+    }, [searchParams, dataList, hasOpenedModalFromQuery, setSearchParams, currentUser.role]);
 
-    useEffect(() => {
-        if (currentUser) {
-            setFilterDesa(currentUser.role === 'admin_kecamatan' ? 'all' : currentUser.desa);
-        }
-    }, [currentUser]);
-
-    useEffect(() => {
-        if (!currentUser) return setLoading(false);
-        setLoading(true);
-        const q = query(collection(db, config.collectionName), where("no_rt", ">", ""));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setDataList(list);
-            setLoading(false);
-        }, (error) => {
-            showNotification(`Gagal memuat data RT: ${error.message}`, 'error');
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, [currentUser, showNotification, config.collectionName]);
-
+    // Filter Data
     const filteredData = useMemo(() => {
         let data = dataList;
-        if (currentUser.role === 'admin_kecamatan' && filterDesa !== 'all') {
+        if (filterDesa !== 'all') {
             data = data.filter(item => item.desa === filterDesa);
-        } else if (currentUser.role === 'admin_desa') {
-            data = data.filter(item => item.desa === currentUser.desa);
         }
         if (searchTerm) {
-            data = data.filter(item => (item.nama || '').toLowerCase().includes(searchTerm.toLowerCase()));
+            const lowerSearch = searchTerm.toLowerCase();
+            data = data.filter(item => 
+                (item.nama || '').toLowerCase().includes(lowerSearch) ||
+                (item.jabatan || '').toLowerCase().includes(lowerSearch) ||
+                (item.no_rt || '').toLowerCase().includes(lowerSearch)
+            );
         }
-        return data;
-    }, [dataList, searchTerm, filterDesa, currentUser]);
+        // Sort RT secara numerik
+        return data.sort((a, b) => (parseInt(a.no_rt) || 0) - (parseInt(b.no_rt) || 0));
+    }, [dataList, searchTerm, filterDesa]);
 
+    // --- SELEKSI & ACTION ---
+    const activateSelectionMode = (id) => {
+        if (!isSelectionMode) {
+            setIsSelectionMode(true);
+            setSelectedIds([id]);
+            if (longPressTimer.current) clearTimeout(longPressTimer.current);
+        }
+    };
+
+    const handleDoubleClick = (id) => activateSelectionMode(id);
+    const handleTouchStart = (id) => { longPressTimer.current = setTimeout(() => activateSelectionMode(id), 800); };
+    const handleTouchEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
+
+    const toggleSelection = (id) => {
+        setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.length === filteredData.length) setSelectedIds([]);
+        else setSelectedIds(filteredData.map(item => item.id));
+    };
+
+    // Trigger Modal Hapus Massal
+    const openDeleteSelectedConfirm = () => {
+        if (selectedIds.length === 0) return;
+        setIsDeleteSelectedConfirmOpen(true);
+    };
+
+    // Eksekusi Hapus Massal
+    const handleDeleteSelected = async () => {
+        setIsSubmitting(true);
+        try {
+            const batch = writeBatch(db);
+            selectedIds.forEach(id => {
+                batch.delete(doc(db, RT_CONFIG.collectionName, id));
+            });
+            await batch.commit();
+            showNotification(`${selectedIds.length} data berhasil dihapus.`, 'success');
+            setIsSelectionMode(false);
+            setSelectedIds([]);
+        } catch (error) {
+            showNotification(`Gagal menghapus: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
+            setIsDeleteSelectedConfirmOpen(false);
+        }
+    };
+
+    // --- HANDLER MODAL & FORM ---
     const handleOpenModal = (mode, item = null) => {
         setModalMode(mode);
         setSelectedItem(item);
-        const initialDesa = currentUser.role === 'admin_desa' ? currentUser.desa : '';
-        setFormData(item ? { ...item } : { desa: initialDesa });
+        const initialDesa = currentUser.role === 'admin_desa' ? currentUser.desa : filterDesa;
+        setFormData(item ? { ...item } : { desa: initialDesa, jenis_kelamin: 'Laki-Laki', jabatan: 'Ketua' });
         setIsModalOpen(true);
     };
 
     const handleCloseModal = () => !isSubmitting && setIsModalOpen(false);
-
     const handleFormChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
     const handleFormSubmit = async (e) => {
@@ -144,28 +256,131 @@ const RtPage = () => {
         setIsSubmitting(true);
         try {
             const dataToSave = { ...formData };
-            let docId = selectedItem?.id;
+            // Pastikan field kosong tersimpan sebagai string kosong
+            ['dusun', 'dukuh', 'no_hp', 'tempat_lahir', 'no_rw'].forEach(f => { if (!dataToSave[f]) dataToSave[f] = ''; });
+            dataToSave.no_rw_only = false; // Penanda data RT
+
             if (selectedItem) {
-                await updateDoc(doc(db, config.collectionName, docId), dataToSave);
-                showNotification('Data RT berhasil diperbarui!', 'success');
+                await updateDoc(doc(db, RT_CONFIG.collectionName, selectedItem.id), dataToSave);
+                showNotification('Data RT diperbarui!', 'success');
             } else {
-                const newDocRef = await addDoc(collection(db, config.collectionName), dataToSave);
-                docId = newDocRef.id;
-                showNotification('Data RT berhasil ditambahkan!', 'success');
+                await addDoc(collection(db, RT_CONFIG.collectionName), dataToSave);
+                showNotification('Data RT ditambahkan!', 'success');
             }
-            if (currentUser.role === 'admin_desa' && docId) {
+            if (currentUser.role === 'admin_desa') {
                 const action = selectedItem ? 'memperbarui' : 'menambahkan';
-                const message = `Admin Desa ${currentUser.desa} telah ${action} data Pengurus RT: "${formData.nama}".`;
-                await createNotificationForAdmins(message, `/app/rt-rw/rt?edit=${docId}`, currentUser);
+                await createNotificationForAdmins(`Admin Desa ${currentUser.desa} ${action} data RT: "${formData.nama}".`, '/app/rt-rw/rt', currentUser);
             }
             handleCloseModal();
-        } catch (error) {
-            showNotification(`Gagal menyimpan data RT: ${error.message}`, 'error');
-        } finally {
-            setIsSubmitting(false);
-        }
+        } catch (error) { showNotification(error.message, 'error'); } 
+        finally { setIsSubmitting(false); }
     };
 
+    // --- IMPORT & EXPORT ---
+    const handleFileUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const workbook = XLSX.read(new Uint8Array(event.target.result), { type: 'array' });
+                const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: "A", defval: "" });
+
+                let startRowIndex = 0;
+                for (let i = 0; i < Math.min(jsonData.length, 10); i++) {
+                     if (String(jsonData[i]['B']).includes('N A M A')) { startRowIndex = i + 2; break; }
+                }
+                if (startRowIndex === 0) startRowIndex = 3;
+
+                const validRows = jsonData.slice(startRowIndex);
+                if (validRows.length === 0) throw new Error("File kosong atau format tidak sesuai.");
+
+                const batch = writeBatch(db);
+                let addedCount = 0;
+                let updatedCount = 0;
+
+                const existingMap = new Map();
+                dataList.forEach(item => {
+                    const key = `${item.nama.toLowerCase()}_${item.desa.toLowerCase()}`;
+                    existingMap.set(key, item.id);
+                });
+
+                validRows.forEach(row => {
+                    const nama = String(row['B'] || '').trim();
+                    if (!nama) return;
+
+                    let desaTarget = currentUser.role === 'admin_desa' ? currentUser.desa : String(row['A'] || '').trim();
+                    if (!desaTarget) return; 
+
+                    let jenisKelamin = "Laki-Laki";
+                    if (row['C'] == 1) jenisKelamin = "Laki-Laki"; else if (row['D'] == 1) jenisKelamin = "Perempuan";
+
+                    let pendidikan = "";
+                    if (row['H'] == 1) pendidikan = "SD";
+                    else if (row['I'] == 1) pendidikan = "SLTP";
+                    else if (row['J'] == 1) pendidikan = "SLTA";
+                    else if (row['K'] == 1) pendidikan = "D1";
+                    else if (row['L'] == 1) pendidikan = "D2";
+                    else if (row['M'] == 1) pendidikan = "D3";
+                    else if (row['N'] == 1) pendidikan = "S1";
+                    else if (row['O'] == 1) pendidikan = "S2";
+
+                    const tglLahirRaw = row['G'];
+                    let tglLahirFixed = "";
+                    if (tglLahirRaw) {
+                        const isoDate = parseExcelDate(tglLahirRaw);
+                        if (isoDate) tglLahirFixed = isoDate;
+                    }
+
+                    const newData = {
+                        desa: desaTarget,
+                        nama: nama,
+                        jenis_kelamin: jenisKelamin,
+                        jabatan: String(row['E'] || ''),
+                        tempat_lahir: String(row['F'] || ''),
+                        tanggal_lahir: tglLahirFixed,
+                        pendidikan: pendidikan,
+                        periode: String(row['P'] || ''),
+                        no_rw: String(row['Q'] || ''), // Q = No RW Induk
+                        no_rt: String(row['R'] || ''), // R = No RT
+                        dukuh: String(row['S'] || ''),
+                        dusun: String(row['T'] || ''),
+                        no_hp: String(row['U'] || ''),
+                        no_rw_only: false
+                    };
+
+                    if (newData.nama && newData.no_rt) {
+                        const key = `${newData.nama.toLowerCase()}_${newData.desa.toLowerCase()}`;
+                        if (existingMap.has(key)) {
+                            batch.update(doc(db, RT_CONFIG.collectionName, existingMap.get(key)), newData);
+                            updatedCount++;
+                        } else {
+                            batch.set(doc(collection(db, RT_CONFIG.collectionName)), newData);
+                            addedCount++;
+                        }
+                    }
+                });
+
+                if (addedCount > 0 || updatedCount > 0) {
+                    await batch.commit();
+                    showNotification(`Impor: ${addedCount} baru, ${updatedCount} update.`, 'success');
+                } else {
+                    showNotification("Tidak ada data valid.", 'warning');
+                }
+            } catch (error) { showNotification(`Error impor: ${error.message}`, 'error'); }
+        };
+        reader.readAsArrayBuffer(file);
+        e.target.value = null; 
+    };
+
+    const handleExportXLSX = async () => {
+        if (filteredData.length === 0) return showNotification("Tidak ada data.", "warning");
+        try { await generateRtXLSX(filteredData, db, exportConfig, currentUser); } 
+        catch (error) { showNotification(error.message, 'error'); }
+    };
+
+    // Delete Single
     const openDeleteConfirm = (item) => {
         setItemToDelete(item);
         setIsDeleteConfirmOpen(true);
@@ -175,276 +390,216 @@ const RtPage = () => {
         if (!itemToDelete) return;
         setIsSubmitting(true);
         try {
-            await deleteDoc(doc(db, config.collectionName, itemToDelete.id));
-            showNotification('Data RT berhasil dihapus.', 'success');
-        } catch(error) {
-            showNotification(`Gagal menghapus data: ${error.message}`, 'error');
-        } finally {
-            setIsSubmitting(false);
-            setIsDeleteConfirmOpen(false);
-        }
-    };
-
-    const handleFileUpload = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-            try {
-                const workbook = XLSX.read(new Uint8Array(event.target.result), { type: 'array' });
-                const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
-
-                if (jsonData.length === 0) throw new Error("File kosong.");
-
-                const existingDataMap = new Map(
-                    dataList.map(item => [item.nama.trim().toLowerCase(), item])
-                );
-
-                const batch = writeBatch(db);
-                let addedCount = 0;
-                let duplicatesInFile = 0;
-                let duplicatesInDb = 0;
-                const processedNames = new Set();
-
-                jsonData.forEach(row => {
-                    const nama = String(row['N A M A'] || '').trim();
-                    if (!nama) return;
-
-                    const normalizedName = nama.toLowerCase();
-                    if (processedNames.has(normalizedName)) {
-                        duplicatesInFile++;
-                        return;
-                    }
-                    processedNames.add(normalizedName);
-                    
-                    if (existingDataMap.has(normalizedName)) {
-                        duplicatesInDb++;
-                        return;
-                    }
-
-                    let jenisKelamin = '';
-                    if (String(row['L']).trim().toUpperCase() === 'L') jenisKelamin = 'Laki-Laki';
-                    else if (String(row['P']).trim().toUpperCase() === 'P') jenisKelamin = 'Perempuan';
-
-                    let pendidikan = '';
-                    for (const level of PENDIDIKAN_LIST) {
-                        if (String(row[level]).trim() === '1') {
-                            pendidikan = level;
-                            break;
-                        }
-                    }
-                    
-                    const formattedDate = parseExcelDate(row['TANGGAL LAHIR']);
-
-                    const newDoc = {
-                        desa: currentUser.role === 'admin_desa' ? currentUser.desa : String(row['DESA'] || ''),
-                        nama: nama,
-                        jenis_kelamin: jenisKelamin,
-                        jabatan: String(row['JABATAN'] || ''),
-                        tempat_lahir: String(row['TEMPAT LAHIR'] || ''),
-                        tanggal_lahir: formattedDate,
-                        pendidikan: pendidikan,
-                        periode: String(row['PRIODE'] || ''),
-                        no_rt: String(row['NO RT'] || ''),
-                        dukuh: String(row['DUKUH'] || ''),
-                        dusun: String(row['DUSUN'] || ''),
-                        no_hp: String(row['No. HP / WA'] || ''),
-                        no_rw: "",
-                    };
-                    
-                    if (newDoc.nama && newDoc.desa && newDoc.jabatan && newDoc.no_rt) {
-                        batch.set(doc(collection(db, config.collectionName)), newDoc);
-                        addedCount++;
-                    }
-                });
-
-                if (addedCount > 0) {
-                    await batch.commit();
-                    let msg = `Impor berhasil: ${addedCount} data baru ditambahkan.`;
-                    let ignoredMsg = [];
-                    if (duplicatesInFile > 0) ignoredMsg.push(`${duplicatesInFile} duplikat dalam file`);
-                    if (duplicatesInDb > 0) ignoredMsg.push(`${duplicatesInDb} duplikat dari database`);
-                    if (ignoredMsg.length > 0) msg += ` ${ignoredMsg.join(' dan ')} diabaikan.`;
-                    
-                    showNotification(msg, 'success');
-                } else {
-                    let msg = "Tidak ada data baru untuk ditambahkan.";
-                    let ignoredMsg = [];
-                    if (duplicatesInFile > 0) ignoredMsg.push(`${duplicatesInFile} duplikat dalam file`);
-                    if (duplicatesInDb > 0) ignoredMsg.push(`${duplicatesInDb} duplikat dari database`);
-                     if (ignoredMsg.length > 0) msg += ` ${ignoredMsg.join(' dan ')} diabaikan.`;
-                    showNotification(msg, 'warning');
-                }
-            } catch (error) {
-                showNotification(`Gagal impor: ${error.message}`, 'error');
-            }
-        };
-        reader.readAsArrayBuffer(file);
-        e.target.value = null;
-    };
-    
-    const handleExportXLSX = async () => {
-        if (filteredData.length === 0) {
-            showNotification("Tidak ada data untuk diekspor.", "warning");
-            return;
-        }
-        try {
-            await generateRtXLSX(filteredData, db);
-        } catch (error) {
-            showNotification(`Gagal mengekspor data: ${error.message}`, 'error');
-        }
-    };
-
-    const handleSelectAll = (e) => {
-        if (e.target.checked) {
-            setSelectedIds(filteredData.map(item => item.id));
-        } else {
-            setSelectedIds([]);
-        }
-    };
-
-    const handleSelectOne = (id) => {
-        setSelectedIds(prev =>
-            prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]
-        );
-    };
-
-    const openDeleteSelectedConfirm = () => {
-        setIsDeleteSelectedConfirmOpen(true);
-    };
-
-    const handleDeleteSelected = async () => {
-        setIsSubmitting(true);
-        try {
-            const batch = writeBatch(db);
-            selectedIds.forEach(id => {
-                batch.delete(doc(db, config.collectionName, id));
-            });
-            await batch.commit();
-            showNotification(`${selectedIds.length} data RT berhasil dihapus.`, 'success');
-            setSelectedIds([]);
-        } catch (error) {
-            showNotification(`Gagal menghapus data terpilih: ${error.message}`, 'error');
-        } finally {
-            setIsSubmitting(false);
-            setIsDeleteSelectedConfirmOpen(false);
-        }
+            await deleteDoc(doc(db, RT_CONFIG.collectionName, itemToDelete.id));
+            showNotification('Data dihapus.', 'success');
+        } catch(error) { showNotification(error.message, 'error'); } 
+        finally { setIsSubmitting(false); setIsDeleteConfirmOpen(false); }
     };
 
     return (
-        <div className="space-y-6">
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-4 flex-wrap">
-                    <InputField type="text" placeholder="Cari nama..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} icon={<FiSearch />} />
+        <div className="space-y-6 pb-20"> 
+            {/* Header & Tools */}
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                    <InputField 
+                        type="text" 
+                        placeholder="Cari Nama / RT..." 
+                        value={searchTerm} 
+                        onChange={(e) => setSearchTerm(e.target.value)} 
+                        icon={<FiSearch />} 
+                        className="w-full md:w-64"
+                    />
                     {currentUser.role === 'admin_kecamatan' && (
-                        <InputField type="select" value={filterDesa} onChange={(e) => setFilterDesa(e.target.value)} icon={<FiFilter />}>
-                            <option value="all">Semua Desa</option>
-                            {DESA_LIST.map(desa => <option key={desa} value={desa}>{desa}</option>)}
-                        </InputField>
+                        <div className="px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium">
+                            Desa: {filterDesa === 'all' ? 'Semua' : filterDesa}
+                        </div>
                     )}
                 </div>
-                 <div className="flex flex-wrap gap-2">
-                    {selectedIds.length > 0 && (
-                         <Button onClick={openDeleteSelectedConfirm} variant="danger">
-                             <FiTrash2 className="mr-2"/> Hapus ({selectedIds.length})
-                         </Button>
-                    )}
-                    <label className="btn btn-warning cursor-pointer"><FiUpload className="mr-2"/> Impor Data<input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls, .csv"/></label>
-                    <Button onClick={handleExportXLSX} variant="success"><FiDownload className="mr-2"/> Ekspor Data</Button>
-                    <Button onClick={() => handleOpenModal('add')} variant="primary"><FiPlus className="mr-2"/> Tambah Data</Button>
+                
+                <div className="flex gap-2 w-full md:w-auto justify-end">
+                    <label className="btn btn-warning cursor-pointer flex items-center px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors">
+                        <FiUpload className="mr-2"/> Import
+                        <input type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls"/>
+                    </label>
+                    <Button onClick={handleExportXLSX} variant="success" className="flex items-center"><FiDownload className="mr-2"/> Ekspor</Button>
+                    <Button onClick={() => handleOpenModal('add')} variant="primary" className="flex items-center"><FiPlus className="mr-2"/> Tambah</Button>
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden">
-                 <div className="overflow-x-auto">
+            {/* Tabel Data */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden relative">
+                 <div className="overflow-x-auto min-h-[400px]">
                     <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
                         <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700 dark:text-gray-300">
                             <tr>
-                                <th scope="col" className="p-4">
-                                    <div className="flex items-center">
-                                        <input id="checkbox-all" type="checkbox" onChange={handleSelectAll} checked={filteredData.length > 0 && selectedIds.length === filteredData.length} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600" />
-                                        <label htmlFor="checkbox-all" className="sr-only">checkbox</label>
-                                    </div>
+                                <th className="px-6 py-3 w-10">
+                                    {isSelectionMode ? (
+                                        <button onClick={toggleSelectAll} className="text-gray-600">
+                                            {selectedIds.length === filteredData.length ? <FiCheckSquare size={18} className="text-blue-600"/> : <div className="w-4 h-4 border-2 border-gray-400 rounded"></div>}
+                                        </button>
+                                    ) : 'No'}
                                 </th>
-                                {config.tableColumns.map(col => <th key={col} className="px-6 py-3">{config.formFields.find(f=>f.name===col)?.label}</th>)}
-                                <th className="px-6 py-3">Aksi</th>
+                                <th className="px-6 py-3">Nama Lengkap</th>
+                                <th className="px-6 py-3">Jabatan</th>
+                                <th className="px-6 py-3">Desa</th>
+                                <th className="px-6 py-3">RT / Dusun</th>
+                                <th className="px-6 py-3 text-center">Aksi</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan={config.tableColumns.length + 2} className="text-center py-4"><Spinner /></td></tr>
-                            ) : filteredData.length > 0 ? filteredData.map(item => (
-                                <tr key={item.id} className={`bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 ${highlightedRow === item.id ? 'highlight-row' : ''}`}>
-                                     <td className="w-4 p-4">
-                                        <div className="flex items-center">
-                                            <input id={`checkbox-${item.id}`} type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => handleSelectOne(item.id)} className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600" />
-                                            <label htmlFor={`checkbox-${item.id}`} className="sr-only">checkbox</label>
-                                        </div>
+                                <tr><td colSpan="6" className="text-center py-8"><Spinner /></td></tr>
+                            ) : filteredData.length > 0 ? filteredData.map((item, index) => (
+                                <tr 
+                                    id={`row-${item.id}`} // Tambahan ID untuk Auto-Scroll
+                                    key={item.id} 
+                                    className={`border-b dark:border-gray-700 transition-colors select-none cursor-pointer 
+                                        ${selectedIds.includes(item.id) ? 'bg-blue-50 dark:bg-blue-900/30' : ''} 
+                                        ${highlightedRow === item.id ? 'bg-yellow-100 dark:bg-yellow-900 ring-2 ring-yellow-400' : 'hover:bg-gray-50 dark:hover:bg-gray-600'}
+                                    `}
+                                    onDoubleClick={() => activateSelectionMode(item.id)}
+                                    onTouchStart={() => handleTouchStart(item.id)}
+                                    onTouchEnd={handleTouchEnd}
+                                    onClick={() => isSelectionMode && toggleSelection(item.id)}
+                                >
+                                    <td className="px-6 py-4 font-medium">
+                                        {isSelectionMode ? (
+                                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${selectedIds.includes(item.id) ? 'bg-blue-600 border-blue-600' : 'border-gray-400'}`}>
+                                                {selectedIds.includes(item.id) && <FiCheckSquare className="text-white w-3 h-3" />}
+                                            </div>
+                                        ) : index + 1}
                                     </td>
-                                    {config.tableColumns.map(col => <td key={col} className="px-6 py-4">{item[col] || '-'}</td>)}
-                                    <td className="px-6 py-4 flex items-center space-x-3">
-                                        <button onClick={() => handleOpenModal('view', item)} className="text-green-500 hover:text-green-700" title="Lihat"><FiEye /></button>
-                                        <button onClick={() => handleOpenModal('edit', item)} className="text-blue-500 hover:text-blue-700" title="Edit"><FiEdit /></button>
-                                        <button onClick={() => openDeleteConfirm(item)} className="text-red-500 hover:text-red-700" title="Hapus"><FiTrash2 /></button>
+                                    <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{item.nama}</td>
+                                    <td className="px-6 py-4">
+                                        <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                                            item.jabatan === 'Ketua' ? 'bg-blue-100 text-blue-800' : 
+                                            item.jabatan === 'Sekretaris' ? 'bg-green-100 text-green-800' : 
+                                            item.jabatan === 'Bendahara' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
+                                        }`}>{item.jabatan}</span>
+                                    </td>
+                                    <td className="px-6 py-4">{item.desa}</td>
+                                    <td className="px-6 py-4">RT {item.no_rt} <span className="text-xs text-gray-400">({item.dusun})</span></td>
+                                    <td className="px-6 py-4 text-center">
+                                        <div className="flex items-center justify-center space-x-2">
+                                            <button onClick={(e) => { e.stopPropagation(); handleOpenModal('view', item); }} className="p-2 text-green-600 hover:bg-green-100 rounded-full"><FiEye size={18}/></button>
+                                            <button onClick={(e) => { e.stopPropagation(); handleOpenModal('edit', item); }} className="p-2 text-blue-600 hover:bg-blue-100 rounded-full"><FiEdit size={18}/></button>
+                                        </div>
                                     </td>
                                 </tr>
                             )) : (
-                                <tr><td colSpan={config.tableColumns.length + 2} className="text-center py-10">Data tidak ditemukan.</td></tr>
+                                <tr><td colSpan="6" className="text-center py-10 text-gray-400">Data RT kosong.</td></tr>
                             )}
                         </tbody>
                     </table>
                  </div>
+                 
+                 {/* Pagination Desa */}
+                 {!loading && currentUser.role === 'admin_kecamatan' && (
+                    <div className="p-4 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex flex-col items-center">
+                        <span className="text-xs text-gray-500 mb-2">Navigasi Data Per Desa (Klik Angka)</span>
+                        <Pagination 
+                            desaList={SAFE_DESA_LIST} 
+                            currentDesa={filterDesa} 
+                            onPageChange={(desa) => setFilterDesa(desa)} 
+                        />
+                    </div>
+                 )}
+                 
+                 <div className="p-4 text-xs text-gray-400 bg-gray-50 dark:bg-gray-900 text-center flex justify-center gap-1">
+                    <FiAlertCircle/> Tip: Klik 2x (PC) atau Tahan (HP) untuk menghapus banyak data.
+                 </div>
             </div>
+
+            {/* ACTION BAR BAWAH */}
+            {isSelectionMode && (
+                <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl rounded-full px-6 py-3 flex items-center gap-6 z-50 animate-bounce-in">
+                    <div className="flex items-center gap-2">
+                        <span className="bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-full">{selectedIds.length}</span>
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Data Terpilih</span>
+                    </div>
+                    <div className="h-6 w-px bg-gray-300 dark:bg-gray-600"></div>
+                    <button 
+                        onClick={openDeleteSelectedConfirm}
+                        disabled={selectedIds.length === 0}
+                        className="text-red-600 hover:text-red-700 font-semibold text-sm flex items-center gap-1 disabled:opacity-50"
+                    >
+                        <FiTrash2 /> Hapus
+                    </button>
+                    <button 
+                        onClick={() => { setIsSelectionMode(false); setSelectedIds([]); }}
+                        className="text-gray-500 hover:text-gray-700 dark:text-gray-400 font-medium text-sm flex items-center gap-1"
+                    >
+                        <FiX /> Batal
+                    </button>
+                </div>
+            )}
             
-            <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={modalMode === 'view' ? `Detail ${config.title}` : modalMode === 'edit' ? `Edit ${config.title}` : `Tambah ${config.title}`}>
-                {modalMode === 'view' ? <OrganisasiDetailView data={selectedItem} config={config} /> : (
+            {/* Modal Form */}
+            <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={modalMode === 'view' ? 'Detail' : modalMode === 'edit' ? 'Edit Data' : 'Tambah Data'}>
+                {modalMode === 'view' ? (
+                    <OrganisasiDetailView data={selectedItem} config={RT_CONFIG} />
+                ) : (
                     <form onSubmit={handleFormSubmit} className="space-y-4">
-                        {config.formFields.map(field => {
-                             if (field.type === 'select') {
-                                return (
-                                    <InputField
-                                        key={field.name}
-                                        label={field.label}
-                                        name={field.name}
-                                        type="select"
-                                        value={formData[field.name] || ''}
-                                        onChange={handleFormChange}
-                                        required={field.required}
-                                    >
-                                        <option value="">Pilih {field.label}</option>
-                                        {(field.options || []).map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                    </InputField>
-                                );
-                            }
-                            return (
-                                <InputField
-                                    key={field.name}
-                                    {...field}
-                                    value={formData[field.name] || ''}
-                                    onChange={handleFormChange}
-                                />
-                            );
-                        })}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <InputField label="Nama Lengkap" name="nama" value={formData.nama || ''} onChange={handleFormChange} required />
+                            <InputField label="Jabatan" name="jabatan" type="select" value={formData.jabatan || ''} onChange={handleFormChange} required>
+                                {JABATAN_RT_LIST.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                            </InputField>
+                            <InputField label="No RT" name="no_rt" value={formData.no_rt || ''} onChange={handleFormChange} required />
+                            <InputField label="No RW (Induk)" name="no_rw" value={formData.no_rw || ''} onChange={handleFormChange} />
+                            <InputField label="Dusun" name="dusun" value={formData.dusun || ''} onChange={handleFormChange} />
+                            <InputField label="Dukuh" name="dukuh" value={formData.dukuh || ''} onChange={handleFormChange} />
+                            
+                            <InputField label="JK" name="jenis_kelamin" type="select" value={formData.jenis_kelamin || ''} onChange={handleFormChange} required>
+                                {JENIS_KELAMIN_LIST.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                            </InputField>
+                            <InputField label="Pendidikan" name="pendidikan" type="select" value={formData.pendidikan || ''} onChange={handleFormChange}>
+                                <option value="">- Pilih -</option>
+                                {PENDIDIKAN_LIST.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                            </InputField>
+
+                            <InputField label="TTL (Tempat)" name="tempat_lahir" value={formData.tempat_lahir || ''} onChange={handleFormChange} />
+                            <InputField label="TTL (Tanggal)" name="tanggal_lahir" type="date" value={formData.tanggal_lahir || ''} onChange={handleFormChange} />
+                            <InputField label="HP" name="no_hp" value={formData.no_hp || ''} onChange={handleFormChange} />
+                            <InputField label="Periode" name="periode" value={formData.periode || ''} onChange={handleFormChange} />
+                        </div>
                         {currentUser.role === 'admin_kecamatan' && (
                              <InputField label="Desa" name="desa" type="select" value={formData.desa || ''} onChange={handleFormChange} required>
                                 <option value="">Pilih Desa</option>
-                                {DESA_LIST.map(d => <option key={d} value={d}>{d}</option>)}
+                                {SAFE_DESA_LIST.map(d => <option key={d} value={d}>{d}</option>)}
                              </InputField>
                         )}
-                         <div className="flex justify-end pt-4 border-t dark:border-gray-700">
-                            <Button type="button" variant="secondary" onClick={handleCloseModal} disabled={isSubmitting}>Batal</Button>
-                            <Button type="submit" variant="primary" isLoading={isSubmitting} className="ml-2">Simpan</Button>
+                        <div className="flex justify-end pt-4 border-t gap-2">
+                            <Button type="button" variant="secondary" onClick={handleCloseModal}>Batal</Button>
+                            <Button type="submit" variant="primary">Simpan</Button>
                         </div>
                     </form>
                 )}
             </Modal>
 
-            <ConfirmationModal isOpen={isDeleteConfirmOpen} onClose={() => setIsDeleteConfirmOpen(false)} onConfirm={handleDelete} isLoading={isSubmitting} title={`Hapus Data ${config.title}`} message={`Yakin ingin menghapus data "${itemToDelete?.nama}"?`} />
-            <ConfirmationModal isOpen={isDeleteSelectedConfirmOpen} onClose={() => setIsDeleteSelectedConfirmOpen(false)} onConfirm={handleDeleteSelected} isLoading={isSubmitting} title="Hapus Data Terpilih" message={`Yakin ingin menghapus ${selectedIds.length} data RT yang dipilih?`} />
+            {/* Modal Konfirmasi Hapus Single */}
+            <ConfirmationModal 
+                isOpen={isDeleteConfirmOpen} 
+                onClose={() => setIsDeleteConfirmOpen(false)} 
+                onConfirm={handleDelete} 
+                isLoading={isSubmitting} 
+                title="Hapus Data RT" 
+                message={`Yakin ingin menghapus data pengurus RT "${itemToDelete?.nama}"? Tindakan ini tidak dapat dibatalkan.`} 
+                variant="danger"
+            />
+
+            {/* Modal Konfirmasi Hapus Massal */}
+            <ConfirmationModal 
+                isOpen={isDeleteSelectedConfirmOpen} 
+                onClose={() => setIsDeleteSelectedConfirmOpen(false)} 
+                onConfirm={handleDeleteSelected} 
+                isLoading={isSubmitting} 
+                title="Hapus Data Terpilih" 
+                message={`Yakin ingin menghapus ${selectedIds.length} data terpilih? Tindakan ini tidak dapat dibatalkan.`} 
+                variant="danger"
+            />
         </div>
     );
 };
 
 export default RtPage;
-

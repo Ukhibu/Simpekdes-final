@@ -4,137 +4,146 @@ import { collection, query, onSnapshot, where } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/common/Spinner';
 import { DESA_LIST, KODE_DESA_MAP } from '../utils/constants';
-import { FiDownload } from 'react-icons/fi';
+import { FiDownload, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import Button from '../components/common/Button';
 import InputField from '../components/common/InputField';
 import { generateRekapKecamatanXLSX } from '../utils/generateRekapKecamatanXLSX';
 import { generateRekapDesaXLSX } from '../utils/generateRekapDesaXLSX';
 import { generateRekapLengkapKecamatanXLSX } from '../utils/generateRekapLengkapKecamatanXLSX';
 
-// --- Sub-Komponen untuk Tampilan Tabel ---
+// --- Sub-Komponen Tampilan Tabel ---
 
 const RekapPokokView = ({ data }) => (
-    <table className="w-full table-fixed text-sm text-left text-gray-500 dark:text-gray-400">
-        <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700 dark:text-gray-300">
-            <tr>
-                <th className="px-6 py-3 w-16">NO</th>
-                <th className="px-6 py-3">NAMA DESA</th>
-                <th className="px-6 py-3 w-32 text-center">JUMLAH RW</th>
-                <th className="px-6 py-3 w-32 text-center">JUMLAH RT</th>
-                <th className="px-6 py-3 w-32 text-center">JUMLAH DUSUN</th>
-                <th className="px-6 py-3 w-32 text-center">JUMLAH DUKUH</th>
-            </tr>
-        </thead>
-        <tbody>
-            {data.map((row, index) => (
-                <tr key={row.namaDesa} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700">
-                    <td className="px-6 py-4 text-center">{index + 1}</td>
-                    <td className="px-6 py-4 font-medium">{row.namaDesa}</td>
-                    <td className="px-6 py-4 text-center">{row.jumlahRw}</td>
-                    <td className="px-6 py-4 text-center">{row.jumlahRt}</td>
-                    <td className="px-6 py-4 text-center">{row.jumlahDusun}</td>
-                    <td className="px-6 py-4 text-center">{row.jumlahDukuh}</td>
-                </tr>
-            ))}
-             <tr className="bg-gray-100 dark:bg-gray-700 font-bold">
-                <td colSpan="2" className="px-6 py-4 text-center">JUMLAH</td>
-                <td className="px-6 py-4 text-center">{data.reduce((sum, row) => sum + row.jumlahRw, 0)}</td>
-                <td className="px-6 py-4 text-center">{data.reduce((sum, row) => sum + row.jumlahRt, 0)}</td>
-                <td className="px-6 py-4 text-center">{data.reduce((sum, row) => sum + row.jumlahDusun, 0)}</td>
-                <td className="px-6 py-4 text-center">{data.reduce((sum, row) => sum + row.jumlahDukuh, 0)}</td>
-            </tr>
-        </tbody>
-    </table>
+    <div className="overflow-hidden shadow-md sm:rounded-lg border border-gray-200 dark:border-gray-700 flex flex-col h-full bg-white dark:bg-gray-800">
+        <div className="overflow-y-auto flex-1 relative">
+            <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 border-collapse">
+                <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700 dark:text-gray-300 sticky top-0 z-20 shadow-sm">
+                    <tr>
+                        <th className="px-6 py-4 text-center w-16 bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">NO</th>
+                        <th className="px-6 py-4 whitespace-nowrap bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">NAMA DESA</th>
+                        <th className="px-6 py-4 text-center bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">JML RW</th>
+                        <th className="px-6 py-4 text-center bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">JML RT</th>
+                        <th className="px-6 py-4 text-center bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">JML DUSUN</th>
+                        <th className="px-6 py-4 text-center bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">JML DUKUH</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {data.map((row, index) => (
+                        <tr key={row.namaDesa} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors">
+                            <td className="px-6 py-4 text-center">{index + 1}</td>
+                            <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{row.namaDesa}</td>
+                            <td className="px-6 py-4 text-center">{row.jumlahRw}</td>
+                            <td className="px-6 py-4 text-center">{row.jumlahRt}</td>
+                            <td className="px-6 py-4 text-center">{row.jumlahDusun}</td>
+                            <td className="px-6 py-4 text-center">{row.jumlahDukuh}</td>
+                        </tr>
+                    ))}
+                </tbody>
+                <tfoot className="sticky bottom-0 z-20 bg-gray-200 dark:bg-gray-900 font-bold text-gray-900 dark:text-white shadow-[0_-2px_4px_rgba(0,0,0,0.1)] border-t dark:border-gray-600">
+                    <tr>
+                        <td colSpan="2" className="px-6 py-4 text-center">TOTAL KECAMATAN</td>
+                        <td className="px-6 py-4 text-center">{data.reduce((sum, row) => sum + row.jumlahRw, 0)}</td>
+                        <td className="px-6 py-4 text-center">{data.reduce((sum, row) => sum + row.jumlahRt, 0)}</td>
+                        <td className="px-6 py-4 text-center">{data.reduce((sum, row) => sum + row.jumlahDusun, 0)}</td>
+                        <td className="px-6 py-4 text-center">{data.reduce((sum, row) => sum + row.jumlahDukuh, 0)}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
 );
 
 const RekapDesaView = ({ data }) => (
-     <table className="w-full table-fixed text-sm text-left text-gray-500 dark:text-gray-400">
-        <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700 dark:text-gray-300">
-            <tr>
-                <th className="px-4 py-3 w-12">NO</th>
-                <th className="px-4 py-3 w-40">DUSUN</th>
-                <th className="px-4 py-3 w-16">RW</th>
-                <th className="px-4 py-3">NAMA KETUA RW</th>
-                <th className="px-4 py-3 w-16">RT</th>
-                <th className="px-4 py-3">NAMA KETUA RT</th>
-                <th className="px-4 py-3">NAMA SEKRETARIS</th>
-                <th className="px-4 py-3">NAMA BENDAHARA</th>
-                <th className="px-4 py-3 w-40">DUKUH</th>
-            </tr>
-        </thead>
-        <tbody>
-            {data.length > 0 ? data.map((row, index) => (
-                <tr key={`${row.no_rw}-${row.no_rt}`} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700">
-                    <td className="px-4 py-2 text-center">{index + 1}</td>
-                    <td className="px-4 py-2">{row.dusun}</td>
-                    <td className="px-4 py-2 text-center">{row.no_rw}</td>
-                    <td className="px-4 py-2">{row.namaKetuaRw}</td>
-                    <td className="px-4 py-2 text-center">{row.no_rt}</td>
-                    <td className="px-4 py-2">{row.Ketua}</td>
-                    <td className="px-4 py-2">{row.Sekretaris}</td>
-                    <td className="px-4 py-2">{row.Bendahara}</td>
-                    <td className="px-4 py-2">{row.dukuh}</td>
-                </tr>
-            )) : (
-                <tr><td colSpan="9" className="text-center py-10">Data tidak ditemukan untuk desa ini.</td></tr>
-            )}
-        </tbody>
-        <tfoot className="bg-gray-100 dark:bg-gray-700 font-bold">
-            <tr>
-                <td colSpan="8" className="px-4 py-2 text-right">JUMLAH RT</td>
-                <td className="px-4 py-2 text-left">{data.length}</td>
-            </tr>
-        </tfoot>
-    </table>
+    <div className="overflow-hidden shadow-md sm:rounded-lg border border-gray-200 dark:border-gray-700 flex flex-col h-full bg-white dark:bg-gray-800">
+        <div className="overflow-y-auto flex-1 relative">
+            <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 border-collapse">
+                <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700 dark:text-gray-300 sticky top-0 z-20 shadow-sm">
+                    <tr>
+                        <th className="px-4 py-4 text-center w-12 bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">NO</th>
+                        <th className="px-4 py-4 min-w-[120px] bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">DUSUN</th>
+                        <th className="px-4 py-4 text-center w-16 bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">RW</th>
+                        <th className="px-4 py-4 min-w-[150px] bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">KETUA RW</th>
+                        <th className="px-4 py-4 text-center w-16 bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">RT</th>
+                        <th className="px-4 py-4 min-w-[150px] bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">KETUA RT</th>
+                        <th className="px-4 py-4 min-w-[150px] bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">SEKRETARIS</th>
+                        <th className="px-4 py-4 min-w-[150px] bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">BENDAHARA</th>
+                        <th className="px-4 py-4 min-w-[120px] bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">DUKUH</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {data.length > 0 ? data.map((row, index) => (
+                        <tr key={`${row.no_rw}-${row.no_rt}-${index}`} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors">
+                            <td className="px-4 py-3 text-center">{index + 1}</td>
+                            <td className="px-4 py-3">{row.dusun}</td>
+                            <td className="px-4 py-3 text-center">{row.no_rw}</td>
+                            <td className="px-4 py-3">{row.namaKetuaRw}</td>
+                            <td className="px-4 py-3 text-center">{row.no_rt}</td>
+                            <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{row.Ketua}</td>
+                            <td className="px-4 py-3">{row.Sekretaris}</td>
+                            <td className="px-4 py-3">{row.Bendahara}</td>
+                            <td className="px-4 py-3">{row.dukuh}</td>
+                        </tr>
+                    )) : (
+                        <tr><td colSpan="9" className="text-center py-10 text-gray-500">Data RT tidak ditemukan untuk desa ini.</td></tr>
+                    )}
+                </tbody>
+                <tfoot className="sticky bottom-0 z-20 bg-gray-100 dark:bg-gray-700 font-bold text-gray-900 dark:text-white shadow-[0_-2px_4px_rgba(0,0,0,0.1)] border-t dark:border-gray-600">
+                    <tr>
+                        <td colSpan="8" className="px-4 py-3 text-right">TOTAL RT</td>
+                        <td className="px-4 py-3 text-left">{data.length}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
 );
 
 const RekapLengkapView = ({ data }) => (
-    <table className="w-full table-fixed text-sm text-left text-gray-500 dark:text-gray-400">
-        <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700 dark:text-gray-300">
-            <tr>
-                <th className="px-2 py-3 w-20">KODE DESA</th>
-                <th className="px-2 py-3 w-32">DESA</th>
-                <th className="px-2 py-3 w-32">DUSUN</th>
-                <th className="px-2 py-3 w-12">RW</th>
-                <th className="px-2 py-3">NAMA KETUA RW</th>
-                <th className="px-2 py-3 w-12">RT</th>
-                <th className="px-2 py-3">NAMA KETUA RT</th>
-                <th className="px-2 py-3 w-40">DUKUH</th>
-            </tr>
-        </thead>
-        <tbody>
-            {data.map(desa => (
-                <React.Fragment key={desa.namaDesa}>
-                    {desa.dusunGroups.map(dusunGroup => (
-                       <React.Fragment key={dusunGroup.dusunName}>
-                            {dusunGroup.entries.map((entry, entryIndex) => (
-                                <tr key={`${desa.namaDesa}-${entry.no_rw}-${entry.no_rt}`} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700">
-                                    <td className="px-2 py-2 text-center">{entryIndex === 0 ? KODE_DESA_MAP[desa.namaDesa] : ''}</td>
-                                    <td className="px-2 py-2">{entryIndex === 0 ? desa.namaDesa : ''}</td>
-                                    <td className="px-2 py-2">{entry.dusun}</td>
-                                    <td className="px-2 py-2 text-center">{entry.no_rw}</td>
-                                    <td className="px-2 py-2">{entry.namaKetuaRw}</td>
-                                    <td className="px-2 py-2 text-center">{entry.no_rt}</td>
-                                    <td className="px-2 py-2">{entry.namaKetuaRt}</td>
-                                    <td className="px-2 py-2">{entry.dukuh}</td>
-                                </tr>
-                            ))}
-                            <tr className="bg-gray-100 dark:bg-gray-700 font-semibold">
-                                <td colSpan="7" className="px-4 py-2 text-right">JUMLAH RT</td>
-                                <td className="px-4 py-2 text-left">{dusunGroup.rtCount}</td>
-                            </tr>
-                       </React.Fragment>
-                    ))}
-                     <tr className="bg-blue-100 dark:bg-blue-900 font-bold text-blue-800 dark:text-blue-200">
-                        <td colSpan="7" className="px-4 py-2 text-right">JUMLAH TOTAL RT DESA {desa.namaDesa.toUpperCase()}</td>
-                        <td className="px-4 py-2 text-left">{desa.totalRtDesa}</td>
+    <div className="overflow-hidden shadow-md sm:rounded-lg border border-gray-200 dark:border-gray-700 flex flex-col h-full bg-white dark:bg-gray-800">
+        <div className="overflow-y-auto flex-1 relative">
+            <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400 border-collapse">
+                <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700 dark:text-gray-300 sticky top-0 z-20 shadow-sm">
+                    <tr>
+                        <th className="px-3 py-4 w-16 text-center bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">KODE</th>
+                        <th className="px-3 py-4 min-w-[100px] bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">DESA</th>
+                        <th className="px-3 py-4 min-w-[100px] bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">DUSUN</th>
+                        <th className="px-3 py-4 w-12 text-center bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">RW</th>
+                        <th className="px-3 py-4 min-w-[150px] bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">KETUA RW</th>
+                        <th className="px-3 py-4 w-12 text-center bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">RT</th>
+                        <th className="px-3 py-4 min-w-[150px] bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">KETUA RT</th>
+                        <th className="px-3 py-4 min-w-[100px] bg-gray-100 dark:bg-gray-700 border-b dark:border-gray-600">DUKUH</th>
                     </tr>
-                </React.Fragment>
-            ))}
-        </tbody>
-    </table>
+                </thead>
+                <tbody>
+                    {data.map(desa => (
+                        <React.Fragment key={desa.namaDesa}>
+                            {desa.dusunGroups.map((dusunGroup, idx) => (
+                                <React.Fragment key={`${desa.namaDesa}-${dusunGroup.dusunName}-${idx}`}>
+                                    {dusunGroup.entries.map((entry, entryIndex) => (
+                                        <tr key={`${desa.namaDesa}-${entry.no_rw}-${entry.no_rt}-${entryIndex}`} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                                            <td className="px-3 py-2 text-center text-xs text-gray-400">{entryIndex === 0 && idx === 0 ? KODE_DESA_MAP[desa.namaDesa] : ''}</td>
+                                            <td className="px-3 py-2 font-bold">{entryIndex === 0 && idx === 0 ? desa.namaDesa : ''}</td>
+                                            <td className="px-3 py-2">{entry.dusun}</td> 
+                                            <td className="px-3 py-2 text-center">{entry.no_rw}</td>
+                                            <td className="px-3 py-2">{entry.namaKetuaRw}</td>
+                                            <td className="px-3 py-2 text-center">{entry.no_rt}</td>
+                                            <td className="px-3 py-2">{entry.namaKetuaRt}</td>
+                                            <td className="px-3 py-2">{entry.dukuh}</td>
+                                        </tr>
+                                    ))}
+                                </React.Fragment>
+                            ))}
+                            <tr className="bg-blue-50 dark:bg-blue-900/30 font-semibold text-blue-900 dark:text-blue-100 border-b dark:border-gray-700">
+                                <td colSpan="7" className="px-3 py-2 text-right">TOTAL RT DESA {desa.namaDesa.toUpperCase()}</td>
+                                <td className="px-3 py-2 text-left font-bold">{desa.totalRtDesa}</td>
+                            </tr>
+                        </React.Fragment>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    </div>
 );
-
 
 // --- Komponen Utama ---
 
@@ -142,15 +151,24 @@ const RekapitulasiRtRwPage = () => {
     const { currentUser } = useAuth();
     const [allData, setAllData] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [viewMode, setViewMode] = useState('pokok'); // 'pokok', 'desa', 'lengkap'
+    
+    const viewModes = ['pokok', 'desa', 'lengkap'];
+    const [viewModeIndex, setViewModeIndex] = useState(0); 
+    const viewMode = viewModes[viewModeIndex];
+
     const [selectedDesa, setSelectedDesa] = useState(DESA_LIST[0]);
+
+    // Swipe State
+    const [touchStart, setTouchStart] = useState(null);
+    const [touchEnd, setTouchEnd] = useState(null);
+    const minSwipeDistance = 50;
 
     useEffect(() => {
         setLoading(true);
         let q;
         if (currentUser.role === 'admin_desa') {
             q = query(collection(db, 'rt_rw'), where('desa', '==', currentUser.desa));
-            setViewMode('desa');
+            setViewModeIndex(1); 
             setSelectedDesa(currentUser.desa);
         } else {
             q = query(collection(db, 'rt_rw'));
@@ -167,67 +185,113 @@ const RekapitulasiRtRwPage = () => {
         return () => unsubscribe();
     }, [currentUser]);
 
-    // --- Memoized Data Processing ---
+    // --- SINKRONISASI DATA LOGIC ---
+    const getRtData = (data) => data.filter(item => item.no_rt && !item.no_rw_only);
+    const getRwData = (data) => data.filter(item => item.no_rw && !item.no_rt);
 
     const rekapPokokData = useMemo(() => {
         return DESA_LIST.map(desa => {
             const desaData = allData.filter(item => item.desa === desa);
+            const rtList = getRtData(desaData);
+            const rwList = getRwData(desaData);
+            
             return {
                 namaDesa: desa,
-                jumlahRw: new Set(desaData.filter(d => d.no_rw).map(d => d.no_rw)).size,
-                jumlahRt: new Set(desaData.filter(d => d.no_rt).map(d => d.no_rt)).size,
+                jumlahRw: rwList.length, 
+                jumlahRt: rtList.length,
                 jumlahDusun: new Set(desaData.filter(d => d.dusun).map(d => d.dusun)).size,
                 jumlahDukuh: new Set(desaData.filter(d => d.dukuh).map(d => d.dukuh)).size,
             };
         });
     }, [allData]);
 
+    // -- PERBAIKAN PENGURUTAN: UTAMAKAN RW -> RT --
     const rekapDesaData = useMemo(() => {
         const desaToFilter = currentUser.role === 'admin_desa' ? currentUser.desa : selectedDesa;
         if (!desaToFilter) return [];
         
         const desaData = allData.filter(item => item.desa === desaToFilter);
-        const rtData = desaData.filter(item => item.no_rt);
-        const rwData = desaData.filter(item => item.no_rw);
+        const rtList = getRtData(desaData);
+        const rwList = getRwData(desaData);
 
-        const rwMap = rwData.reduce((acc, curr) => { acc[curr.no_rw] = curr.nama; return acc; }, {});
+        // Helper: Cari perangkat RT (Sekretaris & Bendahara) dengan RT/RW/Dusun yang sama
+        const findPerangkatRt = (jabatan, rtRef) => {
+            return desaData.find(p => 
+                p.jabatan?.toLowerCase().includes(jabatan) && 
+                p.no_rt === rtRef.no_rt &&
+                p.no_rw === rtRef.no_rw &&
+                (p.dusun || '').trim().toLowerCase() === (rtRef.dusun || '').trim().toLowerCase()
+            );
+        };
 
-        const rtGrouped = rtData.reduce((acc, curr) => {
-            const key = `${curr.dusun}-${curr.no_rw}-${curr.no_rt}`;
-            if (!acc[key]) {
-                acc[key] = { dusun: curr.dusun, no_rw: curr.no_rw, no_rt: curr.no_rt, dukuh: curr.dukuh, Ketua: '-', Sekretaris: '-', Bendahara: '-' };
-            }
-            if (curr.jabatan && acc[key].hasOwnProperty(curr.jabatan)) acc[key][curr.jabatan] = curr.nama;
-            return acc;
+        const rwMap = rwList.reduce((acc, curr) => { 
+            acc[curr.no_rw] = curr.nama; 
+            return acc; 
         }, {});
-        
-        const sortedData = Object.values(rtGrouped).sort((a, b) => (a.dusun.localeCompare(b.dusun) || parseInt(a.no_rw) - parseInt(b.no_rw) || parseInt(a.no_rt) - parseInt(b.no_rt)));
 
-        return sortedData.map(item => ({ ...item, namaKetuaRw: rwMap[item.no_rw] || '-' }));
+        // Filter hanya Ketua RT sebagai baris utama
+        const ketuaRtList = rtList.filter(p => p.jabatan?.toLowerCase().includes('ketua'));
+
+        return ketuaRtList.map(rt => {
+            const sekretarisData = findPerangkatRt('sekretaris', rt);
+            const bendaharaData = findPerangkatRt('bendahara', rt);
+
+            return {
+                ...rt,
+                Ketua: rt.nama, // Nama Ketua RT
+                namaKetuaRw: rwMap[rt.no_rw] || '(Kosong)',
+                Sekretaris: sekretarisData ? sekretarisData.nama : '-',
+                Bendahara: bendaharaData ? bendaharaData.nama : '-'
+            };
+        }).sort((a, b) => {
+            // PRIORITAS PENGURUTAN BARU:
+            // 1. Nomor RW (Ascending)
+            const rwA = parseInt(a.no_rw) || 0;
+            const rwB = parseInt(b.no_rw) || 0;
+            if (rwA !== rwB) return rwA - rwB;
+
+            // 2. Nomor RT (Ascending)
+            const rtA = parseInt(a.no_rt) || 0;
+            const rtB = parseInt(b.no_rt) || 0;
+            if (rtA !== rtB) return rtA - rtB;
+
+            // 3. Dusun (Jika perlu sebagai opsi terakhir)
+            const dusunA = a.dusun || '';
+            const dusunB = b.dusun || '';
+            return dusunA.localeCompare(dusunB);
+        });
     }, [allData, selectedDesa, currentUser]);
 
     const rekapLengkapData = useMemo(() => {
-        const groupedByDesa = allData.reduce((acc, item) => {
-            if (!acc[item.desa]) acc[item.desa] = [];
-            acc[item.desa].push(item);
-            return acc;
-        }, {});
+        const groupedByDesa = {};
+        DESA_LIST.forEach(d => groupedByDesa[d] = []);
+        allData.forEach(d => { if(groupedByDesa[d.desa]) groupedByDesa[d.desa].push(d); });
 
         const result = Object.keys(groupedByDesa).map(namaDesa => {
             const desaData = groupedByDesa[namaDesa];
-            const rwData = desaData.filter(d => d.no_rw);
-            const rtData = desaData.filter(d => d.no_rt);
-
-            const rwMap = rwData.reduce((acc, curr) => { acc[curr.no_rw] = curr.nama; return acc; }, {});
+            const rtList = getRtData(desaData); // Ambil semua data RT
+            const ketuaRtOnly = rtList.filter(p => p.jabatan?.toLowerCase().includes('ketua'));
             
-            const entries = rtData.map(rt => ({
+            const rwList = getRwData(desaData);
+            const rwMap = rwList.reduce((acc, curr) => { acc[curr.no_rw] = curr.nama; return acc; }, {});
+            
+            const entries = ketuaRtOnly.map(rt => ({
                 dusun: rt.dusun || '-',
                 no_rw: rt.no_rw || '-',
                 namaKetuaRw: rwMap[rt.no_rw] || '-',
                 no_rt: rt.no_rt || '-',
-                namaKetuaRt: rt.jabatan === 'Ketua' ? rt.nama : '-',
+                namaKetuaRt: rt.nama,
                 dukuh: rt.dukuh || '-',
-            })).sort((a, b) => (a.dusun.localeCompare(b.dusun) || parseInt(a.no_rw) - parseInt(b.no_rw) || parseInt(a.no_rt) - parseInt(b.no_rt)));
+            })).sort((a, b) => {
+                // Urutkan RW -> RT untuk rekap lengkap juga
+                const rwA = parseInt(a.no_rw) || 0;
+                const rwB = parseInt(b.no_rw) || 0;
+                if(rwA !== rwB) return rwA - rwB;
+                
+                const rtA = parseInt(a.no_rt) || 0;
+                const rtB = parseInt(b.no_rt) || 0;
+                return rtA - rtB;
+            });
 
             const dusunGroups = entries.reduce((acc, entry) => {
                 const dusunName = entry.dusun;
@@ -237,65 +301,122 @@ const RekapitulasiRtRwPage = () => {
                 return acc;
             }, {});
 
-            const totalRtDesa = Object.values(dusunGroups).reduce((sum, group) => sum + group.rtCount, 0);
-
             return {
                 namaDesa,
                 dusunGroups: Object.values(dusunGroups),
-                totalRtDesa,
+                totalRtDesa: entries.length,
             };
         });
 
-        return result.sort((a, b) => KODE_DESA_MAP[a.namaDesa] - KODE_DESA_MAP[b.namaDesa]);
+        return result.filter(r => r.totalRtDesa > 0).sort((a, b) => (KODE_DESA_MAP[a.namaDesa] || 99) - (KODE_DESA_MAP[b.namaDesa] || 99));
     }, [allData]);
 
     const handleExport = async () => {
         switch (viewMode) {
-            case 'pokok':
-                await generateRekapKecamatanXLSX(rekapPokokData);
-                break;
+            case 'pokok': await generateRekapKecamatanXLSX(rekapPokokData); break;
             case 'desa':
                 const desaToExport = currentUser.role === 'admin_desa' ? currentUser.desa : selectedDesa;
                 if (desaToExport) await generateRekapDesaXLSX(rekapDesaData, desaToExport);
                 break;
-            case 'lengkap':
-                await generateRekapLengkapKecamatanXLSX(rekapLengkapData);
-                break;
-            default:
-                console.error("Unknown view mode for export");
+            case 'lengkap': await generateRekapLengkapKecamatanXLSX(rekapLengkapData); break;
+            default: break;
         }
     };
+
+    // --- SWIPE LOGIC ---
+    const onTouchStart = (e) => {
+        setTouchEnd(null);
+        setTouchStart(e.targetTouches[0].clientX);
+    };
+
+    const onTouchMove = (e) => setTouchEnd(e.targetTouches[0].clientX);
+
+    const onTouchEnd = () => {
+        if (!touchStart || !touchEnd) return;
+        const distance = touchStart - touchEnd;
+        const isLeftSwipe = distance > minSwipeDistance;
+        const isRightSwipe = distance < -minSwipeDistance;
+
+        if (currentUser.role === 'admin_kecamatan') {
+            if (isLeftSwipe && viewModeIndex < viewModes.length - 1) {
+                setViewModeIndex(prev => prev + 1);
+            }
+            if (isRightSwipe && viewModeIndex > 0) {
+                setViewModeIndex(prev => prev - 1);
+            }
+        }
+    };
+
+    const changeView = (modeName) => {
+        const index = viewModes.indexOf(modeName);
+        if (index !== -1) setViewModeIndex(index);
+    };
+
+    // --- LAYOUT STRATEGY: Fixed Height Container ---
     
     return (
-        <div className="space-y-6">
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md flex flex-wrap items-center justify-between gap-4">
+        <div 
+            className="flex flex-col h-[calc(100vh-120px)] md:h-[calc(100vh-140px)] gap-4" 
+            onTouchStart={onTouchStart} 
+            onTouchMove={onTouchMove} 
+            onTouchEnd={onTouchEnd}
+        >
+            {/* Page Header */}
+            <div className="flex-none bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md flex flex-col lg:flex-row items-center justify-between gap-4 z-10">
                 {currentUser.role === 'admin_kecamatan' ? (
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <Button variant={viewMode === 'pokok' ? 'primary' : 'ghost'} onClick={() => setViewMode('pokok')}>Rekap Data Pokok</Button>
-                        <Button variant={viewMode === 'desa' ? 'primary' : 'ghost'} onClick={() => setViewMode('desa')}>Rekap Detail Desa</Button>
-                        <Button variant={viewMode === 'lengkap' ? 'primary' : 'ghost'} onClick={() => setViewMode('lengkap')}>Rekap Lengkap Kecamatan</Button>
+                    <div className="flex items-center w-full lg:w-auto justify-center lg:justify-start">
+                        <div className="lg:hidden mr-2 text-gray-400"><FiChevronLeft /></div>
+                        
+                        <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+                            <button onClick={() => changeView('pokok')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${viewMode === 'pokok' ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-300 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}>
+                                Pokok
+                            </button>
+                            <button onClick={() => changeView('desa')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${viewMode === 'desa' ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-300 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}>
+                                Per Desa
+                            </button>
+                            <button onClick={() => changeView('lengkap')} className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${viewMode === 'lengkap' ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-300 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}>
+                                Lengkap
+                            </button>
+                        </div>
+
+                        <div className="lg:hidden ml-2 text-gray-400"><FiChevronRight /></div>
                     </div>
                 ) : (
-                    <h2 className="text-xl font-semibold">Rekapitulasi Desa {currentUser.desa}</h2>
+                    <h2 className="text-xl font-bold text-gray-800 dark:text-white">Rekapitulasi Desa {currentUser.desa}</h2>
                 )}
-                <div className="flex items-center gap-4">
+
+                <div className="flex items-center gap-2 w-full lg:w-auto justify-between lg:justify-end">
                     {viewMode === 'desa' && currentUser.role === 'admin_kecamatan' && (
-                        <InputField type="select" value={selectedDesa} onChange={e => setSelectedDesa(e.target.value)}>
-                            {DESA_LIST.map(desa => <option key={desa} value={desa}>{desa}</option>)}
-                        </InputField>
+                        <div className="w-48">
+                            <InputField type="select" value={selectedDesa} onChange={e => setSelectedDesa(e.target.value)}>
+                                {DESA_LIST.map(desa => <option key={desa} value={desa}>{desa}</option>)}
+                            </InputField>
+                        </div>
                     )}
-                    <Button onClick={handleExport} variant="success" disabled={loading}>
-                        <FiDownload className="mr-2"/> Ekspor Data
+                    <Button onClick={handleExport} variant="success" disabled={loading} className="whitespace-nowrap">
+                        <FiDownload className="mr-2"/> Ekspor Excel
                     </Button>
                 </div>
             </div>
 
-            {loading ? <div className="flex justify-center py-10"><Spinner/></div> : (
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden">
-                    <div className="overflow-x-auto">
-                        {viewMode === 'pokok' && currentUser.role === 'admin_kecamatan' && <RekapPokokView data={rekapPokokData} />}
-                        {viewMode === 'desa' && <RekapDesaView data={rekapDesaData} />}
-                        {viewMode === 'lengkap' && currentUser.role === 'admin_kecamatan' && <RekapLengkapView data={rekapLengkapData} />}
+            {/* Mobile Swipe Hint */}
+            <div className="flex-none lg:hidden text-center text-xs text-gray-400 italic -mt-2">
+                Geser layar kiri/kanan untuk ganti tampilan rekap
+            </div>
+
+            {/* Content Area */}
+            {loading ? <div className="flex justify-center py-20"><Spinner/></div> : (
+                <div className="flex-1 min-h-0 relative transition-all duration-300 ease-in-out">
+                    <div className="absolute inset-0">
+                        {viewMode === 'pokok' && currentUser.role === 'admin_kecamatan' && (
+                            <div className="animate-fade-in h-full"><RekapPokokView data={rekapPokokData} /></div>
+                        )}
+                        {viewMode === 'desa' && (
+                            <div className="animate-fade-in h-full"><RekapDesaView data={rekapDesaData} /></div>
+                        )}
+                        {viewMode === 'lengkap' && currentUser.role === 'admin_kecamatan' && (
+                            <div className="animate-fade-in h-full"><RekapLengkapView data={rekapLengkapData} /></div>
+                        )}
                     </div>
                 </div>
             )}
@@ -304,4 +425,3 @@ const RekapitulasiRtRwPage = () => {
 };
 
 export default RekapitulasiRtRwPage;
-

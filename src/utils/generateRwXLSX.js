@@ -1,184 +1,174 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { db } from '../firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
-// Helper untuk mengambil nama Kepala Desa dari database
-const getNamaKepalaDesa = async (namaDesa) => {
+const formatDateIndo = (dateString) => {
+    if (!dateString) return "";
     try {
-        const q = query(
-            collection(db, 'perangkat_desa'),
-            where('desa', '==', namaDesa),
-            where('jabatan', '==', 'Kepala Desa')
-        );
-        const querySnapshot = await getDocs(q);
-        if (!querySnapshot.empty) {
-            return querySnapshot.docs[0].data().nama.toUpperCase() || '________________';
-        }
-        return '________________';
-    } catch (error) {
-        console.error("Error fetching Kepala Desa:", error);
-        return '________________';
-    }
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return dateString;
+        return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }).format(date);
+    } catch (e) { return dateString; }
 };
 
-// Helper untuk mem-parsing tanggal dengan aman
-const parseDate = (dateString) => {
-    if (!dateString || dateString === '-') return null;
-    try {
-        let date = new Date(dateString);
-        if (isNaN(date.getTime())) return null;
-        // Adjust for timezone offset to ensure correct date is stored in Excel
-        const userTimezoneOffset = date.getTimezoneOffset() * 60000;
-        return new Date(date.getTime() + userTimezoneOffset);
-    } catch (e) {
-        return null;
-    }
-};
+export const generateRwXLSX = async (dataList, db, exportConfig, currentUser) => {
+    const validData = dataList.filter(item => item.desa);
+    const uniqueDesa = [...new Set(validData.map(item => item.desa))];
+    
+    if (validData.length === 0) throw new Error("Tidak ada data valid.");
+    if (uniqueDesa.length > 1) throw new Error("Gagal Ekspor: Harap filter 1 Desa.");
 
-export const generateRwXLSX = async (data) => {
-    if (!data || data.length === 0) {
-        alert("Tidak ada data untuk diekspor.");
-        return;
-    }
-
-    const workbook = new ExcelJS.Workbook();
-    const namaDesa = data[0]?.desa || "Unknown";
-    const worksheet = workbook.addWorksheet(`Data RW Desa ${namaDesa}`);
+    const desaName = uniqueDesa[0];
     const currentYear = new Date().getFullYear();
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet(`Data RW ${desaName}`);
 
-    // --- Definisi Styles ---
+    // --- STYLES ---
+    const fontBase = { name: 'Arial', size: 9 };
+    const fontSmall = { name: 'Arial', size: 7 }; // Khusus Dusun
+    const borderStyle = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+    
     const titleStyle = { font: { name: 'Arial', size: 12, bold: true }, alignment: { vertical: 'middle', horizontal: 'center' } };
-    const headerStyle = { font: { name: 'Arial', size: 10, bold: true }, alignment: { horizontal: 'center', vertical: 'middle', wrapText: true }, border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } } };
-    const baseCellStyle = { font: { name: 'Arial', size: 8 }, border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }, alignment: { vertical: 'middle' } };
-    const totalRowStyle = { font: { name: 'Arial', size: 8, bold: true }, border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }, alignment: { horizontal: 'center', vertical: 'middle' } };
-    const grandTotalStyle = { ...totalRowStyle, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC5E0B4' } } };
+    const headerStyle = { font: { name: 'Arial', size: 9, bold: true }, alignment: { horizontal: 'center', vertical: 'middle', wrapText: true }, border: borderStyle, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } } };
     
-    // --- Pengaturan Halaman ---
-    worksheet.pageSetup = {
-        orientation: 'landscape',
-        fitToPage: true, fitToWidth: 1, fitToHeight: 0,
-        paperSize: 9, // A4
-        margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5 },
-    };
-    
-    // --- Judul Utama ---
-    worksheet.mergeCells('A1:T1');
-    worksheet.getCell('A1').value = `DATA RW DESA ${namaDesa.toUpperCase()}`;
+    const centerStyle = { font: fontBase, alignment: { vertical: 'middle', horizontal: 'center' }, border: borderStyle };
+    const leftStyle = { font: fontBase, alignment: { vertical: 'middle', horizontal: 'left', wrapText: true }, border: borderStyle };
+    const leftSmallStyle = { font: fontSmall, alignment: { vertical: 'middle', horizontal: 'left', wrapText: true }, border: borderStyle };
+    const totalStyle = { font: { name: 'Arial', size: 9, bold: true }, alignment: { vertical: 'middle', horizontal: 'center' }, border: borderStyle, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE0B2' } } };
+
+    // --- PAGE SETUP ---
+    worksheet.pageSetup = { orientation: 'landscape', paperSize: 9, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 }, fitToPage: true, printArea: 'A:S' };
+
+    // --- JUDUL ---
+    worksheet.mergeCells('A1:S1');
+    worksheet.getCell('A1').value = `DATA RW DESA ${desaName.toUpperCase()}`;
     worksheet.getCell('A1').style = titleStyle;
-    worksheet.mergeCells('A2:T2');
+
+    worksheet.mergeCells('A2:S2');
     worksheet.getCell('A2').value = `TAHUN ${currentYear}`;
     worksheet.getCell('A2').style = titleStyle;
     worksheet.addRow([]);
 
-    // --- Header Tabel ---
-    const headerRowDefs = [
-        ["NO", "N A M A", "Jenis Kelamin", null, "JABATAN", "TEMPAT, TGL LAHIR", null, "PENDIDIKAN", null, null, null, null, null, null, null, "DUSUN", "NO RW", "PRIODE", "No. HP / WA"],
-        [null, null, 'L', 'P', null, "TEMPAT LAHIR", "TANGGAL LAHIR", 'SD', 'SLTP', 'SLTA', 'D1', 'D2', 'D3', 'S1', 'S2', null, null, null, null]
-    ];
-    const headerStartRow = worksheet.lastRow.number + 1;
-    worksheet.addRows(headerRowDefs);
+    // --- HEADER ---
+    const startRow = 4;
+    const nextRow = 5;
+    const headers1 = { A: "NO", B: "N A M A", C: "Jenis Kelamin", E: "JABATAN", F: "TEMPAT, TGL LAHIR", H: "PENDIDIKAN", P: "DUSUN", Q: "NO RW", R: "PRIODE", S: "No. HP / WA" };
+    const headers2 = { C: "L", D: "P", F: "TEMPAT LAHIR", G: "TANGGAL LAHIR", H: "SD", I: "SLTP", J: "SLTA", K: "D1", L: "D2", M: "D3", N: "S1", O: "S2" };
 
-    // Merge cells for headers
-    worksheet.mergeCells(`A${headerStartRow}:A${headerStartRow + 1}`);
-    worksheet.mergeCells(`B${headerStartRow}:B${headerStartRow + 1}`);
-    worksheet.mergeCells(`C${headerStartRow}:D${headerStartRow}`);
-    worksheet.mergeCells(`E${headerStartRow}:E${headerStartRow + 1}`);
-    worksheet.mergeCells(`F${headerStartRow}:G${headerStartRow}`);
-    worksheet.mergeCells(`H${headerStartRow}:O${headerStartRow}`);
-    worksheet.mergeCells(`P${headerStartRow}:P${headerStartRow + 1}`);
-    worksheet.mergeCells(`Q${headerStartRow}:Q${headerStartRow + 1}`);
-    worksheet.mergeCells(`R${headerStartRow}:R${headerStartRow + 1}`);
-    worksheet.mergeCells(`S${headerStartRow}:S${headerStartRow + 1}`);
+    for (const [c, v] of Object.entries(headers1)) worksheet.getCell(`${c}${startRow}`).value = v;
+    for (const [c, v] of Object.entries(headers2)) worksheet.getCell(`${c}${nextRow}`).value = v;
 
-    // Apply header style
-    worksheet.getRow(headerStartRow).eachCell({ includeEmpty: true }, cell => cell.style = headerStyle);
-    worksheet.getRow(headerStartRow + 1).eachCell({ includeEmpty: true }, cell => cell.style = headerStyle);
+    ['A', 'B', 'E', 'P', 'Q', 'R', 'S'].forEach(c => worksheet.mergeCells(`${c}${startRow}:${c}${nextRow}`));
+    worksheet.mergeCells(`C${startRow}:D${startRow}`);
+    worksheet.mergeCells(`F${startRow}:G${startRow}`);
+    worksheet.mergeCells(`H${startRow}:O${startRow}`);
 
-    // --- Isi Data ---
-    const firstDataRow = worksheet.lastRow.number + 1;
-    data.forEach((p, i) => {
-        const row = worksheet.addRow([
-            i + 1,
-            p.nama || '',
-            p.jenis_kelamin === 'Laki-Laki' ? 1 : null,
-            p.jenis_kelamin === 'Perempuan' ? 1 : null,
-            p.jabatan || '',
-            p.tempat_lahir || '',
-            parseDate(p.tanggal_lahir),
-            p.pendidikan === 'SD' ? 1 : null,
-            p.pendidikan === 'SLTP' ? 1 : null,
-            p.pendidikan === 'SLTA' ? 1 : null,
-            p.pendidikan === 'D1' ? 1 : null,
-            p.pendidikan === 'D2' ? 1 : null,
-            p.pendidikan === 'D3' ? 1 : null,
-            p.pendidikan === 'S1' ? 1 : null,
-            p.pendidikan === 'S2' ? 1 : null,
-            p.dusun || '',
-            p.no_rw || '',
-            p.periode || '',
-            p.no_hp ? String(p.no_hp) : '',
-        ]);
-        
-        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-            cell.style = baseCellStyle;
-             if ([1, 3, 4, 8, 9, 10, 11, 12, 13, 14, 15, 17].includes(colNumber)) {
-                cell.alignment = { ...cell.alignment, horizontal: 'center' };
-            }
-            if (colNumber === 7) cell.numFmt = 'dd mmmm yyyy';
-        });
-    });
-    const lastDataRow = worksheet.lastRow.number;
-
-    // --- Baris Jumlah ---
-    worksheet.addRow([]);
-    const totalRow = worksheet.addRow([]);
-    totalRow.getCell('A').value = 'JUMLAH';
-    worksheet.mergeCells(`A${totalRow.number}:B${totalRow.number}`);
-
-    const grandTotalRow = worksheet.addRow([]);
-    grandTotalRow.getCell('A').value = 'JUMLAH TOTAL';
-    worksheet.mergeCells(`A${grandTotalRow.number}:B${grandTotalRow.number}`);
-    
-    ['C','D','H','I','J','K','L','M','N','O'].forEach(col => {
-        totalRow.getCell(col).value = { formula: `SUM(${col}${firstDataRow}:${col}${lastDataRow})` };
-    });
-
-    grandTotalRow.getCell('C').value = { formula: `SUM(C${totalRow.number}:D${totalRow.number})` };
-    worksheet.mergeCells(`C${grandTotalRow.number}:G${grandTotalRow.number}`);
-    grandTotalRow.getCell('H').value = { formula: `SUM(H${totalRow.number}:O${totalRow.number})` };
-    worksheet.mergeCells(`H${grandTotalRow.number}:O${grandTotalRow.number}`);
-
-    totalRow.eachCell({ includeEmpty: true }, cell => cell.style = totalRowStyle);
-    grandTotalRow.eachCell({ includeEmpty: true }, cell => cell.style = grandTotalStyle);
-    
-    // --- Blok Tanda Tangan ---
-    const namaKades = await getNamaKepalaDesa(namaDesa);
-    const sigRowStart = worksheet.lastRow.number + 3;
-    worksheet.mergeCells(`P${sigRowStart}:S${sigRowStart}`);
-    worksheet.getCell(`P${sigRowStart}`).value = `${namaDesa}, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`;
-    worksheet.mergeCells(`P${sigRowStart + 1}:S${sigRowStart + 1}`);
-    worksheet.getCell(`P${sigRowStart + 1}`).value = 'Kepala Desa';
-    worksheet.mergeCells(`P${sigRowStart + 5}:S${sigRowStart + 5}`);
-    const kadesCell = worksheet.getCell(`P${sigRowStart + 5}`);
-    kadesCell.value = namaKades;
-    kadesCell.font = { name: 'Arial', size: 10, bold: true, underline: true };
-    
-    for(let i of [0, 1, 5]) {
-       worksheet.getCell(`P${sigRowStart + i}`).alignment = { horizontal: 'center' };
+    for (let r = startRow; r <= nextRow; r++) {
+        worksheet.getRow(r).height = 25;
+        for (let c = 1; c <= 19; c++) worksheet.getCell(r, c).style = headerStyle;
     }
 
-    // --- Atur Lebar Kolom ---
-    worksheet.columns = [
-        { width: 4 }, { width: 22 }, { width: 4 }, { width: 4 }, { width: 18 }, { width: 15 },
-        { width: 15 }, { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 }, { width: 4 },
-        { width: 4 }, { width: 4 }, { width: 4 }, { width: 15 }, { width: 8 }, { width: 12 },
-        { width: 15 }
-    ];
+    // --- SORTING ---
+    // Urutkan RW (Asc) -> Dusun (Asc). Jabatan tidak perlu sort karena RW biasanya cuma Ketua.
+    validData.sort((a, b) => {
+        const rwA = parseInt(a.no_rw) || 0; const rwB = parseInt(b.no_rw) || 0;
+        if (rwA !== rwB) return rwA - rwB;
+        const dsnA = (a.dusun || '').toLowerCase(); const dsnB = (b.dusun || '').toLowerCase();
+        return dsnA.localeCompare(dsnB);
+    });
 
-    // --- Tulis File ---
+    // --- ISI DATA ---
+    let firstDataRow = nextRow + 1;
+    validData.forEach((item, i) => {
+        const jkL = (item.jenis_kelamin || '').toLowerCase().includes('l') ? 1 : null;
+        const jkP = (item.jenis_kelamin || '').toLowerCase().includes('p') ? 1 : null;
+        const pend = (item.pendidikan || '').toUpperCase();
+
+        const row = worksheet.addRow([
+            i + 1, item.nama, jkL, jkP, item.jabatan, item.tempat_lahir, formatDateIndo(item.tanggal_lahir),
+            pend === 'SD' ? 1 : null, pend === 'SLTP' ? 1 : null, pend === 'SLTA' ? 1 : null,
+            pend === 'D1' ? 1 : null, pend === 'D2' ? 1 : null, pend === 'D3' ? 1 : null,
+            pend === 'S1' ? 1 : null, pend === 'S2' ? 1 : null,
+            item.dusun, item.no_rw, item.periode, item.no_hp
+        ]);
+
+        row.height = 20;
+        for (let c = 1; c <= 19; c++) {
+            if (c === 16) row.getCell(c).style = leftSmallStyle; // Dusun Font 7
+            else if ([2, 5, 6].includes(c)) row.getCell(c).style = leftStyle;
+            else row.getCell(c).style = centerStyle;
+        }
+    });
+
+    let lastDataRow = worksheet.lastRow.number;
+
+    // --- JUMLAH ---
+    const jumlahRow = worksheet.addRow(['JUMLAH']);
+    worksheet.mergeCells(`A${jumlahRow.number}:B${jumlahRow.number}`);
+    
+    // Sum L-P & Pendidikan
+    [3,4, 8,9,10,11,12,13,14,15].forEach(c => {
+        const colChar = worksheet.getColumn(c).letter;
+        jumlahRow.getCell(c).value = { formula: `SUM(${colChar}${firstDataRow}:${colChar}${lastDataRow})` };
+    });
+    
+    for(let c=1; c<=19; c++) jumlahRow.getCell(c).style = totalStyle;
+
+    // --- JUMLAH TOTAL ---
+    const totalRow = worksheet.addRow(['JUMLAH TOTAL']);
+    worksheet.mergeCells(`A${totalRow.number}:B${totalRow.number}`);
+    
+    worksheet.mergeCells(`C${totalRow.number}:D${totalRow.number}`);
+    totalRow.getCell(3).value = { formula: `SUM(C${jumlahRow.number}:D${jumlahRow.number})` };
+    
+    worksheet.mergeCells(`H${totalRow.number}:O${totalRow.number}`);
+    totalRow.getCell(8).value = { formula: `SUM(H${jumlahRow.number}:O${jumlahRow.number})` };
+
+    for(let c=1; c<=19; c++) totalRow.getCell(c).style = totalStyle;
+    [1,3,8].forEach(c => totalRow.getCell(c).style = totalStyle);
+
+    worksheet.addRow([]);
+
+    // --- TANDA TANGAN KADES ---
+    const currentRow = worksheet.lastRow.number + 1;
+    const dateNow = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    let namaKades = '(....................................)';
+
+    try {
+        const q = query(collection(db, 'perangkat'), where('desa', '==', desaName));
+        const snapshot = await getDocs(q);
+        const allPerangkat = snapshot.docs.map(d => d.data());
+        const kades = allPerangkat.find(p => p.jabatan?.toLowerCase().includes('kepala desa'));
+        if (kades && kades.nama) namaKades = kades.nama.toUpperCase();
+        // Logic simpel permintaan user:
+        // const kades = allPerangkat.find(p => p.desa === desa && p.jabatan?.toLowerCase().includes('kepala desa'));
+        // Karena kita sudah query where desa, tidak perlu cek p.desa lagi di find, tapi aman saja.
+    } catch (e) { console.error("Err Kades:", e); }
+
+    const addSignatureBlock = (rowNum, { location, jabatan, nama }) => {
+        const startCol = 'Q'; const endCol = 'S'; // Kanan
+        worksheet.mergeCells(`${startCol}${rowNum}:${endCol}${rowNum}`);
+        const l = worksheet.getCell(`${startCol}${rowNum}`);
+        l.value = `${location}, ${dateNow}`; l.alignment = {horizontal:'center'}; l.font = {name:'Arial', size:11};
+
+        worksheet.mergeCells(`${startCol}${rowNum+1}:${endCol}${rowNum+1}`);
+        const j = worksheet.getCell(`${startCol}${rowNum+1}`);
+        j.value = jabatan; j.alignment = {horizontal:'center'}; j.font = {name:'Arial', size:11};
+
+        const nr = rowNum+5;
+        worksheet.mergeCells(`${startCol}${nr}:${endCol}${nr}`);
+        const n = worksheet.getCell(`${startCol}${nr}`);
+        n.value = nama; n.alignment = {horizontal:'center'}; n.font = {name:'Arial', size:11, bold:true, underline:true};
+    };
+
+    addSignatureBlock(currentRow, { location: desaName, jabatan: 'Kepala Desa', nama: namaKades });
+
+    // Widths
+    const widths = [5, 25, 4,4, 18, 15,15, 4,4,4,4,4,4,4,4, 15, 8, 12, 15];
+    widths.forEach((w, i) => worksheet.getColumn(i+1).width = w);
+
+    const fileName = `Data_RW_${desaName.replace(/\s+/g, '_')}_${currentYear}.xlsx`;
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    saveAs(blob, `Data_RW_Desa_${namaDesa.replace(/\s/g, '_')}_${currentYear}.xlsx`);
+    saveAs(blob, fileName);
 };
-

@@ -6,10 +6,16 @@ const Pagination = ({ desaList, currentDesa, onPageChange }) => {
   const containerRef = useRef(null);
   const buttonRefs = useRef([]);
 
-  const currentIndex = desaList.indexOf(currentDesa);
+  // Cari index desa saat ini di dalam list
+  const currentIndex = desaList ? desaList.indexOf(currentDesa) : -1;
 
   useEffect(() => {
-    if (buttonRefs.current[currentIndex] && containerRef.current) {
+    // Pastikan elemen dan referensi ada sebelum menghitung posisi
+    if (
+      currentIndex !== -1 && 
+      buttonRefs.current[currentIndex] && 
+      containerRef.current
+    ) {
       const activeButton = buttonRefs.current[currentIndex];
       const containerRect = containerRef.current.getBoundingClientRect();
       const buttonRect = activeButton.getBoundingClientRect();
@@ -20,22 +26,26 @@ const Pagination = ({ desaList, currentDesa, onPageChange }) => {
         height: `${buttonRect.height}px`,
       });
     }
-  }, [currentIndex, desaList]); // Recalculate on index or list change
+  }, [currentIndex, desaList]); // Hitung ulang saat index atau list berubah
 
+  // Jangan render jika list kosong atau hanya 1 (opsional, bisa dihapus jika ingin tetap tampil)
   if (!desaList || desaList.length <= 1) {
     return null;
   }
 
   return (
-    <div className="pagination-wrapper">
+    <div className="pagination-wrapper overflow-x-auto">
       <div className="pagination-container" ref={containerRef}>
-        <div className="indicator" style={indicatorStyle}></div>
+        {/* Indikator Animasi */}
+        <div className="indicator shadow-md" style={indicatorStyle}></div>
+        
         {desaList.map((desa, index) => (
           <button
             key={desa}
             ref={(el) => (buttonRefs.current[index] = el)}
             className={`pag-link ${index === currentIndex ? 'active' : ''}`}
             onClick={() => onPageChange(desa)}
+            title={`Lihat Data Desa ${desa}`}
           >
             {index + 1}
           </button>
@@ -46,4 +56,3 @@ const Pagination = ({ desaList, currentDesa, onPageChange }) => {
 };
 
 export default Pagination;
-

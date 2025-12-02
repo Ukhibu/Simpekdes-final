@@ -1,192 +1,248 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
+import { db } from '../firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
-export const generateRekapDesaXLSX = async (rts, rws, branding, bpdKetua) => {
-  // Safety checks to prevent crashes if data is not ready
-  const safeRts = Array.isArray(rts) ? rts : [];
-  const safeRws = Array.isArray(rws) ? rws : [];
-  const safeBranding = branding || {};
-  const safeBpdKetua = bpdKetua || {};
-  
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Simpekdes';
-  workbook.created = new Date();
-  const worksheet = workbook.addWorksheet(`Rekapitulasi Desa ${safeBranding.namaDesa || 'Tanpa Nama'}`, {
-    pageSetup: {
-      paperSize: 9, // A4
-      orientation: 'portrait',
-      margins: {
-        top: 0.5, left: 0.5, bottom: 0.5, right: 0.5
-      },
-      fitToPage: true,
-      fitToWidth: 1,
-      fitToHeight: 0,
-    }
-  });
-
-  const title = `REKAP DATA RT, RW DAN DUSUN DESA ${safeBranding?.namaDesa?.toUpperCase() || ''}`;
-  const yearTitle = `TAHUN ${new Date().getFullYear()}`;
-
-  // === STYLING ===
-  const fontBold = { name: 'Arial', size: 11, bold: true };
-  const textCenter = { vertical: 'middle', horizontal: 'center' };
-  const textLeft = { vertical: 'middle', horizontal: 'left' };
-  const borderThin = {
-    top: { style: 'thin' },
-    left: { style: 'thin' },
-    bottom: { style: 'thin' },
-    right: { style: 'thin' }
-  };
-
-  // === HEADER ===
-  worksheet.mergeCells('A1:I1');
-  const titleCell = worksheet.getCell('A1');
-  titleCell.value = title;
-  titleCell.font = { name: 'Arial', size: 12, bold: true };
-  titleCell.alignment = textCenter;
-
-  worksheet.mergeCells('A2:I2');
-  const yearCell = worksheet.getCell('A2');
-  yearCell.value = yearTitle;
-  yearCell.font = fontBold;
-  yearCell.alignment = textCenter;
-
-  // === TABLE HEADER ===
-  const headerRow = worksheet.getRow(4);
-  headerRow.values = ['NO', 'DUSUN', 'RW', 'NAMA KETUA RW', 'RT', 'NAMA KETUA RT', 'NAMA SEKRETARIS', 'NAMA BENDAHARA', 'DUKUH'];
-  headerRow.eachCell(cell => {
-    cell.font = fontBold;
-    cell.alignment = textCenter;
-    cell.border = borderThin;
-  });
-  
-  // === DATA PROCESSING & BODY ===
-  const sortedRts = [...safeRts].sort((a, b) => {
-    const dusunCompare = (a.dusun || '').localeCompare(b.dusun || '');
-    if (dusunCompare !== 0) return dusunCompare;
-    const rwCompare = (a.rw || '').localeCompare(b.rw || '');
-    if (rwCompare !== 0) return rwCompare;
-    return (a.rt || '').localeCompare(b.rt || '');
-  });
-
-  const startRowData = 5;
-  sortedRts.forEach((rt, index) => {
-    const rowNumber = startRowData + index;
-    const rwData = safeRws.find(rw => rw.rw === rt.rw && rw.dusun === rt.dusun);
-    const row = worksheet.getRow(rowNumber);
-    row.values = [
-      index + 1,
-      rt.dusun || '',
-      rt.rw || '',
-      rwData?.nama || '',
-      rt.rt || '',
-      rt.nama || '',
-      rt.sekretaris || '',
-      rt.bendahara || '',
-      rt.dukuh || ''
-    ];
-
-    row.eachCell((cell, colNumber) => {
-      cell.border = borderThin;
-      if ([1, 2, 3, 5, 9].includes(colNumber)) {
-        cell.alignment = textCenter;
-      } else {
-        cell.alignment = textLeft;
-      }
-    });
-  });
-
-  // === [FIXED] More Robust Vertical Merge Logic ===
-  if (sortedRts.length > 1) {
-    const mergeCols = [2, 3, 4]; // Columns B, C, D
-    mergeCols.forEach(col => {
-      let mergeStartRow = startRowData;
-      for (let rowNum = startRowData; rowNum < startRowData + sortedRts.length; rowNum++) {
-        // Check if the next row exists and if the cell value is different
-        if ((rowNum + 1 < startRowData + sortedRts.length) && 
-            (worksheet.getCell(rowNum, col).value !== worksheet.getCell(rowNum + 1, col).value)) {
-          if (mergeStartRow < rowNum) {
-            worksheet.mergeCells(mergeStartRow, col, rowNum, col);
-          }
-          mergeStartRow = rowNum + 1;
-        }
-      }
-      // Merge the last group of cells
-      if (mergeStartRow < startRowData + sortedRts.length) {
-        worksheet.mergeCells(mergeStartRow, col, startRowData + sortedRts.length - 1, col);
-      }
-    });
-  }
-
-  // === TABLE FOOTER (JUMLAH) ===
-  const totalRowNumber = startRowData + sortedRts.length;
-  const totalRow = worksheet.getRow(totalRowNumber);
-  worksheet.mergeCells(`A${totalRowNumber}:D${totalRowNumber}`);
-  const jumlahCell = worksheet.getCell(`A${totalRowNumber}`);
-  jumlahCell.value = 'JUMLAH';
-  jumlahCell.font = fontBold;
-  jumlahCell.alignment = textCenter;
-  
-  // Apply borders to merged "JUMLAH" cells
-  for(let i = 1; i <= 9; i++) {
-    totalRow.getCell(i).border = borderThin;
-  }
-  
-  const totalDusun = [...new Set(safeRts.map(rt => rt.dusun).filter(Boolean))].length;
-  const totalRw = safeRws.length;
-  const totalRt = safeRts.length;
-  const totalDukuh = [...new Set(safeRts.map(rt => rt.dukuh).filter(Boolean))].length;
-  
-  totalRow.getCell(2).value = totalDusun;
-  totalRow.getCell(3).value = totalRw;
-  totalRow.getCell(5).value = totalRt;
-  totalRow.getCell(9).value = totalDukuh;
-
-  [2,3,5,9].forEach(col => {
-    totalRow.getCell(col).font = fontBold;
-    totalRow.getCell(col).alignment = textCenter;
-  });
-
-  // === SIGNATORY BLOCK ===
-  const signStartRow = totalRowNumber + 3;
-
-  // BPD Block (Left)
-  worksheet.getCell(`B${signStartRow}`).value = 'Mengetahui,';
-  worksheet.getCell(`B${signStartRow + 1}`).value = 'Ketua BPD';
-  worksheet.getCell(`B${signStartRow + 5}`).value = safeBpdKetua?.nama || '.........................................';
-  worksheet.getCell(`B${signStartRow + 5}`).font = { ...fontBold, underline: true };
-
-  // Kades Block (Right)
-  worksheet.mergeCells(`F${signStartRow -1}:${'H'}${signStartRow-1}`);
-  const dateCell = worksheet.getCell(`F${signStartRow -1}`);
-  dateCell.value = `${safeBranding?.namaDesa || ''}, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`;
-  dateCell.alignment = textCenter;
-  
-  worksheet.mergeCells(`F${signStartRow}:${'H'}${signStartRow}`);
-  worksheet.getCell(`F${signStartRow}`).value = `Kepala Desa ${safeBranding?.namaDesa || ''}`;
-  worksheet.getCell(`F${signStartRow}`).alignment = textCenter;
-
-  worksheet.mergeCells(`F${signStartRow + 4}:${'H'}${signStartRow+4}`);
-  const kadesNameCell = worksheet.getCell(`F${signStartRow + 4}`);
-  kadesNameCell.value = safeBranding?.kepalaDesa || '.........................................';
-  kadesNameCell.font = { ...fontBold, underline: true };
-  kadesNameCell.alignment = textCenter;
-
-  // === COLUMN WIDTHS ===
-  worksheet.columns = [
-    { key: 'no', width: 5 },
-    { key: 'dusun', width: 15 },
-    { key: 'rw', width: 5 },
-    { key: 'namaKetuaRw', width: 20 },
-    { key: 'rt', width: 5 },
-    { key: 'namaKetuaRt', width: 20 },
-    { key: 'sekretaris', width: 20 },
-    { key: 'bendahara', width: 20 },
-    { key: 'dukuh', width: 15 }
-  ];
-
-  // --- SAVE ---
-  const buffer = await workbook.xlsx.writeBuffer();
-  saveAs(new Blob(buffer), `Rekap RT RW Dusun Desa ${safeBranding.namaDesa || 'Tanpa Nama'} - ${new Date().getFullYear()}.xlsx`);
+// Helper Format Tanggal Indonesia
+const getFormattedDate = () => {
+    const date = new Date();
+    return new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }).format(date);
 };
 
+export const generateRekapDesaXLSX = async (rekapData, namaDesa) => {
+    // 1. Ambil Data Kepala Desa dari Database untuk Tanda Tangan
+    let allPerangkat = [];
+    let namaKepalaDesa = '(...........................................)';
+
+    try {
+        const q = query(
+            collection(db, 'perangkat'), 
+            where('desa', '==', namaDesa)
+        );
+        const snapshot = await getDocs(q);
+        allPerangkat = snapshot.docs.map(doc => doc.data());
+        
+        // Cari Kepala Desa untuk Tanda Tangan
+        const kades = allPerangkat.find(p => p.jabatan && (p.jabatan.toLowerCase().includes('kepala desa') || p.jabatan.toLowerCase().includes('pj. kepala desa')));
+        if (kades && kades.nama) {
+            namaKepalaDesa = kades.nama.toUpperCase();
+        }
+    } catch (error) {
+        console.error("Gagal mengambil data Perangkat Desa:", error);
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet(`REKAP ${namaDesa}`.toUpperCase().substring(0, 30)); 
+    const currentYear = new Date().getFullYear();
+
+    // --- STYLES ---
+    const fontBase = { name: 'Arial', size: 9 }; // Font diperkecil agar muat
+    const fontSmall = { name: 'Arial', size: 7 }; // Khusus Dusun & Dukuh
+    const fontRed = { name: 'Arial', size: 8, color: { argb: 'FFFF0000' } }; // Rumus KET Merah
+
+    const borderStyle = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+    
+    const titleStyle = { font: { name: 'Arial', size: 12, bold: true }, alignment: { vertical: 'middle', horizontal: 'center' } };
+    const headerStyle = { font: { name: 'Arial', size: 11, bold: true }, alignment: { horizontal: 'center', vertical: 'middle', wrapText: true }, border: borderStyle, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } } };
+    
+    const centerStyle = { font: fontBase, alignment: { vertical: 'middle', horizontal: 'center' }, border: borderStyle };
+    const leftStyle = { font: fontBase, alignment: { vertical: 'middle', horizontal: 'left', wrapText: true }, border: borderStyle };
+    const leftSmallStyle = { font: fontSmall, alignment: { vertical: 'middle', horizontal: 'left', wrapText: true }, border: borderStyle };
+    
+    // Style Khusus KET: Angka Merah, Tanpa Border
+    const ketStyle = { font: fontRed, alignment: { vertical: 'middle', horizontal: 'center' } }; 
+    
+    const totalStyle = { font: { name: 'Arial', size: 9, bold: true }, alignment: { vertical: 'middle', horizontal: 'center' }, border: borderStyle, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE0B2' } } };
+
+    // --- PAGE SETUP ---
+    worksheet.pageSetup = {
+        orientation: 'landscape',
+        paperSize: 9, // A4
+        margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
+        fitToPage: true, 
+        printArea: 'A:J' // Print sampai kolom J (KET) - meskipun tanpa border, tetap area print
+    };
+
+    // --- JUDUL ---
+    worksheet.mergeCells('A1:I1'); // Merge sampai I (DUKUH) agar rapi tanpa KET
+    worksheet.getCell('A1').value = `REKAP DATA RT RW DAN DUSUN DESA ${namaDesa.toUpperCase()}`;
+    worksheet.getCell('A1').style = titleStyle;
+
+    worksheet.mergeCells('A2:I2');
+    worksheet.getCell('A2').value = `TAHUN ${currentYear}`;
+    worksheet.getCell('A2').style = titleStyle;
+
+    worksheet.addRow([]); // Spacer Baris 3
+
+    // --- HEADER TABEL (Baris 4 & 5) ---
+    const startRow = 4;
+    const nextRow = 5;
+    
+    // Header Baris 1
+    worksheet.getCell(`A${startRow}`).value = "NO";
+    worksheet.getCell(`B${startRow}`).value = "DUSUN";
+    worksheet.getCell(`C${startRow}`).value = "RW";
+    worksheet.getCell(`D${startRow}`).value = "NAMA KETUA RW";
+    worksheet.getCell(`E${startRow}`).value = "RT";
+    worksheet.getCell(`F${startRow}`).value = "NAMA KETUA RT";
+    worksheet.getCell(`G${startRow}`).value = "NAMA SEKRETARIS";
+    worksheet.getCell(`H${startRow}`).value = "NAMA BENDAHARA";
+    worksheet.getCell(`I${startRow}`).value = "DUKUH";
+    worksheet.getCell(`J${startRow}`).value = ""; // Kolom J (Tanpa Border)
+
+    // Header Baris 2 (Sub-headers) - Tidak ada subheader di desain baru (berdasarkan file yang dibagikan terakhir, tidak ada split JK/Pendidikan di file desa, hanya data RT murni)
+    // Namun jika tetap ingin split header untuk kerapian visual kolom lain, kita biarkan kosong atau merge vertical.
+    // File "Rekap RT RW dan Dusun Per Desa.xlsx" HANYA 1 Baris Header.
+    // Jadi kita HAPUS baris `nextRow` dan pakai Single Header Row.
+    
+    // --- REVISI HEADER (SINGLE ROW) ---
+    // Hapus logika double header sebelumnya
+    worksheet.spliceRows(5, 1); // Hapus baris 5 kosong jika ada
+    
+    // Apply Header Style (A-I pakai border)
+    for (let c = 1; c <= 9; c++) {
+        worksheet.getCell(4, c).style = headerStyle;
+    }
+    // Header KET (J) - Font Bold, Merah/Hitam, Tanpa Border
+    worksheet.getCell(4, 10).style = { 
+        font: { name: 'Arial', size: 9, bold: true, color: { argb: 'FFFF0000' } }, 
+        alignment: { horizontal: 'center', vertical: 'middle' } 
+    };
+
+    // --- ISI DATA ---
+    // Data rekapData berisi list RT lengkap (Ketua, Sek, Ben sudah di-join di Page)
+    rekapData.forEach((item, index) => {
+        const row = worksheet.addRow([
+            index + 1,                      // A: NO
+            item.dusun || '',               // B: DUSUN
+            item.no_rw || '',               // C: RW
+            item.namaKetuaRw || '',         // D: NAMA KETUA RW
+            item.no_rt || '',               // E: RT
+            item.Ketua || '',               // F: NAMA KETUA RT
+            item.Sekretaris !== '-' ? item.Sekretaris : '', // G: SEKRETARIS
+            item.Bendahara !== '-' ? item.Bendahara : '',   // H: BENDAHARA
+            item.dukuh || '',               // I: DUKUH
+            null                            // J: KET (Rumus)
+        ]);
+
+        // Rumus KET: =IF(E..>=1;"1";...) -> Cek Kolom RT (E/5)
+        const rIdx = row.number;
+        row.getCell(10).value = { 
+            formula: `IF(E${rIdx}>=1,"1",IF(E${rIdx}>=1,"1",IF(E${rIdx}>=1,"1",IF(E${rIdx}>=1,"1","0"))))` 
+        };
+
+        // Styling
+        row.height = 20;
+        
+        // A (NO)
+        row.getCell(1).style = centerStyle;
+        // B (DUSUN) - Small Font
+        row.getCell(2).style = leftSmallStyle;
+        // C (RW)
+        row.getCell(3).style = centerStyle;
+        // D (KETUA RW)
+        row.getCell(4).style = leftStyle;
+        // E (RT)
+        row.getCell(5).style = centerStyle;
+        // F (KETUA RT)
+        row.getCell(6).style = leftStyle;
+        // G (SEKRETARIS)
+        row.getCell(7).style = leftStyle;
+        // H (BENDAHARA)
+        row.getCell(8).style = leftStyle;
+        // I (DUKUH) - Small Font
+        row.getCell(9).style = leftSmallStyle;
+        
+        // J (KET) - Merah, Tanpa Border
+        row.getCell(10).style = ketStyle;
+    });
+
+    const lastDataRow = worksheet.lastRow.number;
+
+    // --- BARIS JUMLAH TOTAL ---
+    // "JUMLAH TOTAL" diletakkan di bawah Kolom D (NAMA KETUA RW) agar nilai jumlah ada di bawah RT (Kolom E)
+    const totalRow = worksheet.addRow(['', '', '', 'JUMLAH TOTAL', '', '', '', '', '', '']);
+    
+    // Merge A-C (Kosong) atau biarkan kosong?
+    // Di file contoh, "JUMLAH TOTAL" ada di kolom D, nilai jumlah di kolom E (RT).
+    
+    // Rumus Penjumlahan Kolom RT (E) berdasarkan KET (J)
+    // Karena KET berisi "1" jika ada RT, kita sum KET atau countif.
+    // Tapi user minta "jumlahnya di taruh di bawah kolom RT", dan nilainya dari rumus KET.
+    // Rumus: COUNTIF(J...:J..., "1")
+    
+    totalRow.getCell(5).value = { 
+        formula: `COUNTIF(J5:J${lastDataRow}, "1")` 
+    };
+
+    // Styling Baris Total
+    // Border hanya untuk sel yang ada isinya? Atau full row sampai I?
+    // Biasanya full row A-I diberi border agar rapi.
+    
+    // Merge A-C agar bersih
+    worksheet.mergeCells(`A${totalRow.number}:C${totalRow.number}`);
+    totalRow.getCell(1).style = totalStyle; // A-C
+    
+    totalRow.getCell(4).style = totalStyle; // D (Label "JUMLAH TOTAL")
+    totalRow.getCell(5).style = totalStyle; // E (Nilai Jumlah)
+    totalRow.getCell(6).style = totalStyle; // F
+    totalRow.getCell(7).style = totalStyle; // G
+    totalRow.getCell(8).style = totalStyle; // H
+    totalRow.getCell(9).style = totalStyle; // I
+    
+    // Kolom J (KET) di baris total dibiarkan kosong & tanpa border
+
+    worksheet.addRow([]); // Spacer
+
+    // --- TANDA TANGAN KEPALA DESA ---
+    const currentRow = worksheet.lastRow.number + 3;
+    
+    const addSignatureBlock = (rowNum, { location, jabatan, nama }) => {
+        // Posisi Tanda Tangan: Kolom G-I (Kanan)
+        const startCol = 'G';
+        const endCol = 'I';
+        
+        worksheet.mergeCells(`${startCol}${rowNum}:${endCol}${rowNum}`);
+        const lCell = worksheet.getCell(`${startCol}${rowNum}`);
+        lCell.value = `${location}, ${getFormattedDate()}`;
+        lCell.alignment = { horizontal: 'center' }; 
+        lCell.font = { name: 'Arial', size: 11 };
+
+        worksheet.mergeCells(`${startCol}${rowNum + 1}:${endCol}${rowNum + 1}`);
+        const jCell = worksheet.getCell(`${startCol}${rowNum + 1}`);
+        jCell.value = jabatan;
+        jCell.alignment = { horizontal: 'center' }; 
+        jCell.font = { name: 'Arial', size: 11 };
+
+        const nameRow = rowNum + 5;
+        worksheet.mergeCells(`${startCol}${nameRow}:${endCol}${nameRow}`);
+        const nCell = worksheet.getCell(`${startCol}${nameRow}`);
+        nCell.value = nama;
+        nCell.alignment = { horizontal: 'center' }; 
+        nCell.font = { name: 'Arial', size: 11, bold: true, underline: true };
+    };
+
+    // Panggil Helper
+    addSignatureBlock(currentRow, {
+        location: namaDesa,
+        jabatan: 'Kepala Desa',
+        nama: namaKepalaDesa
+    });
+
+    // --- ATUR LEBAR KOLOM ---
+    worksheet.getColumn(1).width = 5;   // NO
+    worksheet.getColumn(2).width = 15;  // DUSUN
+    worksheet.getColumn(3).width = 5;   // RW
+    worksheet.getColumn(4).width = 25;  // NAMA KETUA RW
+    worksheet.getColumn(5).width = 5;   // RT
+    worksheet.getColumn(6).width = 25;  // NAMA KETUA RT
+    worksheet.getColumn(7).width = 25;  // NAMA SEKRETARIS
+    worksheet.getColumn(8).width = 25;  // NAMA BENDAHARA
+    worksheet.getColumn(9).width = 15;  // DUKUH
+    worksheet.getColumn(10).width = 5;  // KET
+
+    const fileName = `Rekap_RT_RW_Dusun_${namaDesa.replace(/\s+/g, '_')}_${currentYear}.xlsx`;
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    saveAs(blob, fileName);
+};

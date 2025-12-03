@@ -129,11 +129,24 @@ export const generateDemografiPDF = (data, desa, exportConfig, title, allPerangk
 
 export const generateAsetPDF = (data, desa, exportConfig, allPerangkat) => {
     const showDesa = desa === 'all';
-    const headers = [['No', 'Nama Aset', 'Kategori', 'Tgl Perolehan', 'Nilai (Rp)']];
+    // Add a Koordinat column (latitude,longitude) sourced from asset document
+    const headers = [['No', 'Nama Aset', 'Kategori', 'Tgl Perolehan', 'Nilai (Rp)', 'Koordinat']];
     if (showDesa) headers[0].splice(1, 0, 'Desa');
 
     const body = data.map((item, index) => {
-        const row = [index + 1, item.namaAset || '-', item.kategori || '-', safeFormatDate(item.tanggalPerolehan), formatCurrency(Number(item.nilaiAset))];
+        const coord = (item.latitude || item.lat || item.longitude || item.lon)
+            ? `${item.latitude ?? item.lat ?? ''}${(item.latitude || item.lat) && (item.longitude || item.lon) ? ', ' : ''}${item.longitude ?? item.lon ?? ''}`
+            : (item.lokasiFisik || '-');
+
+        const row = [
+            index + 1,
+            item.namaAset || '-',
+            item.kategori || '-',
+            safeFormatDate(item.tanggalPerolehan),
+            formatCurrency(Number(item.nilaiAset)),
+            coord || '-'
+        ];
+
         if (showDesa) row.splice(1, 0, item.desa || '-');
         return row;
     });

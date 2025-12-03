@@ -347,7 +347,7 @@ const LaporanPage = () => {
                 
             } else if (config.type === 'rekap_rt_rw') {
                 // PERBAIKAN: Logika hitung yang sinkron dengan RekapitulasiRtRwPage.js
-                // Hanya menghitung "Ketua" sebagai jumlah unit RT/RW
+                // RT: jumlah Ketua RT; RW: gunakan nilai MAX dari no_rw sebagai jumlah RW
                 const q = query(collection(db, 'rt_rw'));
                 const snapshot = await getDocs(q);
                 const rawData = snapshot.docs.map(doc => doc.data());
@@ -357,12 +357,20 @@ const LaporanPage = () => {
                     
                     // Filter RT: Punya no_rt, bukan rw_only
                     const rtList = desaData.filter(item => item.no_rt && !item.no_rw_only);
-                    // Filter RW: Punya no_rw, tidak punya no_rt
-                    const rwList = desaData.filter(item => item.no_rw && !item.no_rt);
+                    // Untuk RW kita akan gunakan max no_rw
                     
-                    // HITUNG HANYA JABATAN 'KETUA'
+                    // HITUNG Jumlah Ketua RT
                     const countRt = rtList.filter(p => p.jabatan && p.jabatan.toLowerCase().includes('ketua')).length;
-                    const countRw = rwList.filter(p => p.jabatan && p.jabatan.toLowerCase().includes('ketua')).length;
+
+                    // HITUNG Jumlah RW sebagai MAX no_rw (numeric)
+                    let maxRw = 0;
+                    desaData.forEach(item => {
+                        if (item.no_rw) {
+                            const rwNum = parseInt(item.no_rw, 10);
+                            if (!isNaN(rwNum) && rwNum > maxRw) maxRw = rwNum;
+                        }
+                    });
+                    const countRw = maxRw;
 
                     return {
                         namaDesa: desaName,

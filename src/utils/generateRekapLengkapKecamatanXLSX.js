@@ -10,21 +10,15 @@ export const generateRekapLengkapKecamatanXLSX = async (rekapData) => {
     // --- CONFIG STYLES ---
     const BORDER_THIN = { style: 'thin', color: { argb: 'FF000000' } };
     
-    // 1. Header Style (B-J)
+    // 1. Header Style (B-J) - Abu-abu
     const headerStyle = { 
         font: { name: 'Arial', size: 10, bold: true }, 
         alignment: { horizontal: 'center', vertical: 'middle', wrapText: true }, 
         border: { top: BORDER_THIN, left: BORDER_THIN, bottom: BORDER_THIN, right: BORDER_THIN }, 
-        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } } // Abu-abu
+        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } } 
     };
 
-    // 2. Header Khusus A & K (Merah, No Border/Fill)
-    const headerSpecialStyle = {
-        font: { name: 'Arial', size: 9, color: { argb: 'FFFF0000' } }, // Merah
-        alignment: { horizontal: 'center', vertical: 'middle' }
-    };
-
-    // 3. Isi Tabel (B-J)
+    // 2. Isi Tabel (B-J)
     const cellCenter = { 
         font: { name: 'Arial', size: 9 }, 
         alignment: { vertical: 'middle', horizontal: 'center' }, 
@@ -36,30 +30,21 @@ export const generateRekapLengkapKecamatanXLSX = async (rekapData) => {
         border: { top: BORDER_THIN, left: BORDER_THIN, bottom: BORDER_THIN, right: BORDER_THIN } 
     };
     const cellSmallLeft = { 
-        font: { name: 'Arial', size: 7 }, // Ukuran 7 untuk Dusun
+        font: { name: 'Arial', size: 7 }, 
         alignment: { vertical: 'middle', horizontal: 'left', indent: 1, wrapText: true }, 
         border: { top: BORDER_THIN, left: BORDER_THIN, bottom: BORDER_THIN, right: BORDER_THIN } 
     };
     const cellSmallLeftDukuh = { 
-        font: { name: 'Arial', size: 7 }, // Ukuran 7 untuk Dukuh
+        font: { name: 'Arial', size: 7 }, 
         alignment: { vertical: 'middle', horizontal: 'left', indent: 1, wrapText: true }, 
         border: { top: BORDER_THIN, left: BORDER_THIN, bottom: BORDER_THIN, right: BORDER_THIN } 
     };
 
-    // 4. Isi Khusus A & K (Merah, No Border)
-    const cellRedNoBorder = { 
-        font: { name: 'Arial', size: 9, color: { argb: 'FFFF0000' } }, 
-        alignment: { vertical: 'middle', horizontal: 'center' } 
-    };
+    // 3. Isi Khusus A & K (Merah, No Border)
     const noBorderRedStyle = { 
         font: { name: 'Arial', size: 9, color: { argb: 'FFFF0000' } }, 
         alignment: { vertical: 'middle', horizontal: 'center' } 
     };
-
-    // 5. Warna Fill Khusus
-    const fillBlue = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCE6F1' } }; // Biru Muda (Awal Desa - Kolom B,C,D)
-    const fillGreen = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } }; // Hijau (Data & Jumlah)
-    const fillWhite = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } }; // Putih (Default)
 
     // --- PAGE SETUP ---
     worksheet.pageSetup = {
@@ -97,13 +82,25 @@ export const generateRekapLengkapKecamatanXLSX = async (rekapData) => {
         for (let c = 1; c <= 11; c++) {
             const cell = row.getCell(c);
             if (c === 1 || c === 11) {
-                cell.style = headerSpecialStyle; // Merah, No Border
-                if(c===11 && row === headerRow) cell.value = ''; // Pastikan label KET muncul
+                cell.style = noBorderRedStyle; // Merah, No Border, No Fill
+                if(c===11 && row === headerRow) cell.value = ''; 
             } else {
                 cell.style = headerStyle; // Abu-abu, Border
             }
         }
     });
+
+    // --- SPASI SATU BARIS SETELAH HEADER (Baris 6) ---
+    const spacerRow = worksheet.addRow(['', '', '', '', '', '', '', '', '', '', '']);
+    spacerRow.height = 15;
+    
+    // Style Spacer Row (Border B-J, A & K No Border)
+    spacerRow.getCell(1).style = noBorderRedStyle; 
+    spacerRow.getCell(11).style = noBorderRedStyle; 
+    for (let c = 2; c <= 10; c++) {
+        spacerRow.getCell(c).style = cellCenter; 
+        delete spacerRow.getCell(c).fill; 
+    }
 
     // --- DATA PROCESSING ---
     const sortedDesa = rekapData.sort((a, b) => {
@@ -115,9 +112,10 @@ export const generateRekapLengkapKecamatanXLSX = async (rekapData) => {
     sortedDesa.forEach(desa => {
         const kodeDesa = KODE_DESA_MAP[desa.namaDesa] || '';
         let isFirstRowOfDesa = true;
-        let startRowForSum = worksheet.lastRow.number + 1;
+        
+        let startDataRow = worksheet.lastRow.number + 1;
 
-        // Flatten & Sort Entries (Dusun -> RW -> RT)
+        // Flatten & Sort Entries
         let allEntries = [];
         desa.dusunGroups.forEach(group => {
             const sortedGroupEntries = group.entries.sort((a, b) => {
@@ -134,18 +132,21 @@ export const generateRekapLengkapKecamatanXLSX = async (rekapData) => {
             const entry = allEntries[i];
             const nextEntry = i < allEntries.length - 1 ? allEntries[i+1] : null;
 
+            // Nama Desa: Uppercase
+            const namaDesaDisplay = desa.namaDesa ? desa.namaDesa.toUpperCase() : '';
+
             const row = worksheet.addRow([
                 isFirstRowOfDesa ? kodeDesa : '',       // A: KODE
                 isFirstRowOfDesa ? 'BANJARNEGARA' : '', // B: KAB
                 isFirstRowOfDesa ? 'PUNGGELAN' : '',    // C: KEC
-                isFirstRowOfDesa ? desa.namaDesa : '',  // D: DESA
+                isFirstRowOfDesa ? namaDesaDisplay : '', // D: DESA (UPPERCASE)
                 entry.dusun,                            // E: DUSUN
                 entry.no_rw,                            // F: RW
                 entry.namaKetuaRw || '',                // G: KETUA RW
                 entry.no_rt,                            // H: RT
                 entry.namaKetuaRt,                      // I: KETUA RT
                 entry.dukuh,                            // J: DUKUH
-                null                                    // K: KET (Rumus)
+                null                                    // K: KET
             ]);
 
             const rIdx = row.number;
@@ -156,11 +157,11 @@ export const generateRekapLengkapKecamatanXLSX = async (rekapData) => {
             // --- STYLING BARIS ---
             row.height = 20;
             
-            // Kolom A & K (Merah, No Border)
+            // Kolom A & K
             row.getCell(1).style = noBorderRedStyle;
             row.getCell(11).style = noBorderRedStyle;
 
-            // Kolom B-J (Border Penuh)
+            // Kolom B-J (Border Penuh, NO FILL)
             for (let c = 2; c <= 10; c++) {
                 const cell = row.getCell(c);
                 
@@ -174,15 +175,14 @@ export const generateRekapLengkapKecamatanXLSX = async (rekapData) => {
                 } else { // Kab, Kec, RW, RT -> Center
                     cell.style = cellCenter;
                 }
-
-                // Warna Fill: 
-                // - Baris Pertama Desa Kolom B-J: Biru
-                // - Baris Data Lainnya: Putih
-                if (isFirstRowOfDesa) {
-                    cell.fill = fillBlue; // Biru untuk seluruh baris pertama desa
-                } else {
-                    cell.fill = fillWhite; // Putih untuk baris data lainnya
+                
+                // Jika Baris Pertama Desa & Kolom Desa (D), beri Bold
+                if (isFirstRowOfDesa && c === 4) {
+                    cell.font = { name: 'Arial', size: 9, bold: true };
                 }
+
+                // Hapus Fill (Default Putih/No Color)
+                delete cell.fill;
             }
 
             // --- SEPARATOR RW ---
@@ -193,10 +193,9 @@ export const generateRekapLengkapKecamatanXLSX = async (rekapData) => {
                 if (isRwChanged || isDusunChanged) {
                     const sepRow = worksheet.addRow(['', '', '', '', '', '', '', '', '', '', { formula: '"0"' }]);
                     sepRow.height = 20;
-                    // Style Separator (B-J Putih, A/K No Border)
                     for (let c = 2; c <= 10; c++) {
-                        sepRow.getCell(c).style = cellCenter;
-                        sepRow.getCell(c).fill = fillWhite; // Putih untuk separator
+                        sepRow.getCell(c).style = cellCenter; // Border
+                        delete sepRow.getCell(c).fill; // No Fill
                     }
                     sepRow.getCell(1).style = noBorderRedStyle;
                     sepRow.getCell(11).style = noBorderRedStyle;
@@ -206,38 +205,37 @@ export const generateRekapLengkapKecamatanXLSX = async (rekapData) => {
             isFirstRowOfDesa = false;
         }
 
-        const endRowForSum = worksheet.lastRow.number;
+        const endDataRow = worksheet.lastRow.number;
 
-        // --- BARIS JUMLAH (HIJAU) ---
-        // Letak "JUMLAH" di kolom G (Ketua RW), Nilai di kolom H (RT)
+        // --- BARIS JUMLAH ---
         const sumRow = worksheet.addRow([
-            '', '', '', '', '', '', 
-            'JUMLAH', // G
-            { formula: `COUNTIF(K${startRowForSum}:K${endRowForSum}, "1")` }, // H (Rumus)
-            '', '', 
-            '' // K (Kosong)
+            '',         // A
+            'JUMLAH',   // B
+            '', '', '', // C, D, E
+            '',         // F 
+            '',         // G
+            { formula: `COUNTIF(K${startDataRow}:K${endDataRow}, "1")` }, // H: Count RT
+            '', '',     // I, J
+            ''          // K
         ]);
         sumRow.height = 20;
 
-        // Merge A-F Kosong (Opsional, atau biarkan kosong ber-border)
-        // Agar rapi, kita beri border kosong ke A-F
-        
         // Styling Baris Jumlah
         for (let c = 2; c <= 10; c++) {
             const cell = sumRow.getCell(c);
-            cell.style = cellCenter;
-            cell.fill = fillGreen; // Warna Hijau untuk kolom B-J
-            if (c === 7 || c === 8) cell.font = { ...cellCenter.font, bold: true }; // Bold untuk Label & Nilai
+            cell.style = cellCenter; // Border
+            cell.font = { name: 'Arial', size: 9, bold: true }; // Bold
+            
+            // Hapus Fill untuk semua kolom di baris jumlah
+            delete cell.fill; 
+
+            if (c === 2) {
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            }
         }
         
-        // A & K tetap Style Merah No Border (Kosong) dengan fill Putih
         sumRow.getCell(1).style = noBorderRedStyle;
         sumRow.getCell(11).style = noBorderRedStyle;
-        sumRow.getCell(1).fill = fillWhite;
-        sumRow.getCell(11).fill = fillWhite;
-
-        // Separator Antar Desa (Opsional, jarak 1 baris kosong TANPA border apapun untuk pemisah jelas)
-        // worksheet.addRow([]); 
     });
 
     // --- COLUMN WIDTHS ---
@@ -253,7 +251,6 @@ export const generateRekapLengkapKecamatanXLSX = async (rekapData) => {
     worksheet.getColumn(10).width = 15;// DUKUH
     worksheet.getColumn(11).width = 5; // KET
 
-    // Simpan File
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     saveAs(blob, `Rekap_Data_RT_RW_Dusun_Kec_Punggelan_${currentYear}.xlsx`);

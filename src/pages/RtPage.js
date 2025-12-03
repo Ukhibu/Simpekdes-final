@@ -10,7 +10,7 @@ import InputField from '../components/common/InputField';
 import Button from '../components/common/Button';
 import OrganisasiDetailView from '../components/common/OrganisasiDetailView';
 import Pagination from '../components/common/Pagination'; 
-import { FiSearch, FiPlus, FiEdit, FiTrash2, FiEye, FiUpload, FiDownload, FiCheckSquare, FiX, FiAlertCircle, FiMove, FiMoreHorizontal } from 'react-icons/fi';
+import { FiSearch, FiPlus, FiEdit, FiTrash2, FiEye, FiUpload, FiDownload, FiCheckSquare, FiX, FiAlertCircle, FiMove, FiMoreHorizontal, FiToggleLeft, FiToggleRight } from 'react-icons/fi';
 import { DESA_LIST, PENDIDIKAN_LIST, JENIS_KELAMIN_LIST } from '../utils/constants';
 import * as XLSX from 'xlsx';
 import { generateRtXLSX } from '../utils/generateRtXLSX';
@@ -76,6 +76,14 @@ const RtPage = () => {
     const [formData, setFormData] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
     
+    // Manual Input Toggles (untuk mengizinkan input manual jika data belum ada)
+    const [manualInputMode, setManualInputMode] = useState({
+        rw: false,
+        rt: false,
+        dusun: false,
+        dukuh: false
+    });
+
     // Konfirmasi Hapus State
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState(null);
@@ -119,7 +127,6 @@ const RtPage = () => {
     // Set Initial Menu Position (Bottom Center) - DISESUAIKAN UNTUK BENTUK LONJONG/KECIL
     useEffect(() => {
         if (isSelectionMode) {
-            // Offset X dikurangi karena elemen sekarang lebih kecil (sekitar 220px lebar)
             setMenuPos({ 
                 x: window.innerWidth / 2 - 110, 
                 y: window.innerHeight - 120 
@@ -155,6 +162,71 @@ const RtPage = () => {
         });
         return () => unsubscribe();
     }, [currentUser, showNotification]);
+
+    // --- LOGIKA HIERARKI WILAYAH (RW -> RT -> DUSUN/DUKUH) ---
+    const wilayahHierarchy = useMemo(() => {
+        const hierarchy = {}; 
+        // Struktur: { [NamaDesa]: { [NoRW]: { rts: Set(NoRT), data: { [NoRT]: { dusuns: Set, dukuhs: Set } } } } }
+
+        dataList.forEach(item => {
+            const d = item.desa;
+            const rw = item.no_rw;
+            const rt = item.no_rt;
+            
+            if (!d || !rw) return;
+
+            if (!hierarchy[d]) hierarchy[d] = {};
+            if (!hierarchy[d][rw]) hierarchy[d][rw] = { rts: new Set(), data: {} };
+
+            if (rt) {
+                hierarchy[d][rw].rts.add(rt);
+                if (!hierarchy[d][rw].data[rt]) {
+                    hierarchy[d][rw].data[rt] = { dusuns: new Set(), dukuhs: new Set() };
+                }
+                if (item.dusun) hierarchy[d][rw].data[rt].dusuns.add(item.dusun);
+                if (item.dukuh) hierarchy[d][rw].data[rt].dukuhs.add(item.dukuh);
+            }
+        });
+        return hierarchy;
+    }, [dataList]);
+
+    // Get Options Helpers
+    const getRwOptions = (desa) => {
+        if (!desa || !wilayahHierarchy[desa]) return [];
+        return Object.keys(wilayahHierarchy[desa]).sort((a, b) => parseInt(a) - parseInt(b));
+    };
+
+    const getRtOptions = (desa, rw) => {
+        if (!desa || !rw || !wilayahHierarchy[desa] || !wilayahHierarchy[desa][rw]) return [];
+        return Array.from(wilayahHierarchy[desa][rw].rts).sort((a, b) => parseInt(a) - parseInt(b));
+    };
+
+    const getDusunOptions = (desa, rw, rt) => {
+        if (!desa || !rw || !rt || !wilayahHierarchy[desa] || !wilayahHierarchy[desa][rw] || !wilayahHierarchy[desa][rw].data[rt]) return [];
+        return Array.from(wilayahHierarchy[desa][rw].data[rt].dusuns);
+    };
+
+    const getDukuhOptions = (desa, rw, rt) => {
+        if (!desa || !rw || !rt || !wilayahHierarchy[desa] || !wilayahHierarchy[desa][rw] || !wilayahHierarchy[desa][rw].data[rt]) return [];
+        return Array.from(wilayahHierarchy[desa][rw].data[rt].dukuhs);
+    };
+
+    // Auto-fill Logic saat RT berubah
+    useEffect(() => {
+        if (isModalOpen && formData.desa && formData.no_rw && formData.no_rt && !manualInputMode.dusun && !manualInputMode.dukuh) {
+            const dusunOpts = getDusunOptions(formData.desa, formData.no_rw, formData.no_rt);
+            const dukuhOpts = getDukuhOptions(formData.desa, formData.no_rw, formData.no_rt);
+            
+            // Jika hanya ada 1 opsi yang tersedia untuk RT tersebut, auto-select
+            if (dusunOpts.length === 1 && formData.dusun !== dusunOpts[0]) {
+                setFormData(prev => ({ ...prev, dusun: dusunOpts[0] }));
+            }
+            if (dukuhOpts.length === 1 && formData.dukuh !== dukuhOpts[0]) {
+                setFormData(prev => ({ ...prev, dukuh: dukuhOpts[0] }));
+            }
+        }
+    }, [formData.no_rt, formData.no_rw, formData.desa, isModalOpen]);
+
 
     // --- LOGIKA AUTO-OPEN DARI DASHBOARD ---
     useEffect(() => {
@@ -352,12 +424,21 @@ const RtPage = () => {
         setModalMode(mode);
         setSelectedItem(item);
         const initialDesa = currentUser.role === 'admin_desa' ? currentUser.desa : filterDesa;
-        setFormData(item ? { ...item } : { desa: initialDesa, jenis_kelamin: 'Laki-Laki', jabatan: 'Ketua' });
+        setFormData(item ? { ...item } : { desa: initialDesa, jenis_kelamin: 'Laki-Laki', jabatan: 'Ketua', no_rw: '', no_rt: '', dusun: '', dukuh: '' });
+        // Reset manual mode saat buka modal
+        setManualInputMode({ rw: false, rt: false, dusun: false, dukuh: false });
         setIsModalOpen(true);
     };
 
     const handleCloseModal = () => !isSubmitting && setIsModalOpen(false);
     const handleFormChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+
+    // Toggle Input Manual (untuk menambah data baru yang belum ada di list)
+    const toggleManualInput = (field) => {
+        setManualInputMode(prev => ({ ...prev, [field]: !prev[field] }));
+        // Reset nilai saat toggle untuk menghindari data sisa yang tidak valid di mode lain
+        setFormData(prev => ({ ...prev, [field]: '' }));
+    };
 
     const handleFormSubmit = async (e) => {
         e.preventDefault();
@@ -386,6 +467,7 @@ const RtPage = () => {
 
     // --- IMPORT & EXPORT ---
     const handleFileUpload = (e) => {
+        // ... (Kode Import File Upload sama seperti sebelumnya, tidak diubah)
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
@@ -623,9 +705,8 @@ const RtPage = () => {
                         left: `${menuPos.x}px`,
                         top: `${menuPos.y}px`,
                         zIndex: 9999,
-                        touchAction: 'none' // Mencegah scroll halaman saat drag
+                        touchAction: 'none' // Penting agar tidak scroll halaman saat drag
                     }}
-                    // Desain: Lonjong (rounded-full), compact, shadow besar
                     className="flex items-center gap-3 pl-2 pr-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 shadow-2xl rounded-full animate-in fade-in zoom-in duration-200 backdrop-blur-sm bg-opacity-95"
                 >
                     {/* Handle Drag (Area Geser) */}
@@ -677,10 +758,151 @@ const RtPage = () => {
                             <InputField label="Jabatan" name="jabatan" type="select" value={formData.jabatan || ''} onChange={handleFormChange} required>
                                 {JABATAN_RT_LIST.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                             </InputField>
-                            <InputField label="No RT" name="no_rt" value={formData.no_rt || ''} onChange={handleFormChange} required />
-                            <InputField label="No RW (Induk)" name="no_rw" value={formData.no_rw || ''} onChange={handleFormChange} />
-                            <InputField label="Dusun" name="dusun" value={formData.dusun || ''} onChange={handleFormChange} />
-                            <InputField label="Dukuh" name="dukuh" value={formData.dukuh || ''} onChange={handleFormChange} />
+                            
+                            {/* --- FORM BAGIAN RT / RW / DUSUN / DUKUH (DROPDOWN CERDAS) --- */}
+                            
+                            {/* Input RW */}
+                            <div>
+                                <div className="flex justify-between items-center mb-1">
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nomor RW (Induk)</label>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => toggleManualInput('rw')}
+                                        className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 flex items-center gap-1"
+                                        title={manualInputMode.rw ? "Kembali ke Pilihan" : "Input Manual Baru"}
+                                    >
+                                        {manualInputMode.rw ? <FiToggleRight size={16}/> : <FiToggleLeft size={16}/>}
+                                        {manualInputMode.rw ? "Manual" : "Pilih"}
+                                    </button>
+                                </div>
+                                {manualInputMode.rw ? (
+                                    <input 
+                                        type="text" 
+                                        name="no_rw" 
+                                        value={formData.no_rw || ''} 
+                                        onChange={handleFormChange}
+                                        placeholder="Ketik No. RW..."
+                                        className="form-input-modern"
+                                    />
+                                ) : (
+                                    <select 
+                                        name="no_rw" 
+                                        value={formData.no_rw || ''} 
+                                        onChange={(e) => {
+                                            handleFormChange(e);
+                                            // Reset RT saat RW berubah agar konsisten
+                                            setFormData(prev => ({...prev, no_rw: e.target.value, no_rt: '', dusun: '', dukuh: ''}));
+                                        }}
+                                        className="form-input-modern"
+                                    >
+                                        <option value="">-- Pilih RW --</option>
+                                        {getRwOptions(formData.desa).map(rw => (
+                                            <option key={rw} value={rw}>RW {rw}</option>
+                                        ))}
+                                    </select>
+                                )}
+                            </div>
+
+                            {/* Input RT */}
+                            <div>
+                                <div className="flex justify-between items-center mb-1">
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nomor RT</label>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => toggleManualInput('rt')}
+                                        className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 flex items-center gap-1"
+                                        title={manualInputMode.rt ? "Kembali ke Pilihan" : "Input Manual Baru"}
+                                    >
+                                        {manualInputMode.rt ? <FiToggleRight size={16}/> : <FiToggleLeft size={16}/>}
+                                        {manualInputMode.rt ? "Manual" : "Pilih"}
+                                    </button>
+                                </div>
+                                {manualInputMode.rt ? (
+                                    <input 
+                                        type="text" 
+                                        name="no_rt" 
+                                        value={formData.no_rt || ''} 
+                                        onChange={handleFormChange}
+                                        placeholder="Ketik No. RT..."
+                                        className="form-input-modern"
+                                        required
+                                    />
+                                ) : (
+                                    <select 
+                                        name="no_rt" 
+                                        value={formData.no_rt || ''} 
+                                        onChange={handleFormChange}
+                                        className="form-input-modern"
+                                        required
+                                        disabled={!formData.no_rw && !manualInputMode.rw}
+                                    >
+                                        <option value="">-- Pilih RT --</option>
+                                        {getRtOptions(formData.desa, formData.no_rw).map(rt => (
+                                            <option key={rt} value={rt}>RT {rt}</option>
+                                        ))}
+                                    </select>
+                                )}
+                            </div>
+
+                            {/* Input Dusun */}
+                            <div>
+                                <div className="flex justify-between items-center mb-1">
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Dusun</label>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => toggleManualInput('dusun')}
+                                        className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 flex items-center gap-1"
+                                    >
+                                        {manualInputMode.dusun ? "Manual" : "Pilih"}
+                                    </button>
+                                </div>
+                                {manualInputMode.dusun ? (
+                                    <input type="text" name="dusun" value={formData.dusun || ''} onChange={handleFormChange} className="form-input-modern" />
+                                ) : (
+                                    <select 
+                                        name="dusun" 
+                                        value={formData.dusun || ''} 
+                                        onChange={handleFormChange} 
+                                        className="form-input-modern"
+                                        disabled={!formData.no_rt && !manualInputMode.rt}
+                                    >
+                                        <option value="">-- Pilih Dusun --</option>
+                                        {getDusunOptions(formData.desa, formData.no_rw, formData.no_rt).map(d => (
+                                            <option key={d} value={d}>{d}</option>
+                                        ))}
+                                    </select>
+                                )}
+                            </div>
+
+                            {/* Input Dukuh */}
+                            <div>
+                                <div className="flex justify-between items-center mb-1">
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Dukuh</label>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => toggleManualInput('dukuh')}
+                                        className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 flex items-center gap-1"
+                                    >
+                                        {manualInputMode.dukuh ? "Manual" : "Pilih"}
+                                    </button>
+                                </div>
+                                {manualInputMode.dukuh ? (
+                                    <input type="text" name="dukuh" value={formData.dukuh || ''} onChange={handleFormChange} className="form-input-modern" />
+                                ) : (
+                                    <select 
+                                        name="dukuh" 
+                                        value={formData.dukuh || ''} 
+                                        onChange={handleFormChange} 
+                                        className="form-input-modern"
+                                        disabled={!formData.no_rt && !manualInputMode.rt}
+                                    >
+                                        <option value="">-- Pilih Dukuh --</option>
+                                        {getDukuhOptions(formData.desa, formData.no_rw, formData.no_rt).map(d => (
+                                            <option key={d} value={d}>{d}</option>
+                                        ))}
+                                    </select>
+                                )}
+                            </div>
                             
                             <InputField label="JK" name="jenis_kelamin" type="select" value={formData.jenis_kelamin || ''} onChange={handleFormChange} required>
                                 {JENIS_KELAMIN_LIST.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -696,7 +918,11 @@ const RtPage = () => {
                             <InputField label="Periode" name="periode" value={formData.periode || ''} onChange={handleFormChange} />
                         </div>
                         {currentUser.role === 'admin_kecamatan' && (
-                             <InputField label="Desa" name="desa" type="select" value={formData.desa || ''} onChange={handleFormChange} required>
+                             <InputField label="Desa" name="desa" type="select" value={formData.desa || ''} onChange={(e) => {
+                                 handleFormChange(e);
+                                 // Reset hierarki jika desa berubah
+                                 setFormData(prev => ({...prev, desa: e.target.value, no_rw: '', no_rt: '', dusun: '', dukuh: ''}));
+                             }} required>
                                 <option value="">Pilih Desa</option>
                                 {SAFE_DESA_LIST.map(d => <option key={d} value={d}>{d}</option>)}
                              </InputField>

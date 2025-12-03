@@ -190,25 +190,44 @@ const RekapitulasiRtRwPage = () => {
     const getRwData = (data) => data.filter(item => item.no_rw && !item.no_rt);
 
     // --- PERBAIKAN DI SINI (RekapPokokData) ---
+    // Logika Diperbarui sesuai permintaan:
+    // 1. RW: Menggunakan nilai MAX dari No RW.
+    // 2. RT: Menghitung jumlah Ketua RT yang ada di database.
     const rekapPokokData = useMemo(() => {
         return DESA_LIST.map(desa => {
             const desaData = allData.filter(item => item.desa === desa);
+            
+            // 1. Hitung RW: Cari Nilai Maksimum No RW (Numeric)
+            let maxRw = 0;
+            desaData.forEach(item => {
+                if (item.no_rw) {
+                    const rwNum = parseInt(item.no_rw, 10);
+                    if (!isNaN(rwNum) && rwNum > maxRw) {
+                        maxRw = rwNum;
+                    }
+                }
+            });
+
+            // 2. Hitung RT: Menghitung Jumlah 'Ketua RT'
+            // Mengambil semua data RT, lalu filter yang jabatannya mengandung kata "Ketua"
+            // Ini akan menghitung jumlah orang yang menjabat sebagai Ketua RT
             const rtList = getRtData(desaData);
-            const rwList = getRwData(desaData);
-            
-            // Hitung HANYA yang jabatannya mengandung kata 'Ketua'
-            // Ini agar sinkron dengan RekapLengkapView yang hanya menampilkan baris Ketua RT
             const countRt = rtList.filter(p => p.jabatan && p.jabatan.toLowerCase().includes('ketua')).length;
-            
-            // RW juga sebaiknya dihitung ketuanya saja untuk konsistensi
-            const countRw = rwList.filter(p => p.jabatan && p.jabatan.toLowerCase().includes('ketua')).length;
+
+            // Hitung Dusun & Dukuh Unik
+            const uniqueDusun = new Set();
+            const uniqueDukuh = new Set();
+            desaData.forEach(item => {
+                if (item.dusun) uniqueDusun.add(String(item.dusun).trim());
+                if (item.dukuh) uniqueDukuh.add(String(item.dukuh).trim());
+            });
 
             return {
                 namaDesa: desa,
-                jumlahRw: countRw, 
-                jumlahRt: countRt, // Jumlah RT sekarang hanya menghitung Ketua RT
-                jumlahDusun: new Set(desaData.filter(d => d.dusun).map(d => d.dusun)).size,
-                jumlahDukuh: new Set(desaData.filter(d => d.dukuh).map(d => d.dukuh)).size,
+                jumlahRw: maxRw, // Menggunakan Max RW
+                jumlahRt: countRt, // Menggunakan Jumlah Ketua RT
+                jumlahDusun: uniqueDusun.size,
+                jumlahDukuh: uniqueDukuh.size,
             };
         });
     }, [allData]);
@@ -274,7 +293,7 @@ const RekapitulasiRtRwPage = () => {
         const result = Object.keys(groupedByDesa).map(namaDesa => {
             const desaData = groupedByDesa[namaDesa];
             const rtList = getRtData(desaData); 
-            // Filter hanya ketua RT untuk baris utama agar jumlahnya sinkron dengan rekapPokokData
+            // Filter hanya ketua RT untuk baris utama
             const ketuaRtOnly = rtList.filter(p => p.jabatan?.toLowerCase().includes('ketua'));
             
             const rwList = getRwData(desaData);

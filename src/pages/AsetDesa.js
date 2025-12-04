@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useFirestoreCollection } from '../hooks/useFirestoreCollection';
 import { useNotification } from '../context/NotificationContext';
+// IMPORT SERVICE NOTIFIKASI
+import { createNotificationForAdmins } from '../utils/notificationService';
 
 import Modal from '../components/common/Modal';
 import Spinner from '../components/common/Spinner';
@@ -13,7 +15,6 @@ import ConfirmationModal from '../components/common/ConfirmationModal';
 import MapPicker from '../components/aset/MapPicker';
 import { FiEdit, FiTrash2, FiSearch, FiFilter, FiPlus, FiUpload, FiDownload, FiEye, FiMapPin, FiCheckSquare, FiX, FiMove } from 'react-icons/fi';
 import { KATEGORI_ASET, KONDISI_ASET, DESA_LIST } from '../utils/constants';
-// IMPORT GENERATOR BARU
 import { generateAsetPDF } from '../utils/generateAsetPDF';
 
 const AsetDetailView = ({ aset }) => {
@@ -118,7 +119,6 @@ const AsetDesa = () => {
     // Initial Menu Position (Bottom Center)
     useEffect(() => {
         if (isSelectionMode) {
-             // Offset X dikurangi agar pas di tengah (asumsi lebar popup ~220px)
              setMenuPos({ 
                 x: window.innerWidth / 2 - 110, 
                 y: window.innerHeight - 120 
@@ -137,6 +137,7 @@ const AsetDesa = () => {
             if (asetToShow) {
                 const mode = viewId ? 'view' : 'edit';
                 handleOpenModal(asetToShow, mode);
+                // Bersihkan URL agar tidak terbuka terus saat refresh
                 setSearchParams({}, { replace: true });
             }
         }
@@ -169,19 +170,61 @@ const AsetDesa = () => {
         }));
     }, []);
 
+    // [REVISED] LOGIKA SUBMIT + NOTIFIKASI OTOMATIS
     const handleFormSubmit = async (e) => {
         e.preventDefault();
         setIsSubmitting(true);
         try {
+            // Siapkan data koordinat untuk peta
+            const coordinates = (formData.latitude && formData.longitude) 
+                ? { lat: formData.latitude, lng: formData.longitude } 
+                : null;
+
             if (selectedAset) {
+                // --- UPDATE ---
                 await updateItem(selectedAset.id, formData);
                 showNotification('Aset berhasil diperbarui', 'success');
+
+                // KIRIM NOTIFIKASI KE KECAMATAN (Hanya jika pengedit adalah Admin Desa)
+                if (currentUser.role === 'admin_desa') {
+                    const message = `Desa ${currentUser.desa} memperbarui data aset: ${formData.namaAset}.`;
+                    
+                    // [PENTING] Link disesuaikan dengan rute di App.js agar tidak redirect ke Hub
+                    const link = `/app/aset/manajemen?view=${selectedAset.id}`; 
+                    
+                    await createNotificationForAdmins(
+                        message,
+                        link,
+                        currentUser,
+                        'aset', // Tipe 'aset' memicu tombol Lihat Peta di Header
+                        { assetId: selectedAset.id, coordinates: coordinates }
+                    );
+                }
+
             } else {
-                await addItem(formData);
+                // --- CREATE ---
+                const newDocRef = await addItem(formData);
                 showNotification('Aset berhasil ditambahkan', 'success');
+
+                // KIRIM NOTIFIKASI KE KECAMATAN (Hanya jika pembuat adalah Admin Desa)
+                if (currentUser.role === 'admin_desa' && newDocRef?.id) {
+                    const message = `Aset Baru dari Desa ${currentUser.desa}: ${formData.namaAset} (${formData.kategori}).`;
+                    
+                    // [PENTING] Link disesuaikan dengan rute di App.js
+                    const link = `/app/aset/manajemen?view=${newDocRef.id}`;
+                    
+                    await createNotificationForAdmins(
+                        message,
+                        link,
+                        currentUser,
+                        'aset', // Tipe 'aset' memicu tombol Lihat Peta di Header
+                        { assetId: newDocRef.id, coordinates: coordinates }
+                    );
+                }
             }
             handleCloseModal();
         } catch (error) {
+            console.error("Submit Error:", error);
             showNotification(`Gagal menyimpan: ${error.message}`, 'error');
         } finally {
             setIsSubmitting(false);
@@ -258,10 +301,6 @@ const AsetDesa = () => {
         setIsSelectionMode(false);
         setSelectedIds(new Set());
         setMenuPos({ x: 0, y: 0 });
-    };
-
-    const toggleSelectionMode = () => {
-        isSelectionMode ? cancelSelectionMode() : setIsSelectionMode(true);
     };
 
     // --- DRAGGABLE POPUP ---
@@ -347,11 +386,7 @@ const AsetDesa = () => {
             showNotification("Tidak ada data untuk diekspor.", "warning");
             return;
         }
-
-        // Tentukan desa yang akan diekspor
-        // Jika filterDesa == 'all', maka kirim 'all' ke generator untuk trigger grouping
         const exportDesa = filters.desa;
-
         generateAsetPDF(filteredAset, exportDesa, exportConfig, allPerangkat);
     };
 

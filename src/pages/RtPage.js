@@ -228,27 +228,34 @@ const RtPage = () => {
     }, [formData.no_rt, formData.no_rw, formData.desa, isModalOpen]);
 
 
-    // --- LOGIKA AUTO-OPEN DARI DASHBOARD ---
+    // --- [PERBAIKAN] LOGIKA AUTO-OPEN DARI DASHBOARD & NOTIFIKASI ---
     useEffect(() => {
+        const viewId = searchParams.get('view');
         const editId = searchParams.get('edit');
-        if (editId && dataList.length > 0 && !hasOpenedModalFromQuery) {
-            const itemToEdit = dataList.find(item => item.id === editId);
-            if (itemToEdit) {
-                if (currentUser.role === 'admin_kecamatan' && itemToEdit.desa) {
-                    setFilterDesa(itemToEdit.desa);
+        const targetId = viewId || editId;
+
+        if (targetId && dataList.length > 0 && !hasOpenedModalFromQuery) {
+            const itemToProcess = dataList.find(item => item.id === targetId);
+            
+            if (itemToProcess) {
+                if (currentUser.role === 'admin_kecamatan' && itemToProcess.desa) {
+                    setFilterDesa(itemToProcess.desa);
                 }
-                handleOpenModal('edit', itemToEdit);
+                
+                const mode = viewId ? 'view' : 'edit';
+                handleOpenModal(mode, itemToProcess);
                 setHasOpenedModalFromQuery(true);
-                setHighlightedRow(editId);
+                setHighlightedRow(targetId);
                 
                 setTimeout(() => {
-                    const rowElement = document.getElementById(`row-${editId}`);
+                    const rowElement = document.getElementById(`row-${targetId}`);
                     if (rowElement) {
                         rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
                 }, 500);
 
                 const newSearchParams = new URLSearchParams(searchParams);
+                newSearchParams.delete('view');
                 newSearchParams.delete('edit');
                 setSearchParams(newSearchParams, { replace: true });
 
@@ -440,6 +447,7 @@ const RtPage = () => {
         setFormData(prev => ({ ...prev, [field]: '' }));
     };
 
+    // [PERBAIKAN] LOGIKA SUBMIT + LINK NOTIFIKASI VIEW DETAIL
     const handleFormSubmit = async (e) => {
         e.preventDefault();
         if (!formData.desa) return showNotification("Desa wajib diisi!", 'error');
@@ -449,25 +457,37 @@ const RtPage = () => {
             ['dusun', 'dukuh', 'no_hp', 'tempat_lahir', 'no_rw'].forEach(f => { if (!dataToSave[f]) dataToSave[f] = ''; });
             dataToSave.no_rw_only = false; 
 
+            let savedId = selectedItem?.id;
+
             if (selectedItem) {
                 await updateDoc(doc(db, RT_CONFIG.collectionName, selectedItem.id), dataToSave);
                 showNotification('Data RT diperbarui!', 'success');
             } else {
-                await addDoc(collection(db, RT_CONFIG.collectionName), dataToSave);
+                const docRef = await addDoc(collection(db, RT_CONFIG.collectionName), dataToSave);
+                savedId = docRef.id; // Tangkap ID baru
                 showNotification('Data RT ditambahkan!', 'success');
             }
+
             if (currentUser.role === 'admin_desa') {
                 const action = selectedItem ? 'memperbarui' : 'menambahkan';
-                await createNotificationForAdmins(`Admin Desa ${currentUser.desa} ${action} data RT: "${formData.nama}".`, '/app/rt-rw/rt', currentUser);
+                // [PERBAIKAN] Link menggunakan parameter ?view={id}
+                const link = `/app/rt-rw/rt?view=${savedId}`;
+                await createNotificationForAdmins(
+                    `Admin Desa ${currentUser.desa} ${action} data RT: "${formData.nama}".`, 
+                    link, 
+                    currentUser
+                );
             }
             handleCloseModal();
-        } catch (error) { showNotification(error.message, 'error'); } 
-        finally { setIsSubmitting(false); }
+        } catch (error) { 
+            showNotification(error.message, 'error'); 
+        } finally { 
+            setIsSubmitting(false); 
+        }
     };
 
     // --- IMPORT & EXPORT ---
     const handleFileUpload = (e) => {
-        // ... (Kode Import File Upload sama seperti sebelumnya, tidak diubah)
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
@@ -912,9 +932,9 @@ const RtPage = () => {
                                 {PENDIDIKAN_LIST.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                             </InputField>
 
-                            <InputField label="TTL (Tempat)" name="tempat_lahir" value={formData.tempat_lahir || ''} onChange={handleFormChange} />
-                            <InputField label="TTL (Tanggal)" name="tanggal_lahir" type="date" value={formData.tanggal_lahir || ''} onChange={handleFormChange} />
-                            <InputField label="HP" name="no_hp" value={formData.no_hp || ''} onChange={handleFormChange} />
+                            <InputField label="Tempat Lahir" name="tempat_lahir" value={formData.tempat_lahir || ''} onChange={handleFormChange} />
+                            <InputField label="Tanggal Lahir" name="tanggal_lahir" type="date" value={formData.tanggal_lahir || ''} onChange={handleFormChange} />
+                            <InputField label="No. HP / WA" name="no_hp" value={formData.no_hp || ''} onChange={handleFormChange} />
                             <InputField label="Periode" name="periode" value={formData.periode || ''} onChange={handleFormChange} />
                         </div>
                         {currentUser.role === 'admin_kecamatan' && (

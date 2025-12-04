@@ -20,9 +20,9 @@ const formatDateForExcel = (dateField) => {
 };
 
 /**
- * Generator File Excel untuk Data LPM (Perbaikan Format & Rumus)
+ * Generator File Excel untuk Data Karang Taruna (Diadaptasi dari LPM)
  */
-export const generateLpmXLSX = async (exportData) => {
+export const generateKarangTarunaXLSX = async (exportData) => {
     const {
         dataToExport,
         desa,
@@ -35,7 +35,7 @@ export const generateLpmXLSX = async (exportData) => {
     }
 
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Data LPM');
+    const worksheet = workbook.addWorksheet('Data Karang Taruna');
     const currentYear = new Date().getFullYear();
 
     // --- 1. PENGATURAN HALAMAN ---
@@ -92,8 +92,8 @@ export const generateLpmXLSX = async (exportData) => {
     let currentRow = 1;
 
     const titleText = desa === 'all' || !desa
-        ? `DATA LEMBAGA PEMBERDAYAAN MASYARAKAT (LPM) SE-KECAMATAN PUNGGELAN`
-        : `DATA LEMBAGA PEMBERDAYAAN MASYARAKAT (LPM) DESA ${desa.toUpperCase()}`;
+        ? `DATA KARANG TARUNA SE-KECAMATAN PUNGGELAN`
+        : `DATA KARANG TARUNA DESA ${desa.toUpperCase()}`;
     
     worksheet.mergeCells(currentRow, 1, currentRow, TOTAL_COLUMNS);
     const titleCell = worksheet.getCell(currentRow, 1);
@@ -247,21 +247,20 @@ export const generateLpmXLSX = async (exportData) => {
 
     // 1. Baris JUMLAH per Kolom
     const totalRow = worksheet.getRow(currentRow);
-    const totalRowIndex = currentRow; // Simpan index untuk rumus baris bawahnya
+    const totalRowIndex = currentRow; 
     
     totalRow.getCell(1).value = 'JUMLAH';
-    worksheet.mergeCells(`A${currentRow}:C${currentRow}`); // Merge No, Desa, Nama
+    worksheet.mergeCells(`A${currentRow}:C${currentRow}`); 
 
     // Rumus Sum untuk JK (D, E) dan Pendidikan (I - Q)
     const columnsToSum = [4, 5, 9, 10, 11, 12, 13, 14, 15, 16, 17];
     
     columnsToSum.forEach(colIndex => {
         const colLetter = worksheet.getColumn(colIndex).letter;
-        // Formula excel: SUM(D5:D10)
         totalRow.getCell(colIndex).value = { formula: `SUM(${colLetter}${firstDataRowIndex}:${colLetter}${lastDataRowIndex})` };
     });
 
-    // Terapkan Style Hijau & Border ke SEMUA sel di baris jumlah (A sampai V)
+    // Terapkan Style Hijau & Border
     for (let i = 1; i <= TOTAL_COLUMNS; i++) {
         const cell = totalRow.getCell(i);
         cell.style = totalRowStyle; 
@@ -283,18 +282,13 @@ export const generateLpmXLSX = async (exportData) => {
     worksheet.mergeCells(`I${currentRow}:Q${currentRow}`);
     grandTotalRow.getCell(9).value = { formula: `SUM(I${totalRowIndex}:Q${totalRowIndex})` };
 
-    // Style untuk baris JUMLAH TOTAL (Sama dengan baris JUMLAH)
+    // Style untuk baris JUMLAH TOTAL
     for (let i = 1; i <= TOTAL_COLUMNS; i++) {
         const cell = grandTotalRow.getCell(i);
         cell.style = totalRowStyle;
         
-        // Pastikan border applied correctly untuk merged cells
-        if (i === 4) { // D merged with E
-             cell.border = borderStyle;
-        }
-        if (i === 9) { // I merged till Q
-             cell.border = borderStyle;
-        }
+        if (i === 4) cell.border = borderStyle;
+        if (i === 9) cell.border = borderStyle;
     }
 
     currentRow += 3; // Spasi untuk Tanda Tangan
@@ -304,7 +298,7 @@ export const generateLpmXLSX = async (exportData) => {
         location: desa === 'all' ? 'Punggelan' : (desa || ''),
         jabatan: desa === 'all' 
             ? (exportConfig?.jabatanPenandaTangan || 'Camat Punggelan') 
-            : `Ketua LPM Desa ${desa}`,
+            : `Ketua Karang Taruna Desa ${desa}`,
         nama: desa === 'all'
             ? (exportConfig?.namaPenandaTangan || '')
             : (dataToExport.find(p => (p.jabatan || '').toLowerCase().includes('ketua'))?.nama || ''),
@@ -328,9 +322,8 @@ export const generateLpmXLSX = async (exportData) => {
         worksheet.getCell(currentRow + 6, signColStart).value = `NIP. ${signer.nip}`;
     }
 
-    // Styling Blok Tanda Tangan (Center Alignment)
+    // Styling Blok Tanda Tangan
     for (let r = 0; r <= 6; r++) {
-        // Merge beberapa kolom agar center alignment aman
         worksheet.mergeCells(currentRow + r, signColStart, currentRow + r, TOTAL_COLUMNS);
         const cell = worksheet.getCell(currentRow + r, signColStart);
         cell.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -359,7 +352,7 @@ export const generateLpmXLSX = async (exportData) => {
     // --- 9. SIMPAN FILE ---
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const fileName = `Data_LPM_${desa === 'all' ? 'Kecamatan_Punggelan' : `Desa_${desa}`}_${currentYear}.xlsx`;
+    const fileName = `Data_KarangTaruna_${desa === 'all' ? 'Kecamatan_Punggelan' : `Desa_${desa}`}_${currentYear}.xlsx`;
     
     saveAs(blob, fileName);
 };

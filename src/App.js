@@ -59,8 +59,6 @@ import RtPage from './pages/RtPage';
 import RwPage from './pages/RwPage';
 import RekapitulasiRtRwPage from './pages/RekapitulasiRtRwPage';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, RadialLinearScale, Title, Tooltip, Legend);
-
 // Registrasi semua komponen Chart.js yang dibutuhkan di seluruh aplikasi
 ChartJS.register(
   CategoryScale, LinearScale, BarElement, PointElement, LineElement, 
@@ -72,8 +70,8 @@ function PrivateRoute({ children }) {
   const { currentUser, loading } = useAuth();
   
   if (loading) {
-    // Saat auth loading, KITA TETAP TAMPILKAN LoadingScreen
-    // Ini penting agar transisi dari splash screen ke app mulus
+    // Saat auth loading (misal refresh halaman di url dalam),
+    // KITA TETAP TAMPILKAN LoadingScreen agar tidak white screen
     return <LoadingScreen />;
   }
   
@@ -81,7 +79,6 @@ function PrivateRoute({ children }) {
 }
 
 function App() {
-  // [LOGIKA BARU]
   // State untuk mengontrol tampilan splash screen
   const [isSplashscreen, setIsSplashscreen] = useState(true);
 
@@ -89,36 +86,37 @@ function App() {
     // Atur timer untuk menyembunyikan splash screen setelah 5 detik
     const timer = setTimeout(() => {
       setIsSplashscreen(false);
-    }, 5000); // [DIUBAH] Durasi diubah dari 3 detik menjadi 5 detik
+    }, 5000); 
 
     // Bersihkan timer jika komponen unmount
     return () => clearTimeout(timer);
-  }, []); // [] berarti efek ini hanya berjalan sekali saat aplikasi pertama kali dimuat
+  }, []); 
 
   return (
-    <>
-      <Router>
-        <AuthProvider>
-          <BrandingProvider>
-            {/* NotificationContainer dipindah ke sini agar selalu ada */}
-            <NotificationContainer /> 
+    <Router>
+      <AuthProvider>
+        <BrandingProvider>
+          <NotificationProvider>
+            {/* NotificationContainer agar notifikasi bisa muncul di mana saja */}
+            <NotificationContainer />
             
-            {/* [LOGIKA BARU] */}
             {isSplashscreen ? (
-              // 1. Jika true, tampilkan HANYA LoadingScreen
-              // BrandingProvider di atas memastikan LoadingScreen dapat mengambil nama aplikasi
+              // 1. Jika true (5 detik pertama), tampilkan LoadingScreen
               <LoadingScreen />
             ) : (
-              // 2. Jika false, tampilkan seluruh aplikasi seperti biasa
+              // 2. Jika false, tampilkan routing aplikasi
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 
                 {/* Rute terproteksi */}
+                {/* Hub Page sebagai halaman awal setelah login */}
                 <Route path="/" element={<PrivateRoute><HubPage /></PrivateRoute>} />
+                
+                {/* Rute khusus Organisasi Desa Hub */}
                 <Route path="/app/organisasi-desa" element={<PrivateRoute><OrganisasiDesaHub /></PrivateRoute>} />
 
+                {/* Dashboard Layout Utama */}
                 <Route path="/app" element={<PrivateRoute><AppLayout /></PrivateRoute>}>
-                  {/* Rute default di dalam layout */}
                   <Route index element={<DashboardPage />} />
                   
                   {/* Modul Pemerintahan */}
@@ -130,7 +128,7 @@ function App() {
                   <Route path="manajemen-admin" element={<ManajemenAdmin />} />
                   <Route path="pengaturan" element={<PengaturanAplikasi />} />
                   
-                  {/* Rute Organisasi Desa */}
+                  {/* Rute Organisasi Desa (Sub-modul) */}
                   <Route path="bpd" element={<BPDDashboard />} />
                   <Route path="bpd/data" element={<BPDPage />} />
                   <Route path="bpd/berita-acara" element={<BeritaAcaraBPDPage />} />
@@ -166,17 +164,16 @@ function App() {
                   <Route path="aset/peta" element={<PetaAsetPage />} />
                 </Route>
                 
-                {/* Fallback route */}
+                {/* Fallback route - Redirect ke root (yang akan dicek auth-nya) */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             )}
             
-          </BrandingProvider>
-        </AuthProvider>
-      </Router>
-    </>
+          </NotificationProvider>
+        </BrandingProvider>
+      </AuthProvider>
+    </Router>
   );
 }
 
 export default App;
-

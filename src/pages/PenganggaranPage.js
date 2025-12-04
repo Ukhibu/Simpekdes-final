@@ -3,6 +3,8 @@ import { db } from '../firebase';
 import { collection, query, where, onSnapshot, addDoc, doc, updateDoc, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
+// [PERBAIKAN] Import useSearchParams
+import { useSearchParams } from 'react-router-dom';
 import Spinner from '../components/common/Spinner';
 import InputField from '../components/common/InputField';
 import Modal from '../components/common/Modal';
@@ -10,12 +12,13 @@ import ConfirmationModal from '../components/common/ConfirmationModal';
 import Button from '../components/common/Button';
 import { FiPlus, FiEdit, FiTrash2, FiSend, FiCheckSquare, FiLock, FiXSquare, FiInfo } from 'react-icons/fi';
 import { KATEGORI_PENDAPATAN, KATEGORI_BELANJA, DESA_LIST } from '../utils/constants';
-// [BARU] Impor fungsi notifikasi
 import { createNotificationForAdmins, createNotificationForDesaAdmins } from '../utils/notificationService';
 
 const PenganggaranPage = () => {
     const { currentUser } = useAuth();
     const { showNotification } = useNotification();
+    // [PERBAIKAN] Hook untuk membaca parameter URL
+    const [searchParams] = useSearchParams();
     
     const [anggaranList, setAnggaranList] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -26,13 +29,26 @@ const PenganggaranPage = () => {
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
     const [itemToProcess, setItemToProcess] = useState(null);
     const [actionType, setActionType] = useState('');
+    
     const [filterTahun, setFilterTahun] = useState(new Date().getFullYear());
     const [filterDesa, setFilterDesa] = useState(currentUser.role === 'admin_kecamatan' ? DESA_LIST[0] : currentUser.desa);
     
-    // State baru untuk modal penolakan
     const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
     const [rejectionReason, setRejectionReason] = useState('');
 
+    // [PERBAIKAN] Effect untuk mendeteksi parameter URL dari notifikasi
+    // Agar saat diklik, filter desa dan tahun langsung menyesuaikan
+    useEffect(() => {
+        const urlDesa = searchParams.get('desa');
+        const urlTahun = searchParams.get('tahun');
+
+        if (urlDesa && currentUser.role === 'admin_kecamatan') {
+            setFilterDesa(urlDesa);
+        }
+        if (urlTahun) {
+            setFilterTahun(Number(urlTahun));
+        }
+    }, [searchParams, currentUser.role]);
 
     useEffect(() => {
         setLoading(true);
@@ -114,7 +130,7 @@ const PenganggaranPage = () => {
                 kode_rekening: selectedKat.kode_rekening || '',
                 uraian: selectedKat.nama || '',
                 status: 'Draft',
-                alasanPenolakan: null // Hapus alasan penolakan saat diedit
+                alasanPenolakan: null 
             };
 
             if (selectedAnggaran) {
@@ -149,18 +165,13 @@ const PenganggaranPage = () => {
         try {
             const docRef = doc(db, 'anggaran_tahunan', itemToProcess.id);
             if (actionType === 'delete') {
-                // Logika baru untuk menghapus subkoleksi
                 const realisasiQuery = query(collection(db, `anggaran_tahunan/${itemToProcess.id}/realisasi`));
                 const realisasiSnapshot = await getDocs(realisasiQuery);
-                
                 const batch = writeBatch(db);
-                
                 realisasiSnapshot.forEach((realisasiDoc) => {
                     batch.delete(realisasiDoc.ref);
                 });
-                
                 batch.delete(docRef);
-                
                 await batch.commit();
                 showNotification('Anggaran beserta data realisasinya berhasil dihapus', 'success');
             } else {
@@ -168,11 +179,24 @@ const PenganggaranPage = () => {
                 await updateDoc(docRef, { status: newStatus, alasanPenolakan: null });
                 showNotification(`Anggaran berhasil ${newStatus.toLowerCase()}`, 'success');
 
-                // [BARU] Logika pengiriman notifikasi
                 if (actionType === 'ajukan') {
-                    const message = `Pengajuan anggaran dari Desa ${itemToProcess.desa} (${itemToProcess.tahun}) menunggu persetujuan.`;
-                    const link = `/app/keuangan/penganggaran`;
-                    await createNotificationForAdmins(message, link, currentUser);
+                    const message = `Pengajuan anggaran Desa ${itemToProcess.desa}: ${itemToProcess.uraian} (${formatCurrency(itemToProcess.jumlah)})`;
+                    
+                    // [PERBAIKAN] Link menyertakan parameter desa dan tahun agar admin camat langsung tertuju ke data yang benar
+                    const link = `/app/keuangan/penganggaran?desa=${itemToProcess.desa}&tahun=${itemToProcess.tahun}`;
+                    
+                    await createNotificationForAdmins(
+                        message, 
+                        link, 
+                        currentUser, 
+                        'pengesahan_anggaran', // Tipe khusus untuk Header.js
+                        {
+                            anggaranId: itemToProcess.id,
+                            uraian: itemToProcess.uraian,
+                            desa: itemToProcess.desa,
+                            tahun: itemToProcess.tahun
+                        }
+                    );
                 } else if (actionType === 'sahkan') {
                     const message = `Pengajuan anggaran "${itemToProcess.uraian}" (${itemToProcess.tahun}) telah DISAHKAN.`;
                     const link = `/app/keuangan/penganggaran`;
@@ -199,7 +223,6 @@ const PenganggaranPage = () => {
             await updateDoc(docRef, { status: 'Ditolak', alasanPenolakan: rejectionReason });
             showNotification('Anggaran berhasil ditolak.', 'success');
 
-            // [BARU] Kirim notifikasi penolakan
             const message = `Pengajuan anggaran "${itemToProcess.uraian}" (${itemToProcess.tahun}) DITOLAK.`;
             const link = `/app/keuangan/penganggaran`;
             await createNotificationForDesaAdmins(itemToProcess.desa, message, link);
@@ -257,7 +280,6 @@ const PenganggaranPage = () => {
                                 </td>
                                 <td className="px-4 py-3">
                                     <div className="flex justify-center gap-2">
-                                        {/* --- Tombol Admin Desa --- */}
                                         {currentUser.role === 'admin_desa' && (item.status === 'Draft' || item.status === 'Ditolak') && (
                                             <>
                                                 <Button size="sm" variant="success" onClick={() => handleAction(item, 'ajukan')} title="Ajukan"><FiSend/></Button>
@@ -265,20 +287,15 @@ const PenganggaranPage = () => {
                                                 <Button size="sm" variant="danger" onClick={() => handleAction(item, 'delete')} title="Hapus"><FiTrash2/></Button>
                                             </>
                                         )}
-
-                                        {/* --- Tombol Admin Kecamatan --- */}
                                         {currentUser.role === 'admin_kecamatan' && item.status === 'Diajukan' && (
                                             <>
                                                 <Button size="sm" variant="success" onClick={() => handleAction(item, 'sahkan')} title="Sahkan"><FiCheckSquare/></Button>
                                                 <Button size="sm" variant="danger" onClick={() => handleAction(item, 'tolak')} title="Tolak"><FiXSquare/></Button>
                                             </>
                                         )}
-                                        
                                         {currentUser.role === 'admin_kecamatan' && (item.status === 'Disahkan' || item.status === 'Ditolak') && (
                                              <Button size="sm" variant="danger" onClick={() => handleAction(item, 'delete')} title="Hapus Permanen"><FiTrash2/></Button>
                                         )}
-                                        
-                                        {/* --- Ikon Terkunci --- */}
                                         {item.status === 'Disahkan' && currentUser.role === 'admin_desa' && <FiLock className="text-gray-500 mx-auto" title="Terkunci"/>}
                                         {item.status === 'Diajukan' && currentUser.role === 'admin_desa' && <FiLock className="text-gray-500 mx-auto" title="Terkunci"/>}
                                     </div>
@@ -393,4 +410,3 @@ const PenganggaranPage = () => {
 };
 
 export default PenganggaranPage;
-

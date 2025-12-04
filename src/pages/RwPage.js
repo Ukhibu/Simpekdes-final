@@ -154,27 +154,39 @@ const RwPage = () => {
         return () => unsubscribe();
     }, [currentUser, showNotification]);
 
-    // --- LOGIKA AUTO-OPEN DARI DASHBOARD ---
+    // --- [PERBAIKAN] LOGIKA AUTO-OPEN DARI DASHBOARD & NOTIFIKASI ---
     useEffect(() => {
-        const editId = searchParams.get('edit');
-        if (editId && dataList.length > 0 && !hasOpenedModalFromQuery) {
-            const itemToEdit = dataList.find(item => item.id === editId);
-            if (itemToEdit) {
-                if (currentUser.role === 'admin_kecamatan' && itemToEdit.desa) {
-                    setFilterDesa(itemToEdit.desa);
+        const viewId = searchParams.get('view'); // Cek parameter view
+        const editId = searchParams.get('edit'); // Cek parameter edit
+        const targetId = viewId || editId;       // Prioritaskan salah satu (biasanya view dari notif)
+
+        if (targetId && dataList.length > 0 && !hasOpenedModalFromQuery) {
+            const itemToProcess = dataList.find(item => item.id === targetId);
+            
+            if (itemToProcess) {
+                // Jika Admin Kecamatan membuka link, pastikan filter desa diset ke desa item tersebut
+                if (currentUser.role === 'admin_kecamatan' && itemToProcess.desa) {
+                    setFilterDesa(itemToProcess.desa);
                 }
-                handleOpenModal('edit', itemToEdit);
-                setHasOpenedModalFromQuery(true);
-                setHighlightedRow(editId);
+
+                // Tentukan mode modal (view atau edit)
+                const mode = viewId ? 'view' : 'edit';
                 
+                handleOpenModal(mode, itemToProcess);
+                setHasOpenedModalFromQuery(true);
+                setHighlightedRow(targetId);
+                
+                // Scroll ke baris data
                 setTimeout(() => {
-                    const rowElement = document.getElementById(`row-${editId}`);
+                    const rowElement = document.getElementById(`row-${targetId}`);
                     if (rowElement) {
                         rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
                 }, 500);
 
+                // Bersihkan URL agar tidak terbuka terus saat refresh
                 const newSearchParams = new URLSearchParams(searchParams);
+                newSearchParams.delete('view');
                 newSearchParams.delete('edit');
                 setSearchParams(newSearchParams, { replace: true });
 
@@ -341,6 +353,7 @@ const RwPage = () => {
     const handleCloseModal = () => !isSubmitting && setIsModalOpen(false);
     const handleFormChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
+    // [PERBAIKAN] LOGIKA SUBMIT + NOTIFIKASI LANGSUNG KE VIEW DETAIL
     const handleFormSubmit = async (e) => {
         e.preventDefault();
         if (!formData.desa) return showNotification("Desa wajib diisi!", 'error');
@@ -349,20 +362,35 @@ const RwPage = () => {
             const dataToSave = { ...formData, no_rt: "" }; // RW tidak punya RT
             ['dusun', 'no_hp', 'tempat_lahir'].forEach(f => { if (!dataToSave[f]) dataToSave[f] = ''; });
 
+            let savedId = selectedItem?.id;
+
             if (selectedItem) {
                 await updateDoc(doc(db, RW_CONFIG.collectionName, selectedItem.id), dataToSave);
                 showNotification('Data RW diperbarui!', 'success');
             } else {
-                await addDoc(collection(db, RW_CONFIG.collectionName), dataToSave);
+                const docRef = await addDoc(collection(db, RW_CONFIG.collectionName), dataToSave);
+                savedId = docRef.id; // Tangkap ID baru
                 showNotification('Data RW ditambahkan!', 'success');
             }
+
+            // Kirim Notifikasi ke Admin Kecamatan dengan Link 'View Detail'
             if (currentUser.role === 'admin_desa') {
                 const action = selectedItem ? 'memperbarui' : 'menambahkan';
-                await createNotificationForAdmins(`Admin Desa ${currentUser.desa} ${action} data RW: "${formData.nama}".`, '/app/rt-rw/rw', currentUser);
+                // Gunakan parameter ?view={id} agar otomatis membuka modal detail saat diklik
+                const link = `/app/rt-rw/rw?view=${savedId}`; 
+                
+                await createNotificationForAdmins(
+                    `Admin Desa ${currentUser.desa} ${action} data RW: "${formData.nama}".`, 
+                    link, 
+                    currentUser
+                );
             }
             handleCloseModal();
-        } catch (error) { showNotification(error.message, 'error'); } 
-        finally { setIsSubmitting(false); }
+        } catch (error) { 
+            showNotification(error.message, 'error'); 
+        } finally { 
+            setIsSubmitting(false); 
+        }
     };
 
     // --- IMPORT & EXPORT ---

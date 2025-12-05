@@ -1,92 +1,99 @@
 import React, { useRef, useEffect, memo } from 'react';
 
-// **PERBAIKAN**: Menggunakan React.memo dan useRef untuk mencegah konflik render React dengan contentEditable
 const BeritaAcaraPreview = memo(({ config, bpd, content, onContentChange }) => {
     const contentRef = useRef(null);
 
-    // Efek ini menyinkronkan state dari induk ke div yang dapat diedit.
-    // Ini penting untuk memuat data awal atau ketika anggota BPD baru dipilih.
+    // Sinkronisasi konten saat template/data berubah
     useEffect(() => {
-        if (contentRef.current && contentRef.current.innerText !== content) {
+        if (contentRef.current && content !== contentRef.current.innerText) {
             contentRef.current.innerText = content;
         }
     }, [content]);
 
-    // Handler ini memastikan bahwa teks biasa ditempel, bukan HTML yang diformat.
+    // Mencegah paste format HTML yang merusak layout
     const handlePaste = (e) => {
         e.preventDefault();
         const text = e.clipboardData.getData('text/plain');
         document.execCommand('insertText', false, text);
     };
 
-    const namaLengkapBpd = `${bpd?.nama || '[Nama Anggota]'}${bpd?.gelar ? `, ${bpd.gelar}` : ''}`;
-    const namaLengkapPejabat = `${config?.pejabatNama || '[Nama Pejabat]'}${config?.pejabatGelar ? `, ${config.pejabatGelar}` : ''}`;
-    const namaLengkapSaksi1 = `${config?.saksi1Nama || '[Nama Saksi 1]'}${config?.saksi1Gelar ? `, ${config.saksi1Gelar}` : ''}`;
-    const namaLengkapSaksi2 = `${config?.saksi2Nama || '[Nama Saksi 2]'}${config?.saksi2Gelar ? `, ${config.saksi2Gelar}` : ''}`;
-    
+    // Helper untuk format nama
+    const formatName = (nama, gelar) => {
+        if (!nama) return '..........................';
+        return `${nama}${gelar ? `, ${gelar}` : ''}`;
+    };
+
+    const namaBpd = formatName(bpd?.nama, bpd?.gelar);
+    const namaPejabat = formatName(config?.pejabatNama, config?.pejabatGelar);
+    const namaSaksi1 = formatName(config?.saksi1Nama, config?.saksi1Gelar);
+    const namaSaksi2 = formatName(config?.saksi2Nama, config?.saksi2Gelar);
+
     return (
-        <div className="document-body">
-            <div className="doc-header">
-                <p className="font-bold">BERITA ACARA</p>
-                <p className="font-bold">PENGAMBILAN SUMPAH JABATAN ANGGOTA BADAN PERMUSYAWARATAN DESA</p>
-                <p className="font-bold">KANTOR KECAMATAN PUNGGELAN</p>
-                <div className="header-line"></div>
-                <p>NOMOR : {config?.nomor || '[Nomor Surat]'}</p>
-            </div>
-
-            <div 
-                ref={contentRef}
-                className="doc-content"
-                contentEditable={true}
-                suppressContentEditableWarning={true}
-                onBlur={onContentChange} 
-                onPaste={handlePaste}
-            />
-
-            <table className="signature-table">
-                <tbody>
-                    <tr>
-                        <td className="signature-cell">
-                            <div contentEditable={true} suppressContentEditableWarning={true} onPaste={handlePaste}>
-                                <p>Anggota Badan Permusyawaratan Desa</p>
-                                <p>Yang mengangkat sumpah,</p>
-                            </div>
-                            <div contentEditable={true} suppressContentEditableWarning={true} onPaste={handlePaste} className="signature-space-editable" dangerouslySetInnerHTML={{ __html: '<br/><br/><br/>' }} />
-                            <p className="font-bold underline">{namaLengkapBpd.toUpperCase()}</p>
-                        </td>
-                        <td className="signature-cell">
-                             <div contentEditable={true} suppressContentEditableWarning={true} onPaste={handlePaste}>
-                                <p>Pejabat</p>
-                                <p>Yang mengambil sumpah</p>
-                                <p>{config?.pejabatJabatan || '[Jabatan Pejabat]'}</p>
-                            </div>
-                            <div contentEditable={true} suppressContentEditableWarning={true} onPaste={handlePaste} className="signature-space-editable" dangerouslySetInnerHTML={{ __html: '<br/><br/><br/>' }} />
-                            <p className="font-bold underline">{namaLengkapPejabat.toUpperCase()}</p>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+        // Wrapper ini adalah area aman di dalam bingkai
+        <div className="ba-safe-area">
             
-            <div className="witness-section" contentEditable={true} suppressContentEditableWarning={true} onPaste={handlePaste}>
-                <p className="font-bold">SAKSI - SAKSI</p>
+            {/* 1. KOP & JUDUL */}
+            <div className="doc-header">
+                <p className="font-bold text-lg">BERITA ACARA</p>
+                <p className="font-bold text-md">PENGAMBILAN SUMPAH JABATAN ANGGOTA BPD</p>
+                <p className="font-bold uppercase">DESA {bpd?.desa || '.......'}</p>
+                <div className="header-line"></div>
+                <p>NOMOR : {config?.nomor || '.......'}</p>
             </div>
-            <table className="signature-table">
-                <tbody>
-                    <tr>
-                        <td className="signature-cell">
-                            <div contentEditable={true} suppressContentEditableWarning={true} onPaste={handlePaste} className="signature-space-editable" dangerouslySetInnerHTML={{ __html: '<br/><br/><br/>' }} />
-                            <p className="font-bold underline">{namaLengkapSaksi2.toUpperCase()}</p>
-                        </td>
-                        <td className="signature-cell">
-                            <div contentEditable={true} suppressContentEditableWarning={true} onPaste={handlePaste} className="signature-space-editable" dangerouslySetInnerHTML={{ __html: '<br/><br/><br/>' }} />
-                            <p className="font-bold underline">{namaLengkapSaksi1.toUpperCase()}</p>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+
+            {/* 2. ISI KONTEN (Flexible Height) */}
+            <div className="doc-body-wrapper">
+                <div 
+                    ref={contentRef}
+                    className="doc-content"
+                    contentEditable={true}
+                    suppressContentEditableWarning={true}
+                    onBlur={onContentChange} 
+                    onPaste={handlePaste}
+                />
+            </div>
+
+            {/* 3. AREA TANDA TANGAN (Fixed at Bottom of Safe Area) */}
+            <div className="doc-footer">
+                {/* Tanda Tangan Utama */}
+                <table className="signature-table">
+                    <tbody>
+                        <tr>
+                            <td className="signature-cell left">
+                                <p>Yang Mengangkat Sumpah,</p>
+                                <p className="mb-spacer">Anggota BPD</p>
+                                <p className="font-bold underline">{namaBpd}</p>
+                            </td>
+                            <td className="signature-cell right">
+                                <p>Yang Mengambil Sumpah,</p>
+                                <p className="mb-spacer">{config?.pejabatJabatan || 'Camat'}</p>
+                                <p className="font-bold underline">{namaPejabat}</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                {/* Saksi-Saksi */}
+                <div className="witness-title">SAKSI - SAKSI</div>
+                <table className="signature-table">
+                    <tbody>
+                        <tr>
+                            <td className="signature-cell left">
+                                
+                                <div className="sign-gap"></div>
+                                <p className="font-bold underline">{namaSaksi1}</p>
+                            </td>
+                            <td className="signature-cell right">
+                                
+                                <div className="sign-gap"></div>
+                                <p className="font-bold underline">{namaSaksi2}</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 });
 
 export default BeritaAcaraPreview;
-

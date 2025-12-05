@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { db } from '../firebase';
-import { collection, doc, writeBatch, getDocs, getDoc, query, where, deleteDoc } from 'firebase/firestore';
+import { collection, doc, writeBatch, getDocs, getDoc, updateDoc, addDoc, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useFirestoreCollection } from '../hooks/useFirestoreCollection';
@@ -8,14 +8,135 @@ import { useNotification } from '../context/NotificationContext';
 // IMPORT SERVICE NOTIFIKASI
 import { createNotificationForAdmins } from '../utils/notificationService';
 
+// --- LEAFLET IMPORTS FOR ADVANCED MAP ---
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents, Polygon, Tooltip } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+
 import Modal from '../components/common/Modal';
 import Spinner from '../components/common/Spinner';
 import InputField from '../components/common/InputField';
 import ConfirmationModal from '../components/common/ConfirmationModal';
-import MapPicker from '../components/aset/MapPicker';
-import { FiEdit, FiTrash2, FiSearch, FiFilter, FiPlus, FiUpload, FiDownload, FiEye, FiMapPin, FiCheckSquare, FiX, FiMove } from 'react-icons/fi';
+import MapPicker from '../components/aset/MapPicker'; // Masih dipakai untuk View Only Detail
+import { FiEdit, FiTrash2, FiSearch, FiFilter, FiPlus, FiUpload, FiDownload, FiEye, FiMapPin, FiCheckSquare, FiX, FiMove, FiMap, FiLayers } from 'react-icons/fi';
 import { KATEGORI_ASET, KONDISI_ASET, DESA_LIST } from '../utils/constants';
 import { generateAsetPDF } from '../utils/generateAsetPDF';
+
+// --- FIX LEAFLET ICON ---
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+});
+
+// --- KOMPONEN PETA INPUT CANGGIH (INLINE) ---
+// Perubahan: Menerima props 'defaultMapCenter' dan 'boundaryCoords'
+const AdvancedMapInput = ({ initialPosition, onLocationChange, defaultMapCenter, boundaryCoords }) => {
+    const [mapMode, setMapMode] = useState('street'); // 'street' or 'satellite'
+    
+    // Gunakan defaultMapCenter dari props jika ada, jika tidak gunakan fallback
+    const fallbackCenter = [-7.3948, 109.6432]; 
+    const centerToUse = defaultMapCenter || fallbackCenter;
+    
+    // Konversi props posisi ke format Leaflet [lat, lng]
+    const position = (initialPosition && initialPosition[0] && initialPosition[1]) 
+        ? initialPosition 
+        : null;
+
+    // Helper untuk menangani klik peta
+    const LocationSelector = () => {
+        const map = useMap();
+        
+        useMapEvents({
+            click(e) {
+                onLocationChange({ lat: e.latlng.lat, lng: e.latlng.lng });
+                map.flyTo(e.latlng, map.getZoom());
+            },
+        });
+
+        // Efek saat posisi awal dimuat atau default center berubah
+        useEffect(() => {
+            if (position) {
+                map.flyTo(position, 16);
+            } else {
+                // Jika mode tambah baru, terbang ke lokasi default yang disetting admin
+                map.flyTo(centerToUse, 14);
+            }
+        }, [position, centerToUse]); 
+
+        return position ? <Marker position={position} /> : null;
+    };
+
+    return (
+        <div className="relative w-full h-72 rounded-lg overflow-hidden border border-gray-300 shadow-sm z-0 group">
+             <MapContainer 
+                center={centerToUse} 
+                zoom={13} 
+                style={{ height: '100%', width: '100%' }} 
+                zoomControl={false}
+            >
+                {/* 1. LAYER TILES (Dynamic) */}
+                {mapMode === 'street' ? (
+                  <TileLayer
+                    attribution='&copy; OpenStreetMap'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                ) : (
+                  <TileLayer
+                    attribution='&copy; Esri'
+                    url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                  />
+                )}
+
+                {/* 2. LAYER BATAS WILAYAH (POLYGON) */}
+                {boundaryCoords && boundaryCoords.length > 0 && (
+                    <Polygon 
+                        positions={boundaryCoords} 
+                        pathOptions={{ 
+                            color: '#10B981', // Emerald Green
+                            fillColor: '#10B981', 
+                            fillOpacity: mapMode === 'satellite' ? 0.1 : 0.05, 
+                            weight: 2, 
+                            dashArray: '5, 5' 
+                        }} 
+                    >
+                        <Tooltip sticky direction="center" className="font-bold text-emerald-700 bg-transparent border-none shadow-none">
+                            Wilayah Desa
+                        </Tooltip>
+                    </Polygon>
+                )}
+                
+                <LocationSelector />
+             </MapContainer>
+
+             {/* 3. FLOATING CONTROLS */}
+             <div className="absolute top-2 right-2 z-[400] bg-white/90 backdrop-blur-md p-1 rounded-lg shadow-md border border-gray-200 flex gap-1">
+                 <button 
+                    type="button" 
+                    onClick={() => setMapMode('street')} 
+                    className={`flex items-center gap-1 px-2 py-1 text-xs font-bold rounded transition-all ${mapMode === 'street' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}
+                 >
+                    <FiMap /> Jalan
+                 </button>
+                 <button 
+                    type="button" 
+                    onClick={() => setMapMode('satellite')} 
+                    className={`flex items-center gap-1 px-2 py-1 text-xs font-bold rounded transition-all ${mapMode === 'satellite' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}
+                 >
+                    <FiLayers /> Satelit
+                 </button>
+             </div>
+             
+             {/* 4. INSTRUCTION LABEL */}
+             {!position && (
+                <div className="absolute bottom-2 left-2 bg-white/80 backdrop-blur px-2 py-1 rounded text-xs font-medium text-gray-600 shadow-sm z-[400] pointer-events-none border border-gray-200">
+                    📍 Klik peta untuk set lokasi
+                </div>
+             )}
+        </div>
+    );
+};
 
 const AsetDetailView = ({ aset }) => {
     if (!aset) return null;
@@ -39,8 +160,9 @@ const AsetDetailView = ({ aset }) => {
             {aset.latitude && aset.longitude && (
                 <div>
                     <h4 className="font-semibold mb-2">Lokasi di Peta</h4>
-                    <div className="h-48 rounded-lg overflow-hidden">
-                       <MapPicker initialPosition={[aset.latitude, aset.longitude]} viewOnly={true} />
+                    <div className="h-48 rounded-lg overflow-hidden border border-gray-200">
+                        {/* Detail View tetap pakai MapPicker simple (View Only) */}
+                        <MapPicker initialPosition={[aset.latitude, aset.longitude]} viewOnly={true} />
                     </div>
                 </div>
             )}
@@ -72,37 +194,60 @@ const AsetDesa = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
 
-    // State Ekspor & Config & Data Perangkat (Untuk Tanda Tangan)
+    // State Ekspor & Config & Data Perangkat
     const [exportConfig, setExportConfig] = useState(null);
     const [allPerangkat, setAllPerangkat] = useState([]);
+
+    // --- NEW STATE: KONFIGURASI PETA WILAYAH ---
+    // Default ke Punggelan hardcoded jika belum ada config
+    const [mapCenterConfig, setMapCenterConfig] = useState([-7.3948, 109.6432]);
+    const [boundaryCoords, setBoundaryCoords] = useState([]); // Untuk menyimpan Polygon Wilayah
 
     // --- STATE CLICK BOOK & SELECTION ---
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState(new Set());
     
-    // --- REFS UNTUK GESTURE CONTROL (Scroll Detection) ---
+    // --- REFS UNTUK GESTURE CONTROL ---
     const longPressTimer = useRef(null);
     const isScrolling = useRef(false);
     const touchStartCoords = useRef({ x: 0, y: 0 });
 
     const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
     
-    // --- DRAGGABLE STATE (SMOOTH VERSION) ---
+    // --- DRAGGABLE STATE ---
     const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
     const dragStartPos = useRef({ x: 0, y: 0 });
 
-    // Initial Load: Config & Perangkat (untuk tanda tangan ekspor)
+    // Initial Load Data & Configs
     useEffect(() => {
         const fetchBaseData = async () => {
             try {
-                // 1. Ambil Config Camat
+                // 1. Ambil Config Tanda Tangan
                 const configSnap = await getDoc(doc(db, 'settings', 'exportConfig'));
                 if (configSnap.exists()) setExportConfig(configSnap.data());
 
-                // 2. Ambil Semua Perangkat (Untuk cari Kades nanti saat ekspor per desa)
+                // 2. Ambil Data Perangkat
                 const perangkatSnap = await getDocs(collection(db, 'perangkat'));
                 setAllPerangkat(perangkatSnap.docs.map(d => d.data()));
+
+                // 3. [BARU] Ambil Konfigurasi Pusat & Batas Wilayah Peta (dari PetaAsetPage)
+                const mapConfigSnap = await getDoc(doc(db, 'settings', 'peta_wilayah_config'));
+                if (mapConfigSnap.exists()) {
+                    const data = mapConfigSnap.data();
+                    
+                    // Set Pusat Peta
+                    if (data.centerLat && data.centerLng) {
+                        setMapCenterConfig([data.centerLat, data.centerLng]);
+                    }
+
+                    // Set Batas Wilayah (Polygon)
+                    if (data.boundaryCoords && Array.isArray(data.boundaryCoords)) {
+                        // Konversi format {lat, lng} kembali ke array [lat, lng] untuk Leaflet Polygon
+                        const coords = data.boundaryCoords.map(pt => [pt.lat || pt[0], pt.lng || pt[1]]);
+                        setBoundaryCoords(coords);
+                    }
+                }
             } catch (err) {
                 console.error("Error fetching base data:", err);
             }
@@ -116,7 +261,7 @@ const AsetDesa = () => {
         }
     }, [currentUser]);
 
-    // Initial Menu Position (Bottom Center)
+    // Initial Menu Position
     useEffect(() => {
         if (isSelectionMode) {
              setMenuPos({ 
@@ -137,7 +282,6 @@ const AsetDesa = () => {
             if (asetToShow) {
                 const mode = viewId ? 'view' : 'edit';
                 handleOpenModal(asetToShow, mode);
-                // Bersihkan URL agar tidak terbuka terus saat refresh
                 setSearchParams({}, { replace: true });
             }
         }
@@ -170,54 +314,47 @@ const AsetDesa = () => {
         }));
     }, []);
 
-    // [REVISED] LOGIKA SUBMIT + NOTIFIKASI OTOMATIS
+    // SUBMIT HANDLER
     const handleFormSubmit = async (e) => {
         e.preventDefault();
         setIsSubmitting(true);
         try {
-            // Siapkan data koordinat untuk peta
             const coordinates = (formData.latitude && formData.longitude) 
                 ? { lat: formData.latitude, lng: formData.longitude } 
                 : null;
 
             if (selectedAset) {
-                // --- UPDATE ---
+                // UPDATE
                 await updateItem(selectedAset.id, formData);
                 showNotification('Aset berhasil diperbarui', 'success');
 
-                // KIRIM NOTIFIKASI KE KECAMATAN (Hanya jika pengedit adalah Admin Desa)
                 if (currentUser.role === 'admin_desa') {
                     const message = `Desa ${currentUser.desa} memperbarui data aset: ${formData.namaAset}.`;
-                    
-                    // [PENTING] Link disesuaikan dengan rute di App.js agar tidak redirect ke Hub
                     const link = `/app/aset/manajemen?view=${selectedAset.id}`; 
                     
                     await createNotificationForAdmins(
                         message,
                         link,
                         currentUser,
-                        'aset', // Tipe 'aset' memicu tombol Lihat Peta di Header
+                        'aset',
                         { assetId: selectedAset.id, coordinates: coordinates }
                     );
                 }
 
             } else {
-                // --- CREATE ---
+                // CREATE
                 const newDocRef = await addItem(formData);
                 showNotification('Aset berhasil ditambahkan', 'success');
 
-                // KIRIM NOTIFIKASI KE KECAMATAN (Hanya jika pembuat adalah Admin Desa)
                 if (currentUser.role === 'admin_desa' && newDocRef?.id) {
                     const message = `Aset Baru dari Desa ${currentUser.desa}: ${formData.namaAset} (${formData.kategori}).`;
-                    
-                    // [PENTING] Link disesuaikan dengan rute di App.js
                     const link = `/app/aset/manajemen?view=${newDocRef.id}`;
                     
                     await createNotificationForAdmins(
                         message,
                         link,
                         currentUser,
-                        'aset', // Tipe 'aset' memicu tombol Lihat Peta di Header
+                        'aset',
                         { assetId: newDocRef.id, coordinates: coordinates }
                     );
                 }
@@ -552,8 +689,10 @@ const AsetDesa = () => {
                         <InputField label="Keterangan" name="keterangan" type="textarea" value={formData.keterangan || ''} onChange={handleFormChange} />
                         
                         <div className="col-span-1 md:col-span-2">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Lokasi Aset di Peta</label>
-                            <MapPicker
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Lokasi Aset di Peta (Wajib Klik Peta)</label>
+                            
+                            {/* --- MENGGUNAKAN ADVANCED MAP INPUT + DEFAULT MAP CENTER + BOUNDARY --- */}
+                            <AdvancedMapInput
                                 key={selectedAset ? selectedAset.id : 'new'}
                                 initialPosition={
                                     formData.latitude && formData.longitude
@@ -561,7 +700,10 @@ const AsetDesa = () => {
                                         : null
                                 }
                                 onLocationChange={handleLocationChange}
+                                defaultMapCenter={mapCenterConfig} // PASS CONFIG CENTER
+                                boundaryCoords={boundaryCoords}    // PASS CONFIG BOUNDARY
                             />
+                            
                         </div>
 
                         <div className="flex justify-end pt-4">

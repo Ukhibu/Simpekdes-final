@@ -17,7 +17,7 @@ import Pagination from '../components/common/Pagination';
 import { 
     FiSearch, FiUser, FiPlus, FiEdit, FiTrash2, FiDownload, 
     FiCheckSquare, FiX, FiMove, FiAlertCircle, FiCalendar, 
-    FiClipboard, FiFilter, FiPrinter, FiHeart, FiCheckCircle, FiClock
+    FiClipboard, FiFilter, FiPrinter, FiHeart, FiCheckCircle, FiClock, FiMapPin
 } from 'react-icons/fi';
 
 // Konstanta & Utils
@@ -277,7 +277,7 @@ const PKKProgramPage = () => {
         }
     };
 
-    // --- GESTURE & SELECTION UTILS (Sama seperti LPMPage) ---
+    // --- GESTURE & SELECTION UTILS ---
     useEffect(() => { if (isSelectionMode) setMenuPos({ x: window.innerWidth / 2 - 110, y: window.innerHeight - 120 }); }, [isSelectionMode]);
     const activateSelectionMode = (id) => { if (!isSelectionMode) { setIsSelectionMode(true); setSelectedIds([id]); if (navigator.vibrate) navigator.vibrate(50); } };
     const toggleSelection = (id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
@@ -358,8 +358,8 @@ const PKKProgramPage = () => {
                     </div>
                 </div>
 
-                <div className="flex flex-col md:flex-row gap-4">
-                    <div className="flex-1 relative">
+                <div className="flex flex-col md:flex-row gap-4 md:items-center">
+                    <div className="flex-1 relative w-full">
                          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
                          <input 
                             type="text" 
@@ -367,17 +367,28 @@ const PKKProgramPage = () => {
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-pink-500 outline-none transition-all"
-                         />
+                          />
                     </div>
+
+                    {/* [MODIFIKASI] Menampilkan Desa Terpilih untuk Admin Kecamatan */}
+                    {currentUser.role === 'admin_kecamatan' && filterDesa === 'all' && (
+                        <div className="flex items-center px-4 py-2.5 bg-pink-50 dark:bg-pink-900/20 border border-pink-100 dark:border-pink-800 rounded-lg shadow-sm animate-fadeIn whitespace-nowrap w-full md:w-auto">
+                            <FiMapPin className="text-pink-500 mr-2" />
+                            <span className="text-xs font-semibold text-pink-500 uppercase mr-1 tracking-wider">Desa:</span>
+                            <span className="text-sm font-bold text-gray-800 dark:text-pink-100">{currentDesaPage}</span>
+                        </div>
+                    )}
+
                     {currentUser.role === 'admin_kecamatan' && (
                         <div className="w-full md:w-64 relative">
                              <FiFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
                              <select 
                                 value={filterDesa} 
                                 onChange={(e) => setFilterDesa(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-pink-500 outline-none appearance-none"
+                                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-pink-500 outline-none appearance-none transition-all"
                              >
                                 <option value="all">Mode Pagination (Per Desa)</option>
+                                <option value="all_data">Semua Data (Gabungan)</option>
                                 {DESA_LIST.map(d => <option key={d} value={d}>{d}</option>)}
                              </select>
                         </div>
@@ -488,7 +499,6 @@ const PKKProgramPage = () => {
                 <form onSubmit={handleFormSubmit} className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <InputField label="Nama Program" name="nama_program" value={formData.nama_program || ''} onChange={handleFormChange} required placeholder="Contoh: Penyuluhan Gizi Balita" />
-                        {/* Dropdown 10 Program Pokok PKK */}
                         <InputField label="Kategori (10 Pokok PKK)" name="kategori" type="select" value={formData.kategori || ''} onChange={handleFormChange} required>
                             <option value="">Pilih Kategori</option>
                             {PROGRAM_POKOK_PKK.map(p => <option key={p} value={p}>{p}</option>)}
@@ -528,6 +538,7 @@ const PKKProgramPage = () => {
                 </form>
             </Modal>
 
+            {/* --- KONFIRMASI HAPUS --- */}
             <ConfirmationModal isOpen={isDeleteConfirmOpen} onClose={() => setIsDeleteConfirmOpen(false)} onConfirm={handleDelete} isLoading={isSubmitting} title="Hapus Program" message="Yakin ingin menghapus program kerja ini?" variant="danger"/>
             <ConfirmationModal isOpen={isDeleteSelectedConfirmOpen} onClose={() => setIsDeleteSelectedConfirmOpen(false)} onConfirm={handleDeleteSelected} isLoading={isSubmitting} title="Hapus Massal" message={`Yakin ingin menghapus ${selectedIds.length} data terpilih?`} variant="danger"/>
         </div>

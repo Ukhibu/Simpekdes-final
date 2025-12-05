@@ -1,193 +1,223 @@
-/* Container Utama */
+/* BeritaAcara.css - Clean single stylesheet for preview and print */
+
+/* --- LAYOUT UTAMA --- */
 .ba-container {
-    display: flex;
-    gap: 1.5rem;
-    height: calc(100vh - 120px); /* Sesuaikan dengan tinggi header Anda */
-    width: 100%;
+  display: flex;
+  gap: 1.5rem;
+  height: calc(100vh - 100px);
+  width: 100%;
+  padding: 1rem;
+  background-color: #f3f4f6;
 }
 
-/* Panel Kontrol (Sebelah Kiri) */
+.dark .ba-container {
+  background-color: #111827;
+}
+
+/* Panel Kontrol */
 .ba-controls {
-    flex: 0 0 380px; /* Lebar tetap untuk panel kontrol */
-    display: flex;
-    flex-direction: column;
-    background-color: white;
-    border-radius: 0.75rem;
-    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-    max-height: 100%;
-    overflow: hidden;
+  flex: 0 0 350px;
+  background: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
 
 .dark .ba-controls {
-    background-color: #1f2937; /* gray-800 */
+  background: #1f2937;
+  border: 1px solid #374151;
 }
 
-/* Area Pratinau (Sebelah Kanan) */
+/* Area Preview */
 .ba-preview {
-    flex-grow: 1;
-    overflow-y: auto; /* Memungkinkan scroll jika konten lebih panjang */
-    background-color: #f3f4f6; /* gray-100 */
-    padding: 2rem;
-    border-radius: 0.75rem;
+  flex-grow: 1;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 1rem;
 }
 
-.dark .ba-preview {
-    background-color: #111827; /* gray-900 */
-}
-
-/* [PERBAIKAN] Styling Kertas Dokumen dengan gambar bingkai */
+/* --- KERTAS DOKUMEN (A4) --- */
 .ba-paper {
-    background-color: white;
-    width: 21.59cm;
-    min-height: 27.94cm;
-    margin: 0 auto;
-    padding: 2.5cm; /* Padding disesuaikan untuk bingkai baru */
-    box-sizing: border-box;
-    position: relative;
-    box-shadow: 0 0 8px 2px rgba(0,0,0,0.1);
-    
-    /* Menggunakan gambar sebagai background */
-    background-image: url('../assets/berita-acara-frame.png');
-    background-size: 100% 100%; /* Memastikan gambar mengisi seluruh area */
-    background-repeat: no-repeat;
-    border: none; /* Menghapus border SVG lama */
+  width: 210mm;
+  height: 297mm; /* Tinggi A4 Fixed */
+  background-color: white;
+  box-shadow: 0 0 15px rgba(0,0,0,0.2);
+  position: relative;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
+/* --- AREA AMAN (SAFE AREA) --- */
+.ba-safe-area {
+  width: 100%;
+  height: 100%;
+  /* Padding disesuaikan agar masuk ke dalam bingkai standar */
+  /* Atas 35mm, Kanan 25mm, Bawah 30mm, Kiri 25mm */
+  padding: 35mm 25mm 30mm 25mm;
+  display: flex;
+  flex-direction: column;
+  /* PERBAIKAN: Menggunakan flex-start agar konten tidak didorong paksa ke pojok bawah */
+  justify-content: flex-start; 
+  box-sizing: border-box;
+}
 
-/* Styling Isi Dokumen */
+/* --- TYPOGRAPHY & CONTENT --- */
 .document-body {
-    font-family: 'Times New Roman', Times, serif;
-    color: black;
-    font-size: 12pt; /* Ukuran font standar */
-    line-height: 1.5; /* Jarak antar baris di dalam paragraf */
+  font-family: 'Bookman Old Style', 'Times New Roman', serif;
+  color: #000;
+  line-height: 1.3;
 }
 
 .doc-header {
-    text-align: center;
-    margin-bottom: 1rem;
+  text-align: center;
+  flex-shrink: 0;
+  margin-bottom: 20px; /* Jarak antara header dan isi */
 }
 
-.doc-header p {
-    margin: 0;
-    line-height: 1.4;
-}
+.text-lg { font-size: 14pt; }
+.text-md { font-size: 12pt; }
 
 .header-line {
-    border-top: 1px solid black;
-    border-bottom: 3px solid black;
-    height: 2px;
-    margin: 0.5rem 0;
+  border-top: 3px double black;
+  margin: 8px 0;
+  width: 100%;
+}
+
+.doc-body-wrapper {
+  /* PERBAIKAN: flex-grow dihapus agar tidak memakan sisa ruang kosong secara paksa */
+  /* flex-grow: 1;  <-- DIHAPUS */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  overflow: visible; /* Pastikan konten terlihat */
 }
 
 .doc-content {
-    text-align: justify;
-    white-space: pre-wrap; /* Menjaga format spasi dan baris baru dari string */
-    margin-top: 1.5rem;
-    outline: none; /* Menghilangkan border saat contentEditable aktif */
+  text-align: justify;
+  font-size: 8pt; /* Sedikit diperbesar agar lebih jelas */
+  white-space: pre-wrap;
+  margin-top: 0;
 }
 
+.doc-footer {
+  flex-shrink: 0;
+  /* PERBAIKAN: Memberikan jarak fix yang cukup dari teks, tapi tidak terlalu jauh */
+  margin-top: 40px; 
+  font-size: 10pt;
+}
+
+/* --- SIGNATURE / TANDA TANGAN --- */
 .signature-table {
-    width: 100%;
-    margin-top: 2rem;
-    border-collapse: collapse;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto 10px auto;
+  border-collapse: collapse;
+  display: table;
 }
 
-.signature-table td {
-    width: 50%;
-    vertical-align: top;
-    text-align: center;
+.signature-cell {
+  display: table-cell;
+  vertical-align: top;
+  width: 50%;
+  padding: 0 10px;
+  text-align: center;
 }
 
-.signature-space {
-    height: 70px;
+.signature-cell.left,
+.signature-cell.right {
+  text-align: center;
+  padding-left: 0;
+  padding-right: 0;
 }
 
-.witness-section {
-    margin-top: 2rem;
-    text-align: center;
+/* Jarak tanda tangan */
+.mb-spacer { margin-bottom: 20px; }
+.sign-gap { height: 60px; } /* Tinggi ruang tanda tangan */
+.sign-gap-small { height: 30px; }
+
+.witness-title {
+  text-align: center;
+  font-weight: bold;
+  text-decoration: underline;
+  margin: 15px 0 10px 0;
+  font-size: 10pt;
 }
 
-.font-bold {
-    font-weight: bold;
+.rohaniawan-section {
+  text-align: center;
+  margin-top: 20px;
 }
 
-.underline {
-    text-decoration: underline;
-}
+.font-bold { font-weight: bold; }
+.underline { text-decoration: underline; }
 
-/* --- CSS KHUSUS UNTUK CETAK & PDF --- */
+/* --- PRINT ADJUSTMENTS --- */
 @media print {
-    /* Aturan untuk halaman cetak itu sendiri */
-    @page {
-        size: A4; /* --- UKURAN KERTAS A4 --- */
-        margin: 0; /* --- PENTING: Menghilangkan header/footer browser --- */
-    }
+  @page {
+    size: A4 portrait;
+    margin: 0; /* Margin halaman 0 agar kita yang atur via CSS */
+  }
 
-    body, html {
-        background: white;
-    }
+  html, body {
+    background: none;
+    margin: 0;
+    padding: 0;
+    height: auto;
+  }
 
-    /* Sembunyikan semua elemen kecuali area cetak */
-    .no-print, .no-print * {
-        display: none !important;
-    }
-    
-    body * {
-        visibility: hidden;
-    }
+  .no-print, .ba-controls, .ba-preview::-webkit-scrollbar {
+    display: none !important;
+  }
 
-    #print-area, #print-area * {
-        visibility: visible;
-    }
+  .ba-container, .ba-preview {
+    height: auto !important;
+    width: 100% !important;
+    padding: 0 !important;
+    background: white !important;
+    display: block !important;
+  }
 
-    .ba-container, .ba-preview {
-        padding: 0;
-        margin: 0;
-        border: none;
-        box-shadow: none;
-    }
+  .ba-paper {
+    box-shadow: none !important;
+    margin: 0 !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+    overflow: visible !important;
+    -webkit-transform: none !important;
+    transform: none !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 
-    #print-area {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        overflow: hidden !important; /* Mencegah konten meluber */
-    }
+  /* Padding Print: Pastikan teks masuk dalam bingkai */
+  .ba-safe-area {
+    /* Atur padding agar tulisan tidak menabrak bingkai saat diprint */
+    padding: 35mm 20mm 20mm 20mm !important; 
+    box-sizing: border-box !important;
+    justify-content: flex-start !important; /* Pastikan print juga merapat ke atas */
+  }
 
-    .ba-paper {
-        margin: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        padding: 2.2cm !important; /* Padding konten di dalam bingkai untuk print */
-        box-sizing: border-box;
-        box-shadow: none !important;
-        
-        /* [PERBAIKAN] Atur ulang bingkai untuk print menggunakan gambar */
-        background-image: url('../assets/berita-acara-frame.png') !important;
-        background-size: 100% 100% !important;
-        -webkit-print-color-adjust: exact; /* Memaksa browser mencetak background */
-        print-color-adjust: exact;
-        border: none !important;
-    }
+  .ba-preview {
+    display: block !important;
+    justify-content: flex-start !important;
+    align-items: stretch !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+  }
 
-    /* --- Penyesuaian agar 100% muat satu halaman --- */
-    .document-body {
-        font-size: 10pt !important; /* Ukuran font diperkecil */
-        line-height: 1.35 !important; /* Jarak baris diperkecil */
-    }
-    
-    .doc-content {
-        margin-top: 0.8rem !important;
-    }
-    
-    .signature-table, .witness-section {
-        margin-top: 0.8rem !important;
-        page-break-inside: avoid !important;
-    }
+  .document-body { line-height: 1.2 !important; }
+  .doc-content { font-size: 9pt !important; }
 
-    .signature-space {
-        height: 35px !important; /* Ruang tanda tangan diperkecil */
-    }
+  header, .app-header, .topbar, .navbar, .site-header, .page-header, .toolbar {
+    display: none !important;
+  }
 }

@@ -14,7 +14,7 @@ import InputField from '../components/common/InputField';
 import Pagination from '../components/common/Pagination';
 
 // Ikon
-import { FiSearch, FiUser, FiPlus, FiEdit, FiTrash2, FiCheckSquare, FiX, FiMove, FiAlertCircle, FiCalendar, FiClipboard, FiFilter, FiPrinter } from 'react-icons/fi';
+import { FiSearch, FiUser, FiPlus, FiEdit, FiTrash2, FiCheckSquare, FiX, FiMove, FiAlertCircle, FiCalendar, FiClipboard, FiFilter, FiPrinter, FiMapPin } from 'react-icons/fi';
 
 // Konstanta & Utils
 import { LPM_PROGRAM_CONFIG, DESA_LIST, LPM_CONFIG } from '../utils/constants';
@@ -202,6 +202,12 @@ const LPMProgramPage = () => {
         finally { setIsSubmitting(false); setIsDeleteSelectedConfirmOpen(false); }
     };
 
+    // Open confirmation modal for deleting selected items
+    const openDeleteSelectedConfirm = () => {
+        if (!selectedIds || selectedIds.length === 0) return;
+        setIsDeleteSelectedConfirmOpen(true);
+    };
+
     // 7. Gesture & Drag Logic
     const activateSelectionMode = (id) => {
         if (!isSelectionMode) {
@@ -315,11 +321,9 @@ const LPMProgramPage = () => {
             {/* --- HEADER & TOOLS --- */}
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-100 dark:border-gray-700 transition-colors duration-300">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2">
-                    <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                            Kelola rencana dan realisasi program kerja Lembaga Pemberdayaan Masyarakat.
-                        </p>
-                    </div>
+                        <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                            <FiClipboard className='text-sky-500'/> Manajemen Program Kerja LPM
+                        </h1>
                     <div className="flex gap-2">
                          {/* HANYA TOMBOL PDF */}
                          <Button onClick={handleExportPDF} variant="danger" className="shadow-sm flex items-center"><FiPrinter className="mr-2"/> Cetak PDF</Button>
@@ -327,8 +331,8 @@ const LPMProgramPage = () => {
                     </div>
                 </div>
 
-                <div className="flex flex-col md:flex-row gap-4 mt-4">
-                    <div className="flex-1 relative">
+                <div className="flex flex-col md:flex-row gap-4 mt-4 md:items-center">
+                    <div className="flex-1 relative w-full">
                          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
                          <input 
                             type="text" 
@@ -336,8 +340,18 @@ const LPMProgramPage = () => {
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                         />
+                          />
                     </div>
+
+                    {/* [MODIFIKASI] Menampilkan Desa Terpilih (Sesuai Pagination) untuk Admin Kecamatan */}
+                    {currentUser.role === 'admin_kecamatan' && filterDesa === 'all' && (
+                        <div className="flex items-center px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg shadow-sm animate-fadeIn whitespace-nowrap w-full md:w-auto">
+                            <FiMapPin className="text-blue-500 mr-2" />
+                            <span className="text-xs font-semibold text-blue-500 uppercase mr-1 tracking-wider">Desa:</span>
+                            <span className="text-sm font-bold text-gray-800 dark:text-blue-100">{currentDesaPage}</span>
+                        </div>
+                    )}
+
                     {currentUser.role === 'admin_kecamatan' && (
                         <div className="w-full md:w-64 relative">
                              <FiFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
@@ -353,7 +367,7 @@ const LPMProgramPage = () => {
                     )}
                 </div>
             </div>
-
+            
             {/* --- TABEL DATA MODERN --- */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-100 dark:border-gray-700 overflow-hidden relative">
                 <div className="overflow-x-auto min-h-[400px]">
@@ -427,7 +441,7 @@ const LPMProgramPage = () => {
                                         </td>
                                         <td className="px-6 py-4 text-center">
                                             <div className="flex items-center justify-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                                 <button 
+                                                <button 
                                                     onClick={(e) => { e.stopPropagation(); handleOpenModal('edit', item); }} 
                                                     className="p-1.5 text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
                                                     title="Edit"
@@ -488,7 +502,7 @@ const LPMProgramPage = () => {
                     </div>
                     <div className="h-8 w-px bg-gray-200 dark:bg-gray-700"></div>
                     <div className="flex items-center gap-1">
-                        <button onClick={() => setIsDeleteSelectedConfirmOpen(true)} disabled={selectedIds.length === 0} className="p-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-all active:scale-95 disabled:opacity-50">
+                        <button onClick={openDeleteSelectedConfirm} disabled={selectedIds.length === 0} className="p-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-all active:scale-95 disabled:opacity-50">
                             <FiTrash2 size={20} />
                         </button>
                         <button onClick={() => { setIsSelectionMode(false); setSelectedIds([]); }} className="p-2.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-all active:scale-95">

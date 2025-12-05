@@ -17,7 +17,7 @@ import Pagination from '../components/common/Pagination';
 import { 
     FiSearch, FiUser, FiPlus, FiEdit, FiTrash2, FiDownload, 
     FiCheckSquare, FiX, FiMove, FiAlertCircle, FiCalendar,FiCheckCircle, 
-    FiClipboard, FiFilter, FiPrinter, FiActivity 
+    FiClipboard, FiFilter, FiPrinter, FiActivity, FiMapPin 
 } from 'react-icons/fi';
 
 // Konstanta & Utils
@@ -307,7 +307,7 @@ const KarangTarunaKegiatanPage = () => {
         }
     };
 
-    // --- GESTURE & DRAG UTILS ---
+    // --- GESTURE & SELECTION UTILS ---
     useEffect(() => { if (isSelectionMode) setMenuPos({ x: window.innerWidth / 2 - 110, y: window.innerHeight - 120 }); }, [isSelectionMode]);
     const activateSelectionMode = (id) => { if (!isSelectionMode) { setIsSelectionMode(true); setSelectedIds([id]); if (navigator.vibrate) navigator.vibrate(50); } };
     const toggleSelection = (id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
@@ -328,7 +328,7 @@ const KarangTarunaKegiatanPage = () => {
     const startDrag = (e) => { setIsDragging(true); const c = e.touches ? e.touches[0] : e; dragOffset.current = { x: c.clientX - menuPos.x, y: c.clientY - menuPos.y }; };
     const onDrag = (e) => { if (!isDragging) return; const c = e.touches ? e.touches[0] : e; setMenuPos({ x: c.clientX - dragOffset.current.x, y: c.clientY - dragOffset.current.y }); };
     const stopDrag = () => setIsDragging(false);
-    
+
     useEffect(() => {
         if (isDragging) {
             window.addEventListener('mousemove', onDrag); window.addEventListener('mouseup', stopDrag);
@@ -388,26 +388,37 @@ const KarangTarunaKegiatanPage = () => {
                     </div>
                 </div>
 
-                <div className="flex flex-col md:flex-row gap-4">
-                    <div className="flex-1 relative">
+                <div className="flex flex-col md:flex-row gap-4 md:items-center">
+                    <div className="flex-1 relative w-full">
                          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
                          <input 
                             type="text" 
-                            placeholder="Cari program, bidang kegiatan..." 
+                            placeholder="Cari program, kategori..." 
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-sky-500 outline-none transition-all"
-                         />
+                          />
                     </div>
+
+                    {/* [MODIFIKASI] Menampilkan Desa Terpilih untuk Admin Kecamatan */}
+                    {currentUser.role === 'admin_kecamatan' && filterDesa === 'all' && (
+                        <div className="flex items-center px-4 py-2.5 bg-sky-50 dark:bg-sky-900/20 border border-sky-100 dark:border-sky-800 rounded-lg shadow-sm animate-fadeIn whitespace-nowrap w-full md:w-auto">
+                            <FiMapPin className="text-sky-500 mr-2" />
+                            <span className="text-xs font-semibold text-sky-500 uppercase mr-1 tracking-wider">Desa:</span>
+                            <span className="text-sm font-bold text-gray-800 dark:text-sky-100">{currentDesaPage}</span>
+                        </div>
+                    )}
+
                     {currentUser.role === 'admin_kecamatan' && (
                         <div className="w-full md:w-64 relative">
                              <FiFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
                              <select 
                                 value={filterDesa} 
                                 onChange={(e) => setFilterDesa(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-sky-500 outline-none appearance-none"
+                                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-sky-500 outline-none appearance-none transition-all"
                              >
                                 <option value="all">Mode Pagination (Per Desa)</option>
+                                <option value="all_data">Semua Data (Gabungan)</option>
                                 {DESA_LIST.map(d => <option key={d} value={d}>{d}</option>)}
                              </select>
                         </div>
@@ -484,20 +495,8 @@ const KarangTarunaKegiatanPage = () => {
                                         </td>
                                         <td className="px-6 py-4 text-center">
                                             <div className="flex items-center justify-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                                 <button 
-                                                    onClick={(e) => { e.stopPropagation(); handleOpenModal('edit', item); }} 
-                                                    className="p-1.5 text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
-                                                    title="Edit"
-                                                >
-                                                    <FiEdit size={18}/>
-                                                </button>
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); setItemToDelete(item); setIsDeleteConfirmOpen(true); }} 
-                                                    className="p-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 rounded-lg transition-colors"
-                                                    title="Hapus"
-                                                >
-                                                    <FiTrash2 size={18}/>
-                                                </button>
+                                                 <button onClick={(e) => { e.stopPropagation(); handleOpenModal('edit', item); }} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 rounded-lg transition-colors"><FiEdit size={18}/></button>
+                                                 <button onClick={(e) => { e.stopPropagation(); setItemToDelete(item); setIsDeleteConfirmOpen(true); }} className="p-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 rounded-lg transition-colors"><FiTrash2 size={18}/></button>
                                             </div>
                                         </td>
                                     </tr>
@@ -529,8 +528,7 @@ const KarangTarunaKegiatanPage = () => {
             <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={modalMode === 'edit' ? 'Edit Program Karang Taruna' : 'Tambah Program Karang Taruna'}>
                 <form onSubmit={handleFormSubmit} className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <InputField label="Nama Program" name="nama_program" value={formData.nama_program || ''} onChange={handleFormChange} required placeholder="Contoh: Pelatihan Kewirausahaan Pemuda" />
-                        {/* Dropdown Bidang Kegiatan Karang Taruna */}
+                        <InputField label="Nama Program" name="nama_program" value={formData.nama_program || ''} onChange={handleFormChange} required placeholder="Contoh: Pelatihan Kewirausahaan" />
                         <InputField label="Bidang Kegiatan" name="bidang" type="select" value={formData.bidang || ''} onChange={handleFormChange} required>
                             <option value="">Pilih Bidang</option>
                             {BIDANG_KEGIATAN_KT.map(p => <option key={p} value={p}>{p}</option>)}

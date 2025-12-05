@@ -24,7 +24,7 @@ import * as XLSX from 'xlsx';
 // Ikon
 import { 
     FiEdit, FiSearch, FiUpload, FiDownload, FiPlus, FiEye, FiTrash2, 
-    FiCheckSquare, FiX, FiMove, FiAlertCircle, FiCheckCircle, FiClock, FiArrowRight 
+    FiCheckSquare, FiX, FiMove, FiAlertCircle, FiCheckCircle, FiClock, FiArrowRight, FiMapPin 
 } from 'react-icons/fi';
 
 // Konstanta Jabatan PKK
@@ -373,7 +373,7 @@ const PKKPage = () => {
 
             {/* --- HEADER & TOOLS --- */}
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
-                <div className="flex items-center gap-3 w-full md:w-auto">
+                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
                     <InputField 
                         type="text" 
                         placeholder="Cari nama atau jabatan..." 
@@ -382,6 +382,15 @@ const PKKPage = () => {
                         icon={<FiSearch />} 
                         className="w-full md:w-72"
                     />
+
+                    {/* [MODIFIKASI] Menampilkan Desa Terpilih untuk Admin Kecamatan */}
+                    {currentUser.role === 'admin_kecamatan' && (
+                        <div className="flex items-center px-4 py-2.5 bg-pink-50 dark:bg-pink-900/20 border border-pink-100 dark:border-pink-800 rounded-lg shadow-sm animate-fadeIn whitespace-nowrap w-full md:w-auto">
+                            <FiMapPin className="text-pink-500 mr-2" />
+                            <span className="text-xs font-semibold text-pink-500 uppercase mr-1 tracking-wider">Desa:</span>
+                            <span className="text-sm font-bold text-gray-800 dark:text-pink-100">{currentDesa}</span>
+                        </div>
+                    )}
                 </div>
                 <div className="flex gap-2 w-full md:w-auto justify-end flex-wrap">
                     <label className="btn btn-warning cursor-pointer px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg flex items-center transition-colors shadow-sm">
@@ -484,7 +493,7 @@ const PKKPage = () => {
                     </table>
                 </div>
 
-                {/* Pagination Kecamatan */}
+                {/* Pagination untuk Admin Kecamatan */}
                 {currentUser.role === 'admin_kecamatan' && (
                     <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex justify-center">
                         <Pagination desaList={DESA_LIST} currentDesa={currentDesa} onPageChange={setCurrentDesa} />
@@ -510,8 +519,12 @@ const PKKPage = () => {
                     </div>
                     <div className="h-8 w-px bg-gray-200 dark:bg-gray-700"></div>
                     <div className="flex items-center gap-1">
-                        <button onClick={() => setIsDeleteSelectedConfirmOpen(true)} disabled={selectedIds.length === 0} className="p-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-all active:scale-95 disabled:opacity-50"><FiTrash2 size={20} /></button>
-                        <button onClick={() => { setIsSelectionMode(false); setSelectedIds([]); }} className="p-2.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-all active:scale-95"><FiX size={20} /></button>
+                        <button onClick={() => setIsDeleteSelectedConfirmOpen(true)} disabled={selectedIds.length === 0} className="p-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-all active:scale-95 disabled:opacity-50">
+                            <FiTrash2 size={20} />
+                        </button>
+                        <button onClick={() => { setIsSelectionMode(false); setSelectedIds([]); }} className="p-2.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-all active:scale-95">
+                            <FiX size={20} />
+                        </button>
                     </div>
                 </div>
             )}

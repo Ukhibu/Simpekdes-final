@@ -24,7 +24,7 @@ import * as XLSX from 'xlsx';
 // Ikon
 import { 
     FiEdit, FiSearch, FiUpload, FiDownload, FiPlus, FiEye, FiTrash2, 
-    FiCheckSquare, FiX, FiMove, FiAlertCircle, FiCheckCircle, FiClock, FiArrowRight 
+    FiCheckSquare, FiX, FiMove, FiAlertCircle, FiCheckCircle, FiClock, FiArrowRight, FiMapPin 
 } from 'react-icons/fi';
 
 // Konstanta Jabatan Karang Taruna
@@ -387,8 +387,10 @@ const KarangTarunaPage = () => {
                     />
                     {/* [PERBAIKAN] Menambahkan indikator Desa untuk Admin Kecamatan */}
                     {currentUser.role === 'admin_kecamatan' && (
-                        <div className="px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium">
-                            Desa: {currentDesa === 'all' ? 'Semua' : currentDesa}
+                        <div className="flex items-center px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg shadow-sm animate-fadeIn whitespace-nowrap w-full md:w-auto">
+                            <FiMapPin className="text-blue-500 mr-2" />
+                            <span className="text-xs font-semibold text-blue-500 uppercase mr-1 tracking-wider">Desa:</span>
+                            <span className="text-sm font-bold text-gray-800 dark:text-blue-100">{currentDesa}</span>
                         </div>
                     )}
                 </div>
@@ -442,7 +444,7 @@ const KarangTarunaPage = () => {
                                     >
                                         <td className="px-6 py-4 text-center font-medium text-gray-500 dark:text-gray-400">
                                             {isSelectionMode ? (
-                                                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center mx-auto transition-all ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-400'}`}>
+                                                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center mx-auto transition-all ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-400 dark:border-gray-500'}`}>
                                                     {isSelected && <FiCheckSquare className="text-white w-3 h-3" />}
                                                 </div>
                                             ) : index + 1}
@@ -486,7 +488,7 @@ const KarangTarunaPage = () => {
                                     </tr>
                                 );
                             }) : (
-                                <tr><td colSpan="7" className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">Tidak ada data ditemukan.</td></tr>
+                                <tr><td colSpan="6" className="text-center py-12 text-gray-500 dark:text-gray-400">Tidak ada data ditemukan.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -503,7 +505,11 @@ const KarangTarunaPage = () => {
             {/* --- MENU AKSI MASSAL --- */}
             {isSelectionMode && (
                 <div style={{ position: 'fixed', left: `${menuPos.x}px`, top: `${menuPos.y}px`, zIndex: 9999, touchAction: 'none' }} className="flex items-center gap-3 pl-2 pr-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 shadow-2xl rounded-full animate-in fade-in zoom-in duration-200 backdrop-blur-md">
-                    <div onMouseDown={startDrag} onTouchStart={startDrag} className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-full cursor-move group"><FiMove className="text-gray-500"/> <span className="font-bold text-blue-600">{selectedIds.length}</span></div>
+                    <div onMouseDown={startDrag} onTouchStart={startDrag} className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-full cursor-move group"><FiMove className="text-gray-500 dark:text-gray-400 group-hover:text-blue-500" size={16} />
+                        <span className="bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center select-none">
+                            {selectedIds.length}
+                        </span>
+                    </div>
                     <div className="h-8 w-px bg-gray-200"></div>
                     <button onClick={() => setIsDeleteSelectedConfirmOpen(true)} className="p-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-all active:scale-95 disabled:opacity-50"><FiTrash2 size={20} /></button>
                     <button onClick={() => { setIsSelectionMode(false); setSelectedIds([]); }} className="p-2.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-all active:scale-95"><FiX size={20} /></button>

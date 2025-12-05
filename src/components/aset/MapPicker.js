@@ -1,103 +1,98 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+
+// --- FIX: Masalah Icon Default Leaflet di React ---
+// Leaflet memiliki bug umum di mana icon default tidak terpanggil dengan benar saat di-bundle webpack/CRA.
+// Kita harus mendefinisikan ulang path icon-nya ke CDN yang stabil.
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+});
+
+// --- Komponen Helper: LocationMarker ---
+// Bertugas menangani event klik pada peta dan memindahkan marker
+const LocationMarker = ({ position, setPosition, onLocationChange, viewOnly }) => {
+  const map = useMap();
+
+  // Efek: Jika props 'position' berubah dari luar (misal saat edit data), geser peta ke sana
+  useEffect(() => {
+    if (position) {
+      map.flyTo(position, map.getZoom(), { animate: true, duration: 1 });
+    }
+  }, [position, map]);
+
+  useMapEvents({
+    click(e) {
+      if (viewOnly) return; // Jangan lakukan apa-apa jika mode viewOnly
+      
+      const newPos = e.latlng;
+      setPosition(newPos);
+      
+      // Kirim data balik ke parent component (misal: AsetDesa.js)
+      if (onLocationChange) {
+        onLocationChange({ lat: newPos.lat, lng: newPos.lng });
+      }
+      
+      // Animasi geser peta ke titik yang diklik
+      map.flyTo(newPos, map.getZoom());
+    },
+  });
+
+  return position ? <Marker position={position} /> : null;
+};
 
 const MapPicker = ({ initialPosition, onLocationChange, viewOnly = false }) => {
-    const mapRef = useRef(null);
-    const mapInstanceRef = useRef(null); // Ref untuk menyimpan instance peta
-    const markerRef = useRef(null); // Ref untuk menyimpan instance marker
-    const onLocationChangeRef = useRef(onLocationChange); // Ref untuk fungsi callback
+  // Koordinat Default (Kantor Desa Punggelan / Pusat Kecamatan)
+  // Ganti koordinat ini sesuai pusat desa Anda agar saat peta dimuat langsung fokus ke desa.
+  const defaultCenter = [-7.3948, 109.6432]; 
+  
+  // State lokal untuk posisi marker
+  const [position, setPosition] = useState(null);
 
-    // Selalu update ref callback jika prop berubah
-    useEffect(() => {
-        onLocationChangeRef.current = onLocationChange;
-    }, [onLocationChange]);
+  // Inisialisasi posisi awal jika ada props 'initialPosition' (Mode Edit)
+  useEffect(() => {
+    if (initialPosition) {
+      // Cek apakah formatnya Array [lat, lng] atau Object {lat, lng}
+      if (Array.isArray(initialPosition) && initialPosition.length === 2) {
+         setPosition({ lat: initialPosition[0], lng: initialPosition[1] });
+      } else if (typeof initialPosition === 'object' && initialPosition.lat && initialPosition.lng) {
+         setPosition(initialPosition);
+      }
+    }
+  }, [initialPosition]);
 
-    // --- Efek untuk inisialisasi dan penghancuran peta (HANYA SEKALI) ---
-    useEffect(() => {
-        if (!window.L || !mapRef.current || mapInstanceRef.current) {
-            return; // Jangan lakukan apa-apa jika Leaflet belum siap, ref null, atau peta sudah ada
-        }
+  return (
+    <div className="w-full h-[300px] rounded-lg overflow-hidden border border-gray-300 relative shadow-sm z-0">
+      <MapContainer 
+        center={defaultCenter} 
+        zoom={13} 
+        style={{ height: '100%', width: '100%' }}
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
         
-        const punggelanCenter = [-7.279, 109.489];
-        const map = window.L.map(mapRef.current).setView(initialPosition || punggelanCenter, 14);
-        mapInstanceRef.current = map;
-
-        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(map);
-
-        // Handler klik pada peta (hanya jika tidak view-only)
-        if (!viewOnly) {
-            map.on('click', (e) => {
-                const { lat, lng } = e.latlng;
-                
-                if (!markerRef.current) {
-                     const defaultIcon = window.L.icon({
-                        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-                        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-                        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-                    });
-                    markerRef.current = window.L.marker([lat, lng], { icon: defaultIcon }).addTo(map);
-                } else {
-                    markerRef.current.setLatLng([lat, lng]);
-                }
-                
-                map.panTo([lat, lng]);
-                
-                // Panggil callback menggunakan ref
-                if (onLocationChangeRef.current) {
-                    onLocationChangeRef.current({ lat, lng });
-                }
-            });
-        }
-        
-        // Cleanup function: akan dipanggil saat komponen dilepas (unmount)
-        return () => {
-            if (mapInstanceRef.current) {
-                mapInstanceRef.current.remove();
-                mapInstanceRef.current = null;
-            }
-        };
-    }, [viewOnly, initialPosition]); // Hanya bergantung pada viewOnly dan initialPosition saat pertama kali dibuat
-
-    // --- Efek untuk MEMPERBARUI marker saat initialPosition berubah ---
-    useEffect(() => {
-        const map = mapInstanceRef.current;
-        if (!map) return; // Jangan lakukan apa-apa jika peta belum siap
-
-        if (initialPosition) {
-            const [lat, lng] = initialPosition;
-            if (!markerRef.current) {
-                 const defaultIcon = window.L.icon({
-                    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-                    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-                    iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-                });
-                markerRef.current = window.L.marker([lat, lng], { icon: defaultIcon }).addTo(map);
-            } else {
-                markerRef.current.setLatLng([lat, lng]);
-            }
-            map.setView([lat, lng], map.getZoom()); // Pusatkan peta ke marker
-        } else {
-            // Jika tidak ada initialPosition (misal saat reset form), hapus marker
-            if (markerRef.current) {
-                markerRef.current.remove();
-                markerRef.current = null;
-            }
-        }
-    }, [initialPosition]);
-
-
-    return (
-        <div>
-            <div ref={mapRef} style={{ height: '300px', width: '100%', borderRadius: '8px', zIndex: 0 }}></div>
-            {!viewOnly && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                    Klik pada peta untuk menandai atau mengubah lokasi aset.
-                </p>
-            )}
+        <LocationMarker 
+          position={position} 
+          setPosition={setPosition} 
+          onLocationChange={onLocationChange}
+          viewOnly={viewOnly}
+        />
+      </MapContainer>
+      
+      {/* Overlay Petunjuk */}
+      {!viewOnly && (
+        <div className="absolute bottom-2 left-2 bg-white/90 backdrop-blur px-3 py-1.5 rounded-md text-xs font-medium text-gray-600 shadow-md z-[400] pointer-events-none border border-gray-200">
+           📍 Klik pada peta untuk menandai lokasi aset
         </div>
-    );
+      )}
+    </div>
+  );
 };
 
 export default MapPicker;
-

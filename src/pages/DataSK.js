@@ -9,18 +9,28 @@ import { deleteFileFromGithub } from '../utils/githubService';
 import Spinner from '../components/common/Spinner';
 import Modal from '../components/common/Modal';
 import ConfirmationModal from '../components/common/ConfirmationModal';
-import { FiFileText, FiSearch, FiFilter, FiEye, FiDownload, FiTrash2, FiCheckSquare } from 'react-icons/fi';
+import { 
+  FiFileText, 
+  FiSearch, 
+  FiFilter, 
+  FiEye, 
+  FiDownload, 
+  FiTrash2, 
+  FiCheckSquare,
+  FiUser,
+  FiInbox
+} from 'react-icons/fi';
 import { DESA_LIST } from '../utils/constants';
 import { createNotificationForDesaAdmins } from '../utils/notificationService';
 
 // Konfigurasi untuk setiap tipe SK
 const SK_CONFIG = {
-    perangkat: { label: "Perangkat Desa", collectionName: "perangkat" },
-    bpd: { label: "BPD", collectionName: "bpd" },
-    lpm: { label: "LPM", collectionName: "lpm" },
-    pkk: { label: "PKK", collectionName: "pkk" },
-    karang_taruna: { label: "Karang Taruna", collectionName: "karang_taruna" },
-    rt_rw: { label: "RT/RW", collectionName: "rt_rw" },
+    perangkat: { label: "Perangkat Desa", collectionName: "perangkat", color: "blue" },
+    bpd: { label: "BPD", collectionName: "bpd", color: "purple" },
+    lpm: { label: "LPM", collectionName: "lpm", color: "orange" },
+    pkk: { label: "PKK", collectionName: "pkk", color: "pink" },
+    karang_taruna: { label: "Karang Taruna", collectionName: "karang_taruna", color: "red" },
+    rt_rw: { label: "RT/RW", collectionName: "rt_rw", color: "green" },
 };
 
 const DataSK = () => {
@@ -42,7 +52,13 @@ const DataSK = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [highlightedRow, setHighlightedRow] = useState(null);
 
-    const config = useMemo(() => SK_CONFIG[skType] || { label: 'Tidak Dikenal', collectionName: null }, [skType]);
+    const config = useMemo(() => SK_CONFIG[skType] || { label: 'Tidak Dikenal', collectionName: null, color: 'gray' }, [skType]);
+
+    // Helper untuk inisial avatar
+    const getInitials = (name) => {
+        if (!name) return '?';
+        return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+    };
 
     useEffect(() => {
         const highlightId = searchParams.get('highlight');
@@ -131,9 +147,8 @@ const DataSK = () => {
             );
         }
         return data;
-    }, [enrichedSkDocs, searchTerm, filterDesa, currentUser.role]);
+    }, [enrichedSkDocs, searchTerm, filterDesa, currentUser.role, currentUser.desa]);
     
-    // [DIUBAH] Menambahkan notifikasi saat pratinjau dibuka
     const openPdfPreview = (url) => {
         if (!url) {
             showNotification('URL file tidak valid.', 'error');
@@ -145,7 +160,6 @@ const DataSK = () => {
         setIsModalOpen(true);
     };
     
-    // [DIUBAH] Menambahkan notifikasi untuk proses unduh
     const handleDownload = async (fileUrl, fileName) => {
         showNotification(`Mengunduh "${fileName}"...`, 'info', 3000);
         try {
@@ -205,80 +219,187 @@ const DataSK = () => {
     };
 
     return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-4">
-                <FiFileText className="inline-block mr-3 text-blue-500" />
-                Data SK {config.label}
-            </h1>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-                <div className="relative lg:col-span-2">
-                   <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                   <input 
-                       type="text" 
-                       placeholder="Cari berdasarkan nama, jabatan, atau nama file..." 
-                       value={searchTerm} 
-                       onChange={(e) => setSearchTerm(e.target.value)} 
-                       className="w-full pl-10 pr-4 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                   />
+        <div className="space-y-6">
+            {/* Header Section */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center">
+                        <span className={`p-2 rounded-lg bg-${config.color}-100 text-${config.color}-600 dark:bg-${config.color}-900/30 dark:text-${config.color}-400 mr-3`}>
+                            <FiFileText className="w-6 h-6" />
+                        </span>
+                        Data SK {config.label}
+                    </h1>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 ml-12">
+                        Kelola arsip Surat Keputusan untuk {config.label}
+                    </p>
                 </div>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                <div className={`col-span-1 ${currentUser.role === 'admin_kecamatan' ? 'md:col-span-8' : 'md:col-span-12'}`}>
+                    <div className="relative group">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <FiSearch className="text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+                        </div>
+                        <input 
+                            type="text" 
+                            placeholder="Cari nama, jabatan, atau file..." 
+                            value={searchTerm} 
+                            onChange={(e) => setSearchTerm(e.target.value)} 
+                            className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm dark:text-white dark:placeholder-gray-500"
+                        />
+                    </div>
+                </div>
+
                 {currentUser.role === 'admin_kecamatan' && (
-                    <div className="relative">
-                         <FiFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                         <select value={filterDesa} onChange={(e) => setFilterDesa(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg appearance-none bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                             <option value="all">Semua Desa</option>
-                             {DESA_LIST.map(desa => <option key={desa} value={desa}>{desa}</option>)}
-                         </select>
+                    <div className="col-span-1 md:col-span-4">
+                        <div className="relative group">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <FiFilter className="text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+                            </div>
+                            <select 
+                                value={filterDesa} 
+                                onChange={(e) => setFilterDesa(e.target.value)} 
+                                className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm dark:text-white cursor-pointer"
+                            >
+                                <option value="all">Semua Desa</option>
+                                {DESA_LIST.map(desa => <option key={desa} value={desa}>{desa}</option>)}
+                            </select>
+                        </div>
                     </div>
                 )}
-           </div>
+            </div>
 
-            {loading ? <Spinner /> : (
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                        <thead className="text-xs text-gray-700 dark:text-gray-300 uppercase bg-gray-50 dark:bg-gray-700">
-                            <tr>
-                                <th className="px-6 py-3">Nama Personel/Lembaga</th>
-                                <th className="px-6 py-3">Jabatan</th>
-                                {currentUser.role === 'admin_kecamatan' && <th className="px-6 py-3">Desa</th>}
-                                <th className="px-6 py-3">Nama File</th>
-                                <th className="px-6 py-3">Status</th>
-                                <th className="px-6 py-3">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredSkDocuments.length > 0 ? filteredSkDocuments.map((sk) => (
-                                <tr key={sk.id} className={`bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 ${highlightedRow === sk.id ? 'highlight-row' : ''}`}>
-                                    <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{sk.entityName}</td>
-                                    <td className="px-6 py-4">{sk.jabatan}</td>
-                                    {currentUser.role === 'admin_kecamatan' && <td className="px-6 py-4">{sk.desa}</td>}
-                                    <td className="px-6 py-4">{sk.fileName}</td>
-                                    <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${sk.status === 'terverifikasi' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'}`}>
-                                            {sk.status === 'terverifikasi' ? 'Terverifikasi' : 'Menunggu'}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 flex items-center space-x-4">
-                                        <button onClick={() => openPdfPreview(sk.fileUrl)} className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300" title="Lihat/Pratinjau"><FiEye /></button>
-                                        <button onClick={() => handleDownload(sk.fileUrl, sk.fileName)} className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" title="Unduh"><FiDownload /></button>
-                                        {currentUser.role === 'admin_kecamatan' && sk.status !== 'terverifikasi' && (
-                                            <button onClick={() => handleVerify(sk)} className="text-teal-600 hover:text-teal-800 dark:text-teal-400 dark:hover:text-teal-300" title="Verifikasi"><FiCheckSquare /></button>
-                                        )}
-                                        <button onClick={() => confirmDelete(sk)} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Hapus"><FiTrash2 /></button>
-                                    </td>
+            {/* Main Content */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+                {loading ? (
+                    <div className="p-12 flex justify-center items-center">
+                        <Spinner />
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                            <thead className="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-gray-700/50 dark:text-gray-400 border-b dark:border-gray-700">
+                                <tr>
+                                    <th className="px-6 py-4 font-semibold">Personel / Lembaga</th>
+                                    <th className="px-6 py-4 font-semibold">Jabatan</th>
+                                    {currentUser.role === 'admin_kecamatan' && <th className="px-6 py-4 font-semibold">Desa</th>}
+                                    <th className="px-6 py-4 font-semibold">File SK</th>
+                                    <th className="px-6 py-4 font-semibold text-center">Status</th>
+                                    <th className="px-6 py-4 font-semibold text-right">Aksi</th>
                                 </tr>
-                            )) : (
-                                <tr><td colSpan={currentUser.role === 'admin_kecamatan' ? 6 : 5} className="text-center py-10 text-gray-500">Tidak ada data SK yang ditemukan.</td></tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                {filteredSkDocuments.length > 0 ? filteredSkDocuments.map((sk) => (
+                                    <tr 
+                                        key={sk.id} 
+                                        className={`group hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-200 ${highlightedRow === sk.id ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
+                                    >
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center">
+                                                <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-sm">
+                                                    {getInitials(sk.entityName)}
+                                                </div>
+                                                <div className="ml-4">
+                                                    <div className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                                        {sk.entityName}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center mt-0.5">
+                                                        <FiUser className="mr-1 w-3 h-3" />
+                                                        {config.label}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-gray-600 dark:text-gray-300">
+                                            {sk.jabatan}
+                                        </td>
+                                        {currentUser.role === 'admin_kecamatan' && (
+                                            <td className="px-6 py-4">
+                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+                                                    {sk.desa}
+                                                </span>
+                                            </td>
+                                        )}
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center text-gray-600 dark:text-gray-300 max-w-xs truncate" title={sk.fileName}>
+                                                <FiFileText className="mr-2 text-gray-400 flex-shrink-0" />
+                                                <span className="truncate">{sk.fileName}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${
+                                                sk.status === 'terverifikasi' 
+                                                ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800' 
+                                                : 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800'
+                                            }`}>
+                                                <span className={`w-1.5 h-1.5 rounded-full mr-2 ${
+                                                    sk.status === 'terverifikasi' ? 'bg-green-500' : 'bg-yellow-500'
+                                                }`}></span>
+                                                {sk.status === 'terverifikasi' ? 'Terverifikasi' : 'Menunggu'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex items-center justify-end space-x-2">
+                                                <button 
+                                                    onClick={() => openPdfPreview(sk.fileUrl)} 
+                                                    className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 transition-colors"
+                                                    title="Pratinjau"
+                                                >
+                                                    <FiEye className="w-4 h-4" />
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleDownload(sk.fileUrl, sk.fileName)} 
+                                                    className="p-2 text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600 transition-colors"
+                                                    title="Unduh"
+                                                >
+                                                    <FiDownload className="w-4 h-4" />
+                                                </button>
+                                                
+                                                {currentUser.role === 'admin_kecamatan' && sk.status !== 'terverifikasi' && (
+                                                    <button 
+                                                        onClick={() => handleVerify(sk)} 
+                                                        className="p-2 text-teal-600 bg-teal-50 rounded-lg hover:bg-teal-100 dark:bg-teal-900/30 dark:text-teal-400 dark:hover:bg-teal-900/50 transition-colors"
+                                                        title="Verifikasi"
+                                                    >
+                                                        <FiCheckSquare className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                                
+                                                <button 
+                                                    onClick={() => confirmDelete(sk)} 
+                                                    className="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 transition-colors"
+                                                    title="Hapus"
+                                                >
+                                                    <FiTrash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )) : (
+                                    <tr>
+                                        <td colSpan={currentUser.role === 'admin_kecamatan' ? 6 : 5} className="px-6 py-12 text-center">
+                                            <div className="flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
+                                                <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-full mb-3">
+                                                    <FiInbox className="w-8 h-8" />
+                                                </div>
+                                                <p className="text-base font-medium text-gray-900 dark:text-gray-300">Tidak ada data ditemukan</p>
+                                                <p className="text-sm mt-1">Coba sesuaikan filter pencarian Anda atau tambahkan data baru.</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
 
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Pratinjau Dokumen SK" size="5xl">
-                <div className="w-full h-[80vh]">
+                <div className="w-full h-[80vh] bg-gray-100 dark:bg-gray-900 rounded-lg overflow-hidden">
                     {previewUrl ? (
-                        <iframe src={previewUrl} width="100%" height="100%" title="Pratinjau PDF" frameBorder="0"></iframe>
+                        <iframe src={previewUrl} width="100%" height="100%" title="Pratinjau PDF" frameBorder="0" className="w-full h-full"></iframe>
                     ) : (
                         <div className="flex items-center justify-center h-full"><Spinner /></div>
                     )}
@@ -291,7 +412,7 @@ const DataSK = () => {
                 onConfirm={executeDelete} 
                 isLoading={isSubmitting}
                 title="Konfirmasi Hapus" 
-                message={`Apakah Anda yakin ingin menghapus SK untuk "${skDocToDelete?.entityName}"? Tindakan ini akan menghapus file dari server secara permanen.`}
+                message={`Apakah Anda yakin ingin menghapus SK untuk "${skDocToDelete?.entityName}"? Tindakan ini akan menghapus file dari server secara permanen dan tidak dapat dibatalkan.`}
             />
         </div>
     );

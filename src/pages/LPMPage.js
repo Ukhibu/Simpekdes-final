@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '../firebase';
-import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, where, writeBatch, getDoc, getDocs } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, writeBatch, getDoc, getDocs } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
 import { useSearchParams } from 'react-router-dom';
@@ -11,7 +11,6 @@ import ConfirmationModal from '../components/common/ConfirmationModal';
 import Button from '../components/common/Button';
 import SkeletonLoader from '../components/common/SkeletonLoader';
 import InputField from '../components/common/InputField';
-import OrganisasiDetailView from '../components/common/OrganisasiDetailView';
 import Pagination from '../components/common/Pagination';
 
 // Utilitas & Konfigurasi
@@ -21,10 +20,27 @@ import { createNotificationForAdmins } from '../utils/notificationService';
 import * as XLSX from 'xlsx';
 
 // Ikon
-import { FiEdit, FiSearch, FiUpload, FiDownload, FiPlus, FiEye, FiTrash2, FiCheckSquare, FiX, FiMove, FiAlertCircle, FiCheckCircle, FiXCircle, FiClock, FiArrowRight, FiMapPin } from 'react-icons/fi';
+import { 
+    FiEdit, FiSearch, FiUpload, FiDownload, FiPlus, FiEye, FiTrash2, 
+    FiCheckSquare, FiX, FiMove, FiAlertCircle, FiCheckCircle, FiClock, FiMapPin,
+    FiUser, FiCalendar, FiBook, FiHash, FiPhone, FiFlag, FiBriefcase
+} from 'react-icons/fi';
 
 // Konstanta Jabatan LPM
 const JABATAN_LPM_LIST = ["Ketua", "Sekretaris", "Bendahara", "Anggota"];
+
+// Helper Component untuk Baris Detail yang Modern
+const DetailRow = ({ icon, label, value, isLast }) => (
+    <div className={`flex items-start sm:items-center justify-between py-3 ${!isLast ? 'border-b border-dashed border-gray-100 dark:border-gray-700' : ''} group hover:bg-gray-50 dark:hover:bg-gray-700/30 px-2 rounded-lg transition-colors`}>
+        <div className="flex items-center gap-3 text-gray-500 dark:text-gray-400">
+            {icon && <span className="text-blue-500 dark:text-blue-400 opacity-80">{icon}</span>}
+            <span className="text-sm font-medium">{label}</span>
+        </div>
+        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 text-right max-w-[60%] break-words">
+            {value || '-'}
+        </span>
+    </div>
+);
 
 const LPMPage = () => {
     const { currentUser } = useAuth();
@@ -354,13 +370,149 @@ const LPMPage = () => {
         generateLpmXLSX(exportDetails);
     };
 
+    // --- PERBAIKAN: HANDLE FILE UPLOAD DENGAN DATE PARSING FIX & DETEKSI DUPLIKASI ---
     const handleFileUpload = (e) => {
-        // Logika import placeholder
         const file = e.target.files[0];
-        if(!file) return;
-        showNotification('Fitur Import aktif.', 'info');
+        if (!file) return;
+
+        setIsUploading(true);
+        const reader = new FileReader();
+
+        reader.onload = async (event) => {
+            try {
+                const data = new Uint8Array(event.target.result);
+                const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+
+                const jsonDataWithHeaders = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 2 });
+                if (jsonDataWithHeaders.length < 1) throw new Error("Format file tidak sesuai. Header tidak ditemukan di baris ke-3.");
+                
+                const headerRow = jsonDataWithHeaders[0];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, { range: 3, header: headerRow });
+
+                if (jsonData.length === 0) throw new Error("File Excel tidak berisi data.");
+
+                const batch = writeBatch(db);
+                let newEntriesCount = 0;
+                let updatedEntriesCount = 0;
+                let skippedCount = 0;
+
+                // --- FUNGSI PARSING TANGGAL (Fix Timezone) ---
+                const parseAndFormatDate = (value) => {
+                    if (!value) return null;
+                    const formatDateString = (y, m, d) => {
+                        const mm = m < 10 ? `0${m}` : m;
+                        const dd = d < 10 ? `0${d}` : d;
+                        return `${y}-${mm}-${dd}`;
+                    };
+                    if (value instanceof Date) {
+                        return formatDateString(value.getFullYear(), value.getMonth() + 1, value.getDate());
+                    }
+                    if (typeof value === 'number') {
+                        const date = XLSX.SSF.parse_date_code(value);
+                        if (date) return formatDateString(date.y, date.m, date.d);
+                    }
+                    try {
+                        const date = new Date(value);
+                        if (!isNaN(date.getTime())) {
+                             return formatDateString(date.getFullYear(), date.getMonth() + 1, date.getDate());
+                        }
+                    } catch (e) { /* ignore */ }
+                    return null;
+                };
+
+                // Ambil referensi data yang ada di state untuk perbandingan
+                const existingDataMap = dataList.map(item => ({
+                    id: item.id,
+                    nik: item.nik ? String(item.nik).trim() : null,
+                    nama: item.nama ? String(item.nama).trim().toUpperCase() : null,
+                    desa: item.desa ? String(item.desa).trim().toUpperCase() : null,
+                    jabatan: item.jabatan ? String(item.jabatan).trim().toUpperCase() : null
+                }));
+
+                jsonData.forEach(row => {
+                    const rowDesa = row['DESA'] ? String(row['DESA']).trim() : null;
+                    if (!rowDesa) { skippedCount++; return; }
+                    if (currentUser.role === 'admin_desa' && rowDesa.toUpperCase() !== currentUser.desa.toUpperCase()) { skippedCount++; return; }
+
+                    const rowNik = row['NIK'] ? String(row['NIK']).trim() : null;
+                    const rowNama = row['N A M A'] ? String(row['N A M A']).trim() : null;
+
+                    if (!rowNama) { skippedCount++; return; }
+
+                    // Deteksi Duplikasi
+                    let existingDoc = null;
+                    if (rowNik) existingDoc = existingDataMap.find(d => d.nik === rowNik);
+                    if (!existingDoc && rowNama) existingDoc = existingDataMap.find(d => d.nama === rowNama.toUpperCase() && d.desa === rowDesa.toUpperCase());
+
+                    const docData = {};
+                    docData.desa = rowDesa;
+                    docData.nik = rowNik; // Simpan NIK
+                    docData.nama = rowNama;
+                    docData.jabatan = row['JABATAN'] ? String(row['JABATAN']).trim() : null;
+                    docData.jenis_kelamin = row['L'] == 1 ? 'L' : (row['P'] == 1 ? 'P' : null);
+                    docData.tempat_lahir = row['TEMPAT LAHIR'] || null;
+                    docData.tgl_lahir = parseAndFormatDate(row['TANGGAL LAHIR']);
+                    
+                    const pendidikanMap = { 'SD': 'SD', 'SLTP': 'SLTP', 'SLTA': 'SLTA', 'D1': 'D1', 'D2': 'D2', 'D3': 'D3', 'S1': 'S1', 'S2': 'S2', 'S3': 'S3' };
+                    docData.pendidikan = null;
+                    for (const key in pendidikanMap) { if (row[key] == 1) { docData.pendidikan = pendidikanMap[key]; break; } }
+
+                    docData.no_sk = row['NO SK'] || null;
+                    docData.tgl_pelantikan = parseAndFormatDate(row['TANGGAL PELANTIKAN']);
+                    docData.akhir_jabatan = parseAndFormatDate(row['AKHIR MASA JABATAN']);
+                    docData.no_hp = row['No. HP / WA'] ? String(row['No. HP / WA']) : null;
+                    docData.masa_bakti = row['Masa Bakti (Tahun)'] || null;
+
+                    if (docData.nama && docData.desa) {
+                        if (existingDoc) {
+                            const docRef = doc(db, LPM_CONFIG.collectionName, existingDoc.id);
+                            docData.status_import = "Terupdate"; 
+                            docData.last_updated = new Date().toISOString();
+                            batch.update(docRef, docData);
+                            updatedEntriesCount++;
+                        } else {
+                            const newDocRef = doc(collection(db, LPM_CONFIG.collectionName));
+                            docData.created_at = new Date().toISOString();
+                            docData.status_import = "Baru";
+                            batch.set(newDocRef, docData);
+                            newEntriesCount++;
+                        }
+                    } else {
+                        skippedCount++;
+                    }
+                });
+
+                if (newEntriesCount > 0 || updatedEntriesCount > 0) {
+                    await batch.commit();
+                    let msg = "";
+                    if (newEntriesCount > 0) msg += `${newEntriesCount} Data Baru Ditambahkan. `;
+                    if (updatedEntriesCount > 0) msg += `${updatedEntriesCount} Data Berhasil Diperbarui (Terupdate). `;
+                    if (skippedCount > 0) msg += `(${skippedCount} baris dilewati).`;
+                    showNotification(msg, 'success');
+                } else {
+                    showNotification(`Tidak ada perubahan data. ${skippedCount > 0 ? `${skippedCount} baris dilewati.` : ''}`, 'info');
+                }
+            } catch (error) {
+                console.error("Error processing file:", error);
+                showNotification(`Gagal memproses file: ${error.message}`, 'error');
+            } finally {
+                setIsUploading(false);
+                if (e.target) e.target.value = null;
+            }
+        };
+        reader.readAsArrayBuffer(file);
     };
 
+    // Format Date Helper untuk Tampilan
+    const formatDate = (dateString) => {
+        if (!dateString) return '-';
+        try {
+            return new Date(dateString).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+        } catch { return dateString; }
+    };
+    
     if (loading || loadingExtras) return <SkeletonLoader columns={5} />;
 
     return (
@@ -382,7 +534,6 @@ const LPMPage = () => {
                         className="w-full md:w-72"
                     />
                     
-                    {/* [MODIFIKASI] Menampilkan Desa Terpilih (Sesuai Pagination) untuk Admin Kecamatan */}
                     {currentUser.role === 'admin_kecamatan' && (
                         <div className="flex items-center px-4 py-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg shadow-sm animate-fadeIn">
                             <FiMapPin className="text-blue-500 mr-2" />
@@ -430,7 +581,7 @@ const LPMPage = () => {
                                     <tr 
                                         key={item.id}
                                         id={`row-${item.id}`}
-                                        className={`group transition-colors select-none cursor-pointer 
+                                        className={`group transition-all duration-200 select-none cursor-pointer 
                                             ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'}
                                             ${highlightedRow === item.id ? 'bg-yellow-50 dark:bg-yellow-900/20 animate-pulse' : ''}
                                         `}
@@ -449,6 +600,11 @@ const LPMPage = () => {
                                         </td>
                                         <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
                                             {item.nama}
+                                            {item.status_import === 'Terupdate' && (
+                                                <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
+                                                    Terupdate
+                                                </span>
+                                            )}
                                             <div className="text-xs text-gray-500 dark:text-gray-400 md:hidden mt-1">{item.jabatan}</div>
                                         </td>
                                         <td className="px-6 py-4 text-gray-700 dark:text-gray-300">{item.jabatan}</td>
@@ -492,7 +648,6 @@ const LPMPage = () => {
                     </table>
                 </div>
 
-                {/* Pagination untuk Admin Kecamatan */}
                 {currentUser.role === 'admin_kecamatan' && (
                     <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex justify-center">
                         <Pagination desaList={DESA_LIST} currentDesa={currentDesa} onPageChange={setCurrentDesa} />
@@ -530,10 +685,84 @@ const LPMPage = () => {
             )}
 
             {/* Modal Form */}
-            <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={modalMode === 'view' ? 'Detail Pengurus' : `${selectedItem ? 'Edit' : 'Tambah'} Data LPM`}>
-                {modalMode === 'view' ? <OrganisasiDetailView data={selectedItem} config={LPM_CONFIG} /> : (
-                    <form onSubmit={handleFormSubmit} className="space-y-4">
+            <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={modalMode === 'view' ? 'Detail Pengurus LPM' : `${selectedItem ? 'Edit' : 'Tambah'} Data LPM`}>
+                {modalMode === 'view' && selectedItem ? (
+                    // --- TAMPILAN DETAIL MODERN (Blue Theme) ---
+                    <div className="space-y-6 animate-fadeIn">
+                        {/* Header Profil Singkat */}
+                        <div className="flex items-center space-x-4 p-5 bg-gradient-to-r from-blue-50 to-white dark:from-blue-900/20 dark:to-gray-800 rounded-xl border border-blue-100 dark:border-blue-800/50 shadow-sm relative overflow-hidden">
+                            {/* Decorative Circle */}
+                            <div className="absolute top-0 right-0 -mt-2 -mr-2 w-16 h-16 bg-blue-100 dark:bg-blue-800/50 rounded-full blur-xl opacity-50"></div>
+
+                            <div className="relative w-16 h-16 rounded-full bg-white dark:bg-gray-700 border-2 border-blue-100 dark:border-blue-700 flex items-center justify-center text-blue-600 dark:text-blue-300 text-2xl font-bold shadow-md">
+                                {selectedItem.nama ? selectedItem.nama.charAt(0).toUpperCase() : '?'}
+                            </div>
+                            <div className="relative z-10 flex-1">
+                                <h3 className="text-xl font-bold text-gray-900 dark:text-white leading-tight">{selectedItem.nama}</h3>
+                                <div className="flex flex-wrap items-center gap-2 mt-1">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200">
+                                        <FiBriefcase size={12} /> {selectedItem.jabatan}
+                                    </span>
+                                    {/* Status Badge */}
+                                    {(() => {
+                                        const status = getStatusInfo(selectedItem);
+                                        return (
+                                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border ${status.color} border-transparent`}>
+                                                {status.icon} {status.label}
+                                            </span>
+                                        )
+                                    })()}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Grid Informasi - Mengikuti Urutan Form Formulir */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Kolom Kiri: Data Pribadi */}
+                            <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow duration-300">
+                                <div className="flex items-center gap-2 mb-4 pb-2 border-b border-gray-100 dark:border-gray-700">
+                                    <FiUser className="text-blue-500" />
+                                    <h4 className="text-sm uppercase tracking-wider text-gray-500 dark:text-gray-400 font-bold">Data Pribadi</h4>
+                                </div>
+                                <div className="space-y-1">
+                                    <DetailRow icon={<FiHash />} label="NIK" value={selectedItem.nik} />
+                                    <DetailRow icon={<FiUser />} label="Nama Lengkap" value={selectedItem.nama} />
+                                    <DetailRow icon={<FiBriefcase />} label="Jabatan" value={selectedItem.jabatan} />
+                                    <DetailRow icon={<FiFlag />} label="Jenis Kelamin" value={selectedItem.jenis_kelamin === 'L' ? 'Laki-laki' : 'Perempuan'} />
+                                    <DetailRow icon={<FiBook />} label="Pendidikan" value={selectedItem.pendidikan} />
+                                    <DetailRow icon={<FiMapPin />} label="Tempat Lahir" value={selectedItem.tempat_lahir} />
+                                    <DetailRow icon={<FiCalendar />} label="Tanggal Lahir" value={formatDate(selectedItem.tgl_lahir)} isLast />
+                                </div>
+                            </div>
+
+                            {/* Kolom Kanan: Data Kepegawaian & Kontak */}
+                            <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow duration-300">
+                                <div className="flex items-center gap-2 mb-4 pb-2 border-b border-gray-100 dark:border-gray-700">
+                                    <FiBriefcase className="text-blue-500" />
+                                    <h4 className="text-sm uppercase tracking-wider text-gray-500 dark:text-gray-400 font-bold">Data Kepegawaian</h4>
+                                </div>
+                                <div className="space-y-1">
+                                    <DetailRow icon={<FiHash />} label="Nomor SK" value={selectedItem.no_sk} />
+                                    <DetailRow icon={<FiCalendar />} label="Tgl Pelantikan" value={formatDate(selectedItem.tgl_pelantikan)} />
+                                    <DetailRow icon={<FiClock />} label="Masa Bakti" value={selectedItem.masa_bakti ? `${selectedItem.masa_bakti} Tahun` : '-'} />
+                                    <DetailRow icon={<FiCalendar />} label="Akhir Jabatan" value={formatDate(selectedItem.akhir_jabatan)} />
+                                    <DetailRow icon={<FiPhone />} label="No. HP / WA" value={selectedItem.no_hp} />
+                                    {selectedItem.desa && (
+                                        <DetailRow icon={<FiMapPin />} label="Desa" value={selectedItem.desa} isLast />
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end pt-4 border-t dark:border-gray-700">
+                            <Button type="button" variant="secondary" onClick={handleCloseModal}>Tutup</Button>
+                        </div>
+                    </div>
+                ) : (
+                    // --- FORMULIR EDIT / TAMBAH ---
+                    <form onSubmit={handleFormSubmit} className="space-y-4 animate-fadeIn">
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <InputField label="NIK" name="nik" value={formData.nik || ''} onChange={handleFormChange} placeholder="Nomor Induk Kependudukan"/>
                             <InputField label="Nama Lengkap" name="nama" value={formData.nama || ''} onChange={handleFormChange} required />
                             
                             {/* Input Jabatan */}

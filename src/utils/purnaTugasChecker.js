@@ -1,95 +1,149 @@
-import { collection, getDocs, doc, setDoc, writeBatch, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, writeBatch, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 
 /**
- * [PERBAIKAN LOGIKA]
- * Fungsi ini sekarang akan MEMINDAHKAN data perangkat yang purna tugas, bukan hanya mengosongkannya.
- * 1. Salin data ke 'historyPerangkatDesa'.
- * 2. Hapus dokumen asli dari koleksi 'perangkat'.
+ * Helper untuk mengonversi berbagai format tanggal ke Javascript Date Object
  */
-const processPurnaTugas = async (perangkatRef, batch) => {
-    const perangkatSnap = await perangkatRef.get();
-    if (!perangkatSnap.exists()) return;
+const parseDate = (dateVal) => {
+    if (!dateVal) return null;
+    if (dateVal instanceof Date) return dateVal;
+    if (dateVal.toDate && typeof dateVal.toDate === 'function') return dateVal.toDate(); // Firestore Timestamp
+    const parsed = new Date(dateVal);
+    return isNaN(parsed.getTime()) ? null : parsed;
+};
 
-    const purnaData = perangkatSnap.data();
+/**
+ * Menghitung usia pensiun berdasarkan Tahun SK.
+ * Aturan:
+ * - SK sebelum tahun 2020: Pensiun usia 65 tahun.
+ * - SK tahun 2020 ke atas: Pensiun usia 60 tahun.
+ */
+const getUsiaPurna = (tglSK) => {
+    const dateObj = parseDate(tglSK);
+    if (!dateObj) return 60; // Default jika tidak ada tanggal SK
 
-    // 1. Salin data ke koleksi riwayat
-    const historyRef = doc(db, 'historyPerangkatDesa', perangkatSnap.id);
+    const tahunSK = dateObj.getFullYear();
+    return tahunSK < 2020 ? 65 : 60;
+};
+
+/**
+ * Memindahkan data perangkat ke history dan menghapusnya dari koleksi aktif.
+ */
+const processPurnaTugas = (docSnap, batch) => {
+    const purnaData = docSnap.data();
+    
+    // Referensi dokumen baru di koleksi history
+    const historyRef = doc(db, 'historyPerangkatDesa', docSnap.id);
+    
+    // Referensi dokumen lama di koleksi perangkat untuk dihapus
+    const perangkatRef = doc(db, 'perangkat', docSnap.id);
+
+    // 1. Tambahkan ke history dengan metadata tambahan
     batch.set(historyRef, {
         ...purnaData,
-        tanggalPurna: new Date(), // Tambahkan catatan kapan data ini diproses
+        status: 'Purna Tugas',
+        tanggalPurna: Timestamp.now(), // Catat waktu pemrosesan otomatis
+        keterangan: 'Dipindahkan otomatis oleh sistem (Purna Tugas)'
     });
 
-    // 2. [PERUBAHAN UTAMA] Hapus dokumen asli dari koleksi 'perangkat'
-    //    Ini akan membuatnya hilang dari halaman utama dan hanya ada di riwayat.
+    // 2. Hapus dari koleksi aktif
     batch.delete(perangkatRef);
 };
 
-// Logika usia tetap sama
-const getUsiaPurna = (tglSK) => {
-    if (!tglSK) return 60; // Default jika tanggal SK tidak ada
-    const tahunSK = tglSK.toDate ? tglSK.toDate().getFullYear() : new Date(tglSK).getFullYear();
-    return tahunSK < 2000 ? 65 : 60;
-};
-
-// Fungsi pengecekan utama
+/**
+ * Fungsi utama pengecekan.
+ * Sebaiknya dipanggil di root aplikasi (misal: di useEffect App.js atau Dashboard).
+ */
 export const checkAndProcessPurnaTugas = async () => {
-    // Cek kapan terakhir kali proses ini dijalankan
-    const lastCheckRef = doc(db, 'system', 'lastPurnaTugasCheck');
-    const lastCheckSnap = await getDoc(lastCheckRef);
-    const now = new Date();
+    try {
+        // 1. Cek throttle (agar tidak berjalan setiap kali refresh halaman dalam waktu singkat)
+        const lastCheckRef = doc(db, 'settings', 'lastPurnaTugasCheck'); // Disimpan di 'settings' agar rapi
+        const lastCheckSnap = await getDoc(lastCheckRef);
+        const now = new Date();
 
-    if (lastCheckSnap.exists()) {
-        const lastCheckTime = lastCheckSnap.data().timestamp.toDate();
-        const hoursSinceLastCheck = (now - lastCheckTime) / (1000 * 60 * 60);
-        if (hoursSinceLastCheck < 24) {
-            console.log('Pengecekan purna tugas sudah dilakukan dalam 24 jam terakhir. Melewati...');
-            return { processed: 0, skipped: true };
-        }
-    }
-
-    console.log('Memulai proses pengecekan purna tugas otomatis...');
-
-    const perangkatCollection = collection(db, 'perangkat');
-    const snapshot = await getDocs(perangkatCollection);
-    let processedCount = 0;
-    const batch = writeBatch(db);
-
-    snapshot.forEach(doc => {
-        const perangkat = doc.data();
-        if (!perangkat.nama || !perangkat.tgl_lahir) return;
-
-        // Cek berdasarkan tanggal akhir jabatan jika ada (untuk Kades)
-        if (perangkat.akhir_jabatan && new Date(perangkat.akhir_jabatan) < now) {
-            processPurnaTugas(doc.ref, batch);
-            processedCount++;
-            return;
+        if (lastCheckSnap.exists()) {
+            const lastCheckTime = lastCheckSnap.data().timestamp?.toDate();
+            if (lastCheckTime) {
+                const hoursSinceLastCheck = (now - lastCheckTime) / (1000 * 60 * 60);
+                // Jika belum 24 jam sejak pengecekan terakhir, skip.
+                if (hoursSinceLastCheck < 24) {
+                    return { processed: 0, skipped: true };
+                }
+            }
         }
 
-        // Cek berdasarkan usia
-        const usiaPurna = getUsiaPurna(perangkat.tgl_sk);
-        const tglLahir = perangkat.tgl_lahir.toDate ? perangkat.tgl_lahir.toDate() : new Date(perangkat.tgl_lahir);
+        console.log('Menjalankan pengecekan purna tugas otomatis...');
 
-        let tglPurna = new Date(tglLahir);
-        tglPurna.setFullYear(tglPurna.getFullYear() + usiaPurna);
+        const perangkatCollection = collection(db, 'perangkat');
+        const snapshot = await getDocs(perangkatCollection);
+        
+        if (snapshot.empty) return { processed: 0, skipped: false };
 
-        if (tglPurna < now) {
-            processPurnaTugas(doc.ref, batch);
-            processedCount++;
+        const batch = writeBatch(db);
+        let processedCount = 0;
+
+        snapshot.docs.forEach((docSnap) => {
+            const data = docSnap.data();
+            const jabatan = data.jabatan ? data.jabatan.toLowerCase() : '';
+            
+            // Cek apakah jabatan adalah Kepala Desa / Pj. Kepala Desa
+            const isKades = jabatan.includes('kepala desa') || jabatan.includes('pj. kepala desa');
+
+            let isPurna = false;
+
+            // LOGIKA 1: Kepala Desa (Berdasarkan Akhir Masa Jabatan Eksplisit)
+            if (isKades) {
+                const akhirJabatan = parseDate(data.akhir_jabatan);
+                if (akhirJabatan && akhirJabatan < now) {
+                    isPurna = true;
+                }
+            } 
+            // LOGIKA 2: Perangkat Desa Lainnya (Sekdes ke bawah) - Berdasarkan Usia & Tahun SK
+            else {
+                const tglLahir = parseDate(data.tgl_lahir);
+                if (tglLahir) {
+                    const usiaPensiun = getUsiaPurna(data.tgl_sk);
+                    
+                    // Hitung tanggal pensiun
+                    const tglPensiun = new Date(tglLahir);
+                    tglPensiun.setFullYear(tglLahir.getFullYear() + usiaPensiun);
+
+                    // Cek apakah sudah lewat tanggal pensiun
+                    if (tglPensiun < now) {
+                        isPurna = true;
+                    }
+                }
+            }
+
+            if (isPurna) {
+                processPurnaTugas(docSnap, batch);
+                processedCount++;
+            }
+        });
+
+        if (processedCount > 0) {
+            // Commit batch jika ada perubahan
+            await batch.commit();
+            
+            // Update waktu pengecekan terakhir
+            await updateDoc(lastCheckRef, { timestamp: Timestamp.fromDate(now) }).catch(async () => {
+                // Jika dokumen settings belum ada, buat baru
+                const { setDoc } = await import('firebase/firestore');
+                await setDoc(lastCheckRef, { timestamp: Timestamp.fromDate(now) });
+            });
+
+            console.log(`Sukses: ${processedCount} data perangkat dipindahkan ke history.`);
+            return { processed: processedCount, skipped: false };
+        } else {
+            // Tetap update timestamp agar tidak cek terus menerus
+            const { setDoc } = await import('firebase/firestore'); // Dynamic import untuk menghindari circular dep jika ada, atau sekadar safety
+            await setDoc(lastCheckRef, { timestamp: Timestamp.fromDate(now) });
+            
+            return { processed: 0, skipped: false };
         }
-    });
 
-    if (processedCount > 0) {
-        // Simpan catatan waktu HANYA jika ada data yang diproses
-        batch.set(lastCheckRef, { timestamp: now });
-        await batch.commit();
-        console.log(`${processedCount} perangkat telah dipindahkan ke riwayat purna tugas.`);
-        return { processed: processedCount, skipped: false };
-    } else {
-        // Jika tidak ada yang diproses, tetap update timestamp agar tidak berjalan terus menerus
-        await updateDoc(lastCheckRef, { timestamp: now });
-        console.log('Tidak ada perangkat yang memasuki masa purna tugas saat ini.');
-        return { processed: 0, skipped: false };
+    } catch (error) {
+        console.error("Error pada checkAndProcessPurnaTugas:", error);
+        return { processed: 0, error: error.message };
     }
 };
-

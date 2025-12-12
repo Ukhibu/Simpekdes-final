@@ -4,11 +4,14 @@ import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import Spinner from '../components/common/Spinner';
-import { Bar, Doughnut, Line } from 'react-chartjs-2';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { Bar, Doughnut } from 'react-chartjs-2';
+import { 
+    PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, 
+    AreaChart, Area, XAxis, YAxis, CartesianGrid 
+} from 'recharts';
 import { 
     FiUsers, FiCheckCircle, FiAlertCircle, FiEdit, FiMapPin, 
-    FiCalendar, FiBriefcase, FiActivity, FiArrowUpRight
+    FiCalendar, FiBriefcase, FiActivity, FiArrowUpRight, FiTrendingUp
 } from 'react-icons/fi';
 import PerangkatDesaChart from '../components/dashboard/PerangkatDesaChart';
 
@@ -126,6 +129,27 @@ const CustomTooltip = ({ active, payload }) => {
                         <span className="text-gray-400 ml-1 text-xs">({(payload[0].percent * 100).toFixed(1)}%)</span>
                     </p>
                 </div>
+            </div>
+        );
+    }
+    return null;
+};
+
+// --- Custom Tooltip untuk Area Chart Trading ---
+const TradingTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+        return (
+            <div className="bg-gray-900/90 backdrop-blur-md border border-gray-700 p-4 rounded-xl shadow-2xl text-white">
+                <p className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider">{label}</p>
+                {payload.map((entry, index) => (
+                    <div key={index} className="flex items-center justify-between gap-4 mb-1 last:mb-0">
+                        <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }}></span>
+                            <span className="text-sm font-medium text-gray-200">{entry.name}</span>
+                        </div>
+                        <span className="text-sm font-bold">{entry.value}</span>
+                    </div>
+                ))}
             </div>
         );
     }
@@ -262,7 +286,7 @@ const DashboardPage = () => {
     }, [currentUser, dateRange]);
 
     const memoizedData = useMemo(() => {
-        if (!currentUser) return { stats: {}, incompleteList: [], kelengkapanChartData: { datasets: [] }, ageChartData: { datasets: [] }, rekapPerDesa: [], pendidikanDoughnutData: { datasets: [] } };
+        if (!currentUser) return { stats: {}, incompleteList: [], kelengkapanChartData: { datasets: [] }, tradingChartData: [], ageChartData: { datasets: [] }, rekapPerDesa: [], pendidikanDoughnutData: { datasets: [] } };
 
         const totalPerangkat = perangkatData.length;
         const lengkap = perangkatData.filter(isDataLengkap).length;
@@ -272,10 +296,13 @@ const DashboardPage = () => {
 
         const rekapData = [];
         let kelengkapanData = {};
+        let tradingChartData = [];
 
         if (currentUser.role === 'admin_kecamatan') {
             const dataLengkapPerDesa = DESA_LIST.map(desa => perangkatData.filter(p => p.desa === desa && isDataLengkap(p)).length);
             const dataBelumLengkapPerDesa = DESA_LIST.map(desa => perangkatData.filter(p => p.desa === desa && !isDataLengkap(p)).length);
+            
+            // Data untuk Bar Chart (Komparasi)
             kelengkapanData = {
                 labels: DESA_LIST,
                 datasets: [
@@ -283,6 +310,15 @@ const DashboardPage = () => {
                     { label: 'Belum Lengkap', data: dataBelumLengkapPerDesa, backgroundColor: '#F43F5E', borderRadius: 4, barPercentage: 0.6 }
                 ]
             };
+
+            // Data untuk Trading Curve Chart (Recharts)
+            tradingChartData = DESA_LIST.map((desa, index) => ({
+                name: desa,
+                Lengkap: dataLengkapPerDesa[index],
+                Belum: dataBelumLengkapPerDesa[index],
+                Total: dataLengkapPerDesa[index] + dataBelumLengkapPerDesa[index]
+            }));
+
             DESA_LIST.forEach(desa => {
                 rekapData.push({
                     desa,
@@ -294,7 +330,7 @@ const DashboardPage = () => {
         const pendidikanMap = new Map();
         perangkatData.forEach(p => {
             const pendidikan = p.pendidikan || 'Belum Diisi';
-            pendidikanMap.set(pendidikan, (pendidikanMap.get(pendidikan) || 0) + 1);
+            educationMap: pendidikanMap.set(pendidikan, (pendidikanMap.get(pendidikan) || 0) + 1);
         });
 
         const pendidikanDoughnutData = {
@@ -334,6 +370,7 @@ const DashboardPage = () => {
         return {
             stats: { totalPerangkat, totalBpd, lengkap, belumLengkap },
             kelengkapanChartData: kelengkapanData,
+            tradingChartData: tradingChartData, // Data khusus untuk grafik trading
             ageChartData: ageData,
             incompleteList: listBelumLengkap,
             rekapPerDesa: rekapData,
@@ -472,11 +509,11 @@ const DashboardPage = () => {
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden animate-fade-in-up" style={{animationDelay: '0.6s'}}>
                         <div className="mb-6 flex items-center gap-3">
                             <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg text-orange-500">
-                                <FiActivity />
+                                <FiTrendingUp size={24} />
                             </div>
                             <div>
                                 <h2 className="text-lg font-bold text-gray-800 dark:text-white">Analisis Kelengkapan Data</h2>
-                                <p className="text-xs text-gray-500">Monitoring real-time status administrasi</p>
+                                <p className="text-xs text-gray-500">Monitoring visualisasi data real-time</p>
                             </div>
                         </div>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -495,24 +532,59 @@ const DashboardPage = () => {
                                     data={memoizedData.kelengkapanChartData} 
                                 />
                            </div>
-                           <div className="relative h-[350px] w-full min-w-0">
-                                <h3 className="text-xs font-bold text-center mb-4 text-gray-400 uppercase tracking-widest">Tren & Fluktuasi</h3>
-                                <Line
-                                    options={{ 
-                                        responsive: true, 
-                                        maintainAspectRatio: false, 
-                                        plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20, font: {size: 11} } } }, 
-                                        scales: { 
-                                            y: { beginAtZero: true, grid: { color: document.documentElement.classList.contains('dark') ? '#374151' : '#F3F4F6' }, ticks: { color: '#9CA3AF'} }, 
-                                            x: { grid: { display: false }, ticks: { color: '#9CA3AF', font: {size: 10}} } 
-                                        },
-                                        elements: {
-                                            line: { tension: 0.4, borderWidth: 3 },
-                                            point: { radius: 0, hoverRadius: 6 }
-                                        }
-                                    }}
-                                    data={memoizedData.kelengkapanChartData}
-                                />
+                           
+                           {/* --- DIAGRAM CURVA TRADING MODERN --- */}
+                           <div className="relative h-[350px] w-full min-w-0 p-2 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-100 dark:border-gray-700">
+                                <h3 className="text-xs font-bold text-center mb-4 text-gray-400 uppercase tracking-widest flex items-center justify-center gap-2">
+                                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                                    Tren Kelengkapan (Trading Curve)
+                                </h3>
+                                <ResponsiveContainer width="100%" height="90%">
+                                    <AreaChart data={memoizedData.tradingChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                        <defs>
+                                            <linearGradient id="colorLengkap" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#10B981" stopOpacity={0.8}/>
+                                                <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                                            </linearGradient>
+                                            <linearGradient id="colorBelum" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#F43F5E" stopOpacity={0.8}/>
+                                                <stop offset="95%" stopColor="#F43F5E" stopOpacity={0}/>
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={document.documentElement.classList.contains('dark') ? '#374151' : '#E5E7EB'} />
+                                        <XAxis 
+                                            dataKey="name" 
+                                            tick={{fontSize: 10, fill: '#9CA3AF'}} 
+                                            axisLine={false} 
+                                            tickLine={false}
+                                            interval="preserveStartEnd"
+                                        />
+                                        <YAxis 
+                                            tick={{fontSize: 10, fill: '#9CA3AF'}} 
+                                            axisLine={false} 
+                                            tickLine={false}
+                                        />
+                                        <Tooltip content={<TradingTooltip />} cursor={{ stroke: '#6366F1', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                                        <Area 
+                                            type="monotone" 
+                                            dataKey="Lengkap" 
+                                            stroke="#10B981" 
+                                            strokeWidth={3}
+                                            fillOpacity={1} 
+                                            fill="url(#colorLengkap)" 
+                                            activeDot={{ r: 6, strokeWidth: 0, fill: '#fff' }}
+                                        />
+                                        <Area 
+                                            type="monotone" 
+                                            dataKey="Belum" 
+                                            stroke="#F43F5E" 
+                                            strokeWidth={3}
+                                            fillOpacity={1} 
+                                            fill="url(#colorBelum)" 
+                                            activeDot={{ r: 6, strokeWidth: 0, fill: '#fff' }}
+                                        />
+                                    </AreaChart>
+                                </ResponsiveContainer>
                            </div>
                         </div>
                     </div>

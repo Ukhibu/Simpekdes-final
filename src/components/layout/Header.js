@@ -7,16 +7,15 @@ import { db } from '../../firebase';
 import { 
   doc, updateDoc, arrayUnion, arrayRemove, writeBatch 
 } from 'firebase/firestore'; 
-// [PERBAIKAN] Menambahkan FiXSquare ke import
 import { 
   FiMenu, FiMoon, FiSun, FiLogOut, FiBell, FiUser, 
   FiTrash2, FiBookmark, FiEye, FiMap, FiCheckSquare, FiX, FiInfo, FiCheckCircle, FiXCircle, FiXSquare
 } from 'react-icons/fi';
 import ConfirmationModal from '../common/ConfirmationModal'; 
 import Modal from '../common/Modal'; 
-// [PERBAIKAN] Path import InputField diperbaiki (dari ../components/common menjadi ../common)
 import InputField from '../common/InputField';
 import { createNotificationForDesaAdmins } from '../../utils/notificationService';
+import { uploadImageToCloudinary } from '../../utils/imageUploader'; // Import image uploader
 
 /**
  * Komponen Item Notifikasi Individual
@@ -599,10 +598,12 @@ const NotificationBell = () => {
 };
 
 const Header = ({ pageTitle, onMenuClick, onProfileClick }) => {
-    const { currentUser, logout, theme, toggleTheme } = useAuth();
+    const { currentUser, logout, theme, toggleTheme, updateUserProfile } = useAuth();
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const profileMenuRef = useRef(null);
+    const fileInputRef = useRef(null);
     const navigate = useNavigate();
+    const { showNotification } = useNotification();
 
     const getInitials = (name) => {
         if (!name) return '...';
@@ -626,6 +627,40 @@ const Header = ({ pageTitle, onMenuClick, onProfileClick }) => {
         } catch (error) {
             console.error("Gagal logout:", error);
         }
+    };
+
+    // Tambahkan fungsi untuk handle upload profile picture
+    const handleProfilePicChange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        try {
+            // Gunakan uploadImageToCloudinary dari utils/imageUploader
+            // Anda perlu memastikan environment variables untuk Cloudinary sudah diset
+            const cloudName = process.env.REACT_APP_CLOUDINARY_CLOUD_NAME;
+            const uploadPreset = process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET;
+
+            if (!cloudName || !uploadPreset) {
+                throw new Error("Konfigurasi Cloudinary belum lengkap.");
+            }
+
+            showNotification("Mengunggah foto profil...", "info");
+            
+            const photoURL = await uploadImageToCloudinary(file, uploadPreset, cloudName);
+            
+            if (photoURL) {
+                // Update profile di AuthContext dan Firestore
+                await updateUserProfile({ foto_url: photoURL });
+                showNotification("Foto profil berhasil diperbarui!", "success");
+            }
+        } catch (error) {
+            console.error("Error uploading profile picture:", error);
+            showNotification(`Gagal mengunggah foto profil: ${error.message}`, "error");
+        }
+    };
+
+    const triggerFileInput = () => {
+        fileInputRef.current.click();
     };
 
     return (
@@ -668,13 +703,13 @@ const Header = ({ pageTitle, onMenuClick, onProfileClick }) => {
                            <div className="relative">
                                {currentUser?.foto_url ? (
                                    <img 
-                                       src={currentUser.foto_url} 
-                                       alt="Profil" 
-                                       className="w-10 h-10 rounded-full object-cover border-2 border-white dark:border-gray-700 shadow-sm group-hover:border-blue-200 transition-all" 
+                                           src={currentUser.foto_url} 
+                                           alt="Profil" 
+                                           className="w-10 h-10 rounded-full object-cover border-2 border-white dark:border-gray-700 shadow-sm group-hover:border-blue-200 transition-all" 
                                    />
                                ) : (
                                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center rounded-full font-bold text-sm shadow-md group-hover:shadow-lg transition-all">
-                                       {getInitials(currentUser?.nama)}
+                                           {getInitials(currentUser?.nama)}
                                    </div>
                                )}
                                <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
@@ -688,8 +723,21 @@ const Header = ({ pageTitle, onMenuClick, onProfileClick }) => {
                            </div>
 
                            <div className="p-2">
+                               {/* Input file tersembunyi untuk upload foto */}
+                               <input 
+                                   type="file" 
+                                   ref={fileInputRef} 
+                                   className="hidden" 
+                                   accept="image/*" 
+                                   onChange={handleProfilePicChange} 
+                               />
+                               
                                <button 
                                    onClick={() => {
+                                       // Trigger file input click instead of calling onProfileClick directly if it was just for viewing/editing basic info
+                                       // Or if onProfileClick opens a modal that has the upload functionality, keep as is.
+                                       // Assuming here we want a direct upload option or open the modal as requested.
+                                       // If the original intention was to open a modal:
                                        onProfileClick();
                                        setIsProfileOpen(false);
                                    }} 
@@ -703,10 +751,10 @@ const Header = ({ pageTitle, onMenuClick, onProfileClick }) => {
 
                                <div className="px-3 py-2.5 flex items-center justify-between">
                                    <div className="flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-200">
-                                       <div className="p-1.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 rounded-md">
-                                            {theme === 'dark' ? <FiMoon size={16} /> : <FiSun size={16} />}
-                                       </div>
-                                       <span>{theme === 'dark' ? 'Mode Gelap' : 'Mode Terang'}</span>
+                                           <div className="p-1.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 rounded-md">
+                                                {theme === 'dark' ? <FiMoon size={16} /> : <FiSun size={16} />}
+                                           </div>
+                                           <span>{theme === 'dark' ? 'Mode Gelap' : 'Mode Terang'}</span>
                                    </div>
                                    <button 
                                        onClick={(e) => {
@@ -715,7 +763,7 @@ const Header = ({ pageTitle, onMenuClick, onProfileClick }) => {
                                        }}
                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${theme === 'dark' ? 'bg-blue-600' : 'bg-gray-200'}`}
                                    >
-                                       <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${theme === 'dark' ? 'translate-x-6' : 'translate-x-1'}`} />
+                                           <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${theme === 'dark' ? 'translate-x-6' : 'translate-x-1'}`} />
                                    </button>
                                </div>
                            </div>

@@ -54,12 +54,6 @@ const DataSK = () => {
 
     const config = useMemo(() => SK_CONFIG[skType] || { label: 'Tidak Dikenal', collectionName: null, color: 'gray' }, [skType]);
 
-    // Helper untuk inisial avatar
-    const getInitials = (name) => {
-        if (!name) return '?';
-        return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
-    };
-
     useEffect(() => {
         const highlightId = searchParams.get('highlight');
         if (highlightId) {
@@ -94,7 +88,7 @@ const DataSK = () => {
         return () => unsubscribe();
     }, [currentUser, skType, config.collectionName, showNotification]);
 
-    // Effect kedua: "Memperkaya" data SK dengan mengambil jabatan dari koleksi aslinya
+    // Effect kedua: "Memperkaya" data SK dengan mengambil jabatan & FOTO dari koleksi aslinya
     useEffect(() => {
         const enrichData = async () => {
             if (skDocs.length === 0) {
@@ -104,22 +98,29 @@ const DataSK = () => {
             }
 
             const enrichedPromises = skDocs.map(async (sk) => {
-                let jabatan = '-';
+                let additionalData = { jabatan: '-', foto_url: null };
+                
                 if (sk.entityId && config.collectionName) {
                     try {
                         const entityRef = doc(db, config.collectionName, sk.entityId);
                         const entitySnap = await getDoc(entityRef);
                         if (entitySnap.exists()) {
-                            jabatan = entitySnap.data().jabatan || 'Tidak ada jabatan';
+                            const data = entitySnap.data();
+                            additionalData.jabatan = data.jabatan || 'Tidak ada jabatan';
+                            
+                            // Khusus Perangkat Desa (atau koleksi lain jika punya field foto_url), ambil fotonya
+                            if (data.foto_url) {
+                                additionalData.foto_url = data.foto_url;
+                            }
                         } else {
-                            jabatan = 'Data asli tidak ditemukan';
+                            additionalData.jabatan = 'Data asli tidak ditemukan';
                         }
                     } catch (e) {
                         console.error("Gagal mengambil data entitas:", e);
-                        jabatan = 'Gagal memuat jabatan';
+                        additionalData.jabatan = 'Gagal memuat info';
                     }
                 }
-                return { ...sk, jabatan };
+                return { ...sk, ...additionalData };
             });
 
             const resolvedData = await Promise.all(enrichedPromises);
@@ -298,8 +299,17 @@ const DataSK = () => {
                                     >
                                         <td className="px-6 py-4">
                                             <div className="flex items-center">
-                                                <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-sm">
-                                                    {getInitials(sk.entityName)}
+                                                {/* Logic Foto Profil Diperbarui */}
+                                                <div className="flex-shrink-0 h-10 w-10 rounded-full overflow-hidden border border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-700">
+                                                    <img 
+                                                        src={sk.foto_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(sk.entityName || '?')}&background=random&color=fff`} 
+                                                        alt={sk.entityName} 
+                                                        className="h-full w-full object-cover transition-transform group-hover:scale-110"
+                                                        onError={(e) => {
+                                                            e.target.onerror = null; 
+                                                            e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(sk.entityName || '?')}&background=random&color=fff`;
+                                                        }}
+                                                    />
                                                 </div>
                                                 <div className="ml-4">
                                                     <div className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">

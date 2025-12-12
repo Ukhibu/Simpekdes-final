@@ -1,7 +1,7 @@
 /**
  * Mengompres file gambar di sisi klien sebelum diunggah.
  * Mendukung PNG (Transparan) dan JPEG.
- * @param {File} file - File gambar yang akan dikompres.
+ * * @param {File} file - File gambar yang akan dikompres.
  * @param {object} options - Opsi untuk kompresi.
  * @param {number} [options.maxWidth=1024] - Lebar maksimum gambar setelah kompresi.
  * @param {number} [options.maxHeight=1024] - Tinggi maksimum gambar setelah kompresi.
@@ -13,8 +13,8 @@ export const compressImage = (file, options = {}) => {
 
     return new Promise((resolve, reject) => {
         // Pastikan file yang diberikan adalah gambar
-        if (!file.type.startsWith('image/')) {
-            return reject(new Error('File yang diberikan bukan gambar.'));
+        if (!file || !file.type.startsWith('image/')) {
+            return reject(new Error('File yang diberikan bukan gambar atau corrupt.'));
         }
 
         // PENTING: Deteksi apakah file asli adalah PNG

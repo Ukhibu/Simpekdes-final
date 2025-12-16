@@ -2,16 +2,28 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polygon, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { useFirestoreCollection } from '../hooks/useFirestoreCollection';
+// Hapus import hook yang bermasalah untuk halaman ini
+// import { useFirestoreCollection } from '../hooks/useFirestoreCollection'; 
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext'; 
-// [PERBAIKAN] Mengganti SkeletonLoader/LoadingScreen dengan Spinner
 import Spinner from '../components/common/Spinner';
 import { DESA_LIST, KATEGORI_ASET } from '../utils/constants';
 import { useNavigate } from 'react-router-dom';
-import { FiMap, FiList, FiFilter, FiLayers, FiNavigation, FiTarget, FiEdit3, FiSave, FiX, FiMove, FiAnchor } from 'react-icons/fi';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+// Tambahkan collection, query, onSnapshot ke import firebase
+import { doc, getDoc, setDoc, collection, query, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
+
+// --- ICONS REPLACEMENT (Agar tidak error jika react-icons belum install) ---
+const FiMap = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>;
+const FiList = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>;
+const FiFilter = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>;
+const FiLayers = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>;
+const FiNavigation = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>;
+const FiTarget = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>;
+const FiEdit3 = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>;
+const FiSave = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>;
+const FiX = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>;
+const FiMove = (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="5 9 2 12 5 15"></polyline><polyline points="9 5 12 2 15 5"></polyline><polyline points="15 19 12 22 9 19"></polyline><polyline points="19 9 22 12 19 15"></polyline><line x1="2" y1="12" x2="22" y2="12"></line><line x1="12" y1="2" x2="12" y2="22"></line></svg>;
 
 // --- A. FIX LEAFLET ICON & CONFIG ---
 delete L.Icon.Default.prototype._getIconUrl;
@@ -211,7 +223,11 @@ const DraggablePolygonHandle = ({ coords, onDragAll }) => {
 
 const PetaAsetPage = () => {
   const { currentUser } = useAuth();
-  const { data: allAset, loading } = useFirestoreCollection('aset');
+  // GANTI PENGGUNAAN HOOK DENGAN STATE MANUAL & ON SNAPSHOT
+  // const { data: allAset, loading } = useFirestoreCollection('aset_desa'); 
+  const [allAset, setAllAset] = useState([]);
+  const [loading, setLoading] = useState(true);
+
   const { showNotification } = useNotification();
   const navigate = useNavigate();
 
@@ -236,7 +252,27 @@ const PetaAsetPage = () => {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [mapView, setMapView] = useState({ center: punggelanCenter, zoom: 13 });
 
-  // 1. LOAD CONFIG
+  // 1. DATA FETCHING AMAN (FIX FIRESTORE ERROR)
+  useEffect(() => {
+    // Gunakan onSnapshot langsung di sini agar cleanup terjamin
+    const q = query(collection(db, 'aset_desa'));
+    const unsubscribe = onSnapshot(q, 
+      (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setAllAset(data);
+        setLoading(false);
+      }, 
+      (error) => {
+        console.error("Firestore Error:", error);
+        setLoading(false); // Hindari stuck loading
+      }
+    );
+
+    // Cleanup function: dipanggil saat komponen unmount atau re-render
+    return () => unsubscribe();
+  }, []);
+
+  // 2. LOAD CONFIG
   useEffect(() => {
     const fetchMapConfig = async () => {
       try {

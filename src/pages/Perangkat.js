@@ -705,8 +705,8 @@ const Perangkat = () => {
         }
 
         try {
-            const fotoProfilUrl = await uploadImageToCloudinary(fotoProfilFile, process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET, process.env.REACT_APP_CLOUDINARY_CLOUD_NAME);
-            const fotoKtpUrl = await uploadImageToCloudinary(fotoKtpFile, process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET, process.env.REACT_APP_CLOUDINARY_CLOUD_NAME);
+            const fotoProfilUrl = await uploadImageToCloudinary(fotoProfilFile, process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET1, process.env.REACT_APP_CLOUDINARY_CLOUD_NAME1);
+            const fotoKtpUrl = await uploadImageToCloudinary(fotoKtpFile, process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET2, process.env.REACT_APP_CLOUDINARY_CLOUD_NAME2);
 
             if (fotoProfilUrl) dataToSave.foto_url = fotoProfilUrl;
             if (fotoKtpUrl) dataToSave.ktp_url = fotoKtpUrl;

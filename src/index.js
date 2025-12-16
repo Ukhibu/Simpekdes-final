@@ -9,7 +9,6 @@ import { NotificationProvider } from './context/NotificationContext';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
-  <React.StrictMode>
     <AuthProvider>
       <BrandingProvider>
         <NotificationProvider>
@@ -17,5 +16,5 @@ root.render(
         </NotificationProvider>
       </BrandingProvider>
     </AuthProvider>
-  </React.StrictMode>
+ 
 );

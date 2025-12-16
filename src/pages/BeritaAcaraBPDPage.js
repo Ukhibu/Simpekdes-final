@@ -139,12 +139,12 @@ const BeritaAcaraBPDPage = () => {
         const formData = new FormData();
         formData.append('file', file);
         // Gunakan environment variables untuk keamanan (pastikan sudah diset di .env)
-        formData.append('upload_preset', process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET); 
-        formData.append('cloud_name', process.env.REACT_APP_CLOUDINARY_CLOUD_NAME);
+        formData.append('upload_preset', process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET1); 
+        formData.append('cloud_name', process.env.REACT_APP_CLOUDINARY_CLOUD_NAME1);
 
         try {
             const response = await fetch(
-                `https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME}/image/upload`,
+                `https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME1}/image/upload`,
                 {
                     method: 'POST',
                     body: formData,

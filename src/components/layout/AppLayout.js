@@ -5,6 +5,10 @@ import Header from './Header';
 import ProfileModal from '../profile/ProfileModal';
 import { useAuth } from '../../context/AuthContext';
 
+// Import komponen Smart Village
+import OfflineStatus from '../common/OfflineStatus';
+import AIAssistant from '../smart-village/AIAssistant';
+
 // Fungsi untuk mendapatkan konteks halaman berdasarkan URL
 const getPageContext = (pathname) => {
     // Modul Organisasi Desa
@@ -115,6 +119,9 @@ const AppLayout = () => {
 
     return (
         <div className="flex bg-gray-100 dark:bg-gray-900 min-h-screen">
+            {/* 1. Indikator Offline (Global) - Muncul di paling atas */}
+            <OfflineStatus />
+
             <Sidebar 
                 currentModule={module} 
                 activeSubModule={subModule} 
@@ -142,9 +149,11 @@ const AppLayout = () => {
                     onClose={() => setIsProfileModalOpen(false)}
                 />
             )}
+
+            {/* 2. Smart Village AI Assistant (Floating) - Muncul di atas elemen lain */}
+            <AIAssistant />
         </div>
     );
 };
 
 export default AppLayout;
-

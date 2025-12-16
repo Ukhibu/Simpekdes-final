@@ -12,7 +12,7 @@ import Spinner from '../components/common/Spinner';
 import SkeletonLoader from '../components/common/SkeletonLoader';
 import { 
     FiTrash2, FiKey, FiEye, FiEyeOff, FiPlus, FiSearch, 
-    FiUser, FiMail, FiMapPin, FiShield, FiMoreVertical, FiActivity, FiClock, FiWifi 
+    FiUser, FiMail, FiMapPin, FiShield, FiMoreVertical, FiCheckCircle
 } from 'react-icons/fi';
 
 const DESA_LIST = [
@@ -30,14 +30,6 @@ const customStyles = `
   .animate-fade-in-up {
     animation: fadeInUp 0.4s ease-out forwards;
   }
-  @keyframes pulse-green {
-    0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); }
-    70% { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
-  }
-  .status-online-dot {
-    animation: pulse-green 2s infinite;
-  }
 `;
 
 const ManajemenAdmin = () => {
@@ -53,9 +45,6 @@ const ManajemenAdmin = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [highlightedRow, setHighlightedRow] = useState(null);
     
-    // [PENTING] State Tick untuk memaksa refresh UI setiap detik/menit
-    const [tick, setTick] = useState(0);
-
     // State untuk Modal Konfirmasi
     const [confirmModal, setConfirmModal] = useState({
         isOpen: false,
@@ -65,54 +54,15 @@ const ManajemenAdmin = () => {
         data: null
     });
 
-    // --- 1. SYSTEM HEARTBEAT (REAL-TIME STATUS) ---
+    // --- 1. FETCH DATA (Hanya Baca, Tidak ada Update Tulis Otomatis) ---
     useEffect(() => {
-        if (!currentUser) return;
-
-        const updatePresence = async () => {
-            try {
-                const userRef = doc(db, 'users', currentUser.uid);
-                // Update timestamp server
-                await setDoc(userRef, {
-                    lastSeen: serverTimestamp(),
-                    isOnline: true,
-                    // Pastikan data penting tidak hilang
-                    email: currentUser.email, 
-                    nama: currentUser.nama || currentUser.displayName || 'Admin',
-                    role: currentUser.role || 'admin_desa',
-                    desa: currentUser.desa || '-'
-                }, { merge: true });
-            } catch (error) {
-                console.error("Gagal update status:", error);
-            }
-        };
-
-        // Update segera saat komponen dimount
-        updatePresence();
-
-        // Update rutin setiap 30 detik agar status tetap "Online"
-        const interval = setInterval(updatePresence, 30000); 
-        return () => clearInterval(interval);
-    }, [currentUser]);
-
-    // --- [BARU] UI REFRESH TIMER (Force Update Tampilan) ---
-    // Timer ini memaksa komponen untuk mengecek ulang status "Online/Offline" setiap 10 detik
-    useEffect(() => {
-        const timer = setInterval(() => {
-            setTick(t => t + 1);
-        }, 10000); // Cek setiap 10 detik agar lebih responsif
-        return () => clearInterval(timer);
-    }, []);
-
-    // --- 2. FETCH DATA REAL-TIME ---
-    useEffect(() => {
+        // Kita hanya membaca data siapa saja yg jadi admin
         const q = query(collection(db, "users"), where("role", "==", "admin_desa"));
         
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            // Gunakan opsi { serverTimestamps: 'estimate' } agar latensi server tidak membuat data null
             const list = querySnapshot.docs.map(doc => ({ 
                 id: doc.id, 
-                ...doc.data({ serverTimestamps: 'estimate' }) 
+                ...doc.data() 
             }));
             
             setAdminList(list);
@@ -124,42 +74,6 @@ const ManajemenAdmin = () => {
 
         return () => unsubscribe();
     }, []);
-
-    // --- 3. LOGIKA DETEKSI ONLINE/OFFLINE (DIPERBAIKI) ---
-    const getOnlineStatus = (lastSeenTimestamp) => {
-        if (!lastSeenTimestamp) return { isOnline: false, text: 'Offline', color: 'gray' };
-        
-        let lastSeenDate;
-
-        // Normalisasi format tanggal dari Firestore
-        if (lastSeenTimestamp?.toDate) {
-            lastSeenDate = lastSeenTimestamp.toDate();
-        } else if (lastSeenTimestamp instanceof Date) {
-            lastSeenDate = lastSeenTimestamp;
-        } else if (typeof lastSeenTimestamp === 'number') {
-            lastSeenDate = new Date(lastSeenTimestamp);
-        } else {
-            return { isOnline: false, text: 'Offline', color: 'gray' };
-        }
-
-        const now = new Date();
-        const diffInSeconds = Math.floor((now - lastSeenDate) / 1000);
-        const diffInMinutes = Math.floor(diffInSeconds / 60);
-
-        // LOGIKA STATUS:
-        // Jika selisih < 60 detik (1 menit) -> Anggap ONLINE
-        // Kita gunakan buffer 120 detik (2 menit) untuk toleransi jaringan lambat
-        if (diffInSeconds < 120) { 
-            return { isOnline: true, text: 'Online', color: 'green' };
-        } else if (diffInMinutes < 60) {
-            return { isOnline: false, text: `${diffInMinutes} menit yll`, color: 'orange' };
-        } else if (diffInMinutes < 1440) { // < 24 jam
-            const hours = Math.floor(diffInMinutes / 60);
-            return { isOnline: false, text: `${hours} jam yll`, color: 'gray' };
-        } else {
-            return { isOnline: false, text: `${Math.floor(diffInMinutes / 1440)} hari yll`, color: 'gray' };
-        }
-    };
 
     // --- Highlight Row Logic ---
     useEffect(() => {
@@ -175,7 +89,7 @@ const ManajemenAdmin = () => {
         }
     }, [searchParams, setSearchParams]);
 
-    // Sorting & Filtering (Diperbarui setiap 'tick' berubah)
+    // Sorting & Filtering
     const processedAdminList = useMemo(() => {
         let filtered = adminList.filter(admin => 
             admin.nama.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -183,20 +97,9 @@ const ManajemenAdmin = () => {
             admin.desa.toLowerCase().includes(searchTerm.toLowerCase())
         );
 
-        // Sort: Online paling atas
-        return filtered.sort((a, b) => {
-            const statusA = getOnlineStatus(a.lastSeen).isOnline;
-            const statusB = getOnlineStatus(b.lastSeen).isOnline;
-            
-            // Prioritaskan yang Online
-            if (statusA && !statusB) return -1;
-            if (!statusA && statusB) return 1;
-            
-            // Jika status sama, urutkan nama
-            return a.nama.localeCompare(b.nama);
-        });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [adminList, searchTerm, tick]); // 'tick' memaksa sort ulang setiap interval
+        // Sort: Berdasarkan Nama (Alphabetical) agar rapi
+        return filtered.sort((a, b) => a.nama.localeCompare(b.nama));
+    }, [adminList, searchTerm]);
 
     const handleOpenModal = () => {
         setFormData({ nama: '', email: '', password: '', desa: DESA_LIST[0] });
@@ -216,6 +119,7 @@ const ManajemenAdmin = () => {
         }
         setIsSubmitting(true);
 
+        // Menggunakan secondary app agar login current user tidak terputus
         const secondaryAppConfig = auth.app.options;
         const secondaryApp = initializeApp(secondaryAppConfig, `secondary-${Date.now()}`);
         const secondaryAuth = getAuth(secondaryApp);
@@ -231,8 +135,7 @@ const ManajemenAdmin = () => {
                 role: "admin_desa",
                 foto_url: null,
                 createdAt: new Date().toISOString(),
-                lastSeen: serverTimestamp(), // Set awal agar tidak null
-                isOnline: false
+                status: 'active' // Menandakan akun ini aktif secara default
             });
             
             showNotification(`Admin untuk Desa ${formData.desa} berhasil dibuat.`, 'success');
@@ -248,6 +151,8 @@ const ManajemenAdmin = () => {
             showNotification(`Gagal: ${errorMessage}`, 'error');
         } finally {
             setIsSubmitting(false);
+            // Cleanup secondary app
+            // (Optional: deleteApp(secondaryApp) jika perlu, tapi biasanya garbage collected)
         }
     };
     
@@ -295,7 +200,7 @@ const ManajemenAdmin = () => {
             'from-orange-400 to-red-500', 'from-purple-400 to-pink-500',
             'from-cyan-400 to-blue-500'
         ];
-        return colors[name.length % colors.length];
+        return colors[(name?.length || 0) % colors.length];
     };
 
     const getInitials = (name) => name ? name.substring(0, 2).toUpperCase() : '?';
@@ -311,10 +216,10 @@ const ManajemenAdmin = () => {
                         Manajemen Admin Desa
                     </h1>
                     <div className="flex items-center gap-2 mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        <span className="flex items-center gap-1.5 px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full text-xs font-bold">
-                            <FiWifi size={10} className="animate-pulse" /> Live Monitor
+                        <span className="flex items-center gap-1.5 px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full text-xs font-bold">
+                            <FiShield size={10} /> Panel Kontrol
                         </span>
-                        <span>Pantau aktivitas login admin secara real-time.</span>
+                        <span>Kelola akun admin desa yang aktif.</span>
                     </div>
                 </div>
                 <button 
@@ -349,7 +254,7 @@ const ManajemenAdmin = () => {
                             <thead className="bg-gray-50 dark:bg-gray-700/50">
                                 <tr>
                                     <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Admin</th>
-                                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status Akun</th>
                                     <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Kontak</th>
                                     <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Wilayah</th>
                                     <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Aksi</th>
@@ -358,7 +263,6 @@ const ManajemenAdmin = () => {
                             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-100 dark:divide-gray-700">
                                 {processedAdminList.length > 0 ? (
                                     processedAdminList.map((admin, index) => {
-                                        const { isOnline, text: statusText } = getOnlineStatus(admin.lastSeen);
                                         const isCurrentUser = currentUser?.uid === admin.id;
                                         
                                         return (
@@ -381,9 +285,6 @@ const ManajemenAdmin = () => {
                                                                     <span>{getInitials(admin.nama)}</span>
                                                                 )}
                                                             </div>
-                                                            {isOnline && (
-                                                                <span className="absolute bottom-0 right-0 block h-3.5 w-3.5 rounded-full bg-green-500 ring-2 ring-white dark:ring-gray-800 status-online-dot" title="Sedang Online"></span>
-                                                            )}
                                                         </div>
                                                         <div className="ml-4">
                                                             <div className="flex items-center gap-2">
@@ -399,20 +300,10 @@ const ManajemenAdmin = () => {
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
-                                                        isOnline 
-                                                            ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800' 
-                                                            : 'bg-gray-50 text-gray-600 border-gray-200 dark:bg-gray-700/50 dark:text-gray-400 dark:border-gray-600'
-                                                    }`}>
-                                                        {isOnline ? (
-                                                            <span className="relative flex h-2 w-2">
-                                                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                                              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                                                            </span>
-                                                        ) : (
-                                                            <FiClock size={10} />
-                                                        )}
-                                                        {statusText}
+                                                    {/* STATUS DI-HARDCODE JADI AKTIF UNTUK MENGHEMAT KUOTA */}
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800">
+                                                        <FiCheckCircle size={12} className="text-green-600 dark:text-green-400" />
+                                                        Akun Aktif
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
@@ -462,7 +353,8 @@ const ManajemenAdmin = () => {
                 
                 <div className="bg-gray-50 dark:bg-gray-700/30 px-6 py-3 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center text-xs text-gray-500">
                     <span>Total: {processedAdminList.length} admin</span>
-                    <span><span className="w-2 h-2 bg-green-500 rounded-full inline-block mr-1"></span> Live Update (30s)</span>
+                    {/* Hapus indikator Live Update yang membingungkan */}
+                    <span>Data tersinkronisasi</span>
                 </div>
             </div>
 

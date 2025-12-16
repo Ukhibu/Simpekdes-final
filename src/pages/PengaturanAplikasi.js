@@ -149,8 +149,8 @@ const PengaturanAplikasi = () => {
                 if (logoFile) {
                     const logoUrl = await uploadImageToCloudinary(
                         logoFile, 
-                        process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET, 
-                        process.env.REACT_APP_CLOUDINARY_CLOUD_NAME
+                        process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET1, 
+                        process.env.REACT_APP_CLOUDINARY_CLOUD_NAME1
                     );
                     if (logoUrl) configData.loginLogoUrl = logoUrl;
                 }
@@ -158,8 +158,8 @@ const PengaturanAplikasi = () => {
                 if (backgroundFile) {
                     const backgroundUrl = await uploadImageToCloudinary(
                         backgroundFile, 
-                        process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET, 
-                        process.env.REACT_APP_CLOUDINARY_CLOUD_NAME
+                        process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET2, 
+                        process.env.REACT_APP_CLOUDINARY_CLOUD_NAME2
                     );
                     if (backgroundUrl) configData.hubBackgroundUrl = backgroundUrl;
                 }

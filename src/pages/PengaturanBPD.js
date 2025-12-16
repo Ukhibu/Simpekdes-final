@@ -14,7 +14,6 @@ const PengaturanBPD = () => {
         tgl_sk_bupati: '',
         periode: '',
         jabatan: '',
-        nama_lengkap: '',
         nik: '',
         tempat_lahir: '',
         tgl_lahir: '',
@@ -23,7 +22,9 @@ const PengaturanBPD = () => {
         agama: '',
         rt: '',
         rw: '',
-        no_hp: ''
+        no_hp: '',
+        tgl_pelantikan:'',
+        wil_pmlhn:''
     });
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);

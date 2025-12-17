@@ -1,523 +1,727 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { 
+  MessageSquare, X, Send, Sparkles, User, Bot, Loader2, 
+  Minimize2, Maximize2, AlertCircle, Key, Settings, ShieldCheck, 
+  MapPin, Moon, Sun, ChevronRight, Navigation, RefreshCcw, Zap
+} from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
-// --- KONFIGURASI API KEY ---
-// Pastikan tidak ada spasi tambahan di string API Key
-const GEMINI_API_KEY = (process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyANUh8J5KhiQooP4EjdQhgcWih11I0c_LE").trim();
+// --- IMPORT ---
+import { useAuth } from '../../context/AuthContext'; 
+import { doc, getDoc } from 'firebase/firestore'; 
+import { db } from '../../firebase'; 
 
-// --- ICONS (Inline SVG) ---
-const ChevronDownIcon = ({ size = 24 }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="6 9 12 15 18 9"></polyline>
-  </svg>
-);
-
-const BotIcon = ({ size = 24 }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="11" width="18" height="10" rx="2"></rect>
-    <circle cx="12" cy="5" r="2"></circle>
-    <path d="M12 7v4"></path>
-    <line x1="8" y1="16" x2="8" y2="16"></line>
-    <line x1="16" y1="16" x2="16" y2="16"></line>
-  </svg>
-);
-
-const XIcon = ({ size = 24 }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="18" y1="6" x2="6" y2="18"></line>
-    <line x1="6" y1="6" x2="18" y2="18"></line>
-  </svg>
-);
-
-const Loader2Icon = ({ className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
-  </svg>
-);
-
-const SendIcon = ({ size = 16 }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="22" y1="2" x2="11" y2="13"></line>
-    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-  </svg>
-);
-
-const ExternalLinkIcon = ({ size = 14 }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-    <polyline points="15 3 21 3 21 9"></polyline>
-    <line x1="10" y1="14" x2="21" y2="3"></line>
-  </svg>
-);
-
-const HelpCircleIcon = ({ size = 16 }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10"></circle>
-    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-    <line x1="12" y1="17" x2="12.01" y2="17"></line>
-  </svg>
-);
-
-// --- KNOWLEDGE BASE: PANDUAN PER HALAMAN (Context untuk AI) ---
-const PAGE_KNOWLEDGE = {
-  '/app/aset/peta': {
-    title: 'Peta Aset Desa',
-    description: 'Halaman ini menampilkan sebaran aset desa secara visual di atas peta.',
-    tips: [
-      'Gunakan mode "Satelit" untuk melihat kondisi geografis nyata.',
-      'Klik marker aset untuk melihat foto dan detailnya.',
-      'Admin Kecamatan dapat mengedit batas wilayah dengan mengklik tombol "Edit Batas" di sidebar.',
-      'Geser titik-titik hijau pada peta untuk menyesuaikan area desa.'
-    ]
-  },
-  '/app/aset': {
-    title: 'Dashboard Aset',
-    description: 'Pusat manajemen inventaris dan kekayaan desa.',
-    tips: [
-      'Anda bisa menambahkan aset baru dengan tombol "Tambah Aset".',
-      'Gunakan fitur filter untuk memisahkan aset Tanah, Bangunan, atau Kendaraan.',
-      'Pastikan mengisi koordinat (Latitude/Longitude) agar aset muncul di Peta.'
-    ]
-  },
-  '/app/keuangan': {
-    title: 'Keuangan Desa',
-    description: 'Modul untuk mengelola APBDes, pemasukan, dan pengeluaran.',
-    tips: [
-      'Cek grafik realisasi untuk melihat penyerapan anggaran.',
-      'Menu "Penganggaran" digunakan untuk merencanakan APBDes awal tahun.',
-      'Menu "Penatausahaan" adalah buku kas umum harian.'
-    ]
-  },
-  '/app/perangkat': {
-    title: 'Manajemen Perangkat Desa',
-    description: 'Data kepegawaian staf dan pejabat desa.',
-    tips: [
-      'Pastikan NIK perangkat sesuai dengan data kependudukan.',
-      'Anda bisa mencetak SK langsung dari menu detail perangkat.'
-    ]
-  },
-  '/app/laporan': {
-    title: 'Pusat Laporan',
-    description: 'Tempat mencetak berbagai dokumen resmi.',
-    tips: [
-      'Pilih jenis laporan yang dibutuhkan (PDF/Excel).',
-      'Laporan Realisasi Anggaran tersedia dalam format resmi pemerintah.'
-    ]
-  }
-};
-
-// --- ROUTES UNTUK NAVIGASI OTOMATIS ---
-const APP_ROUTES = [
-  { keywords: ['dashboard', 'beranda', 'home', 'depan'], path: '/app', label: 'Dashboard Utama' },
-  { keywords: ['peta', 'lokasi', 'gis', 'denah'], path: '/app/aset/peta', label: 'Peta Aset Desa' },
-  { keywords: ['perangkat', 'staf', 'pegawai'], path: '/app/perangkat', label: 'Manajemen Perangkat' },
-  { keywords: ['keuangan', 'anggaran', 'apbdes'], path: '/app/keuangan', label: 'Keuangan Desa' },
-  { keywords: ['aset', 'barang', 'inventaris'], path: '/app/aset', label: 'Data Aset' },
-  { keywords: ['bpd', 'badan permusyawaratan'], path: '/app/bpd', label: 'Dashboard BPD' },
-  { keywords: ['lpm'], path: '/app/lpm', label: 'Dashboard LPM' },
-  { keywords: ['surat', 'arsip', 'dokumen'], path: '/app/efile', label: 'Arsip Digital' },
+// --- DAFTAR MODEL OPENROUTER (UPDATED & STABIL) ---
+const CANDIDATE_MODELS = [
+  "google/gemini-2.0-flash-exp:free",             
+  "meta-llama/llama-3.2-11b-vision-instruct:free", 
+  "mistralai/mistral-7b-instruct:free",           
+  "microsoft/phi-3-mini-128k-instruct:free",      
+  "openchat/openchat-7:free",                     
+  "huggingfaceh4/zephyr-7b-beta:free"             
 ];
 
-const AIAssistant = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [isOpen, setIsOpen] = useState(false);
-  const [input, setInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const messagesEndRef = useRef(null);
-  const [messages, setMessages] = useState([]);
+// --- PETA NAVIGASI (SITEMAP) UNTUK AI ---
+const APP_SITEMAP = `
+- Dashboard Utama: /app
+- Data Perangkat Desa: /app/perangkat
+- Keuangan Desa: /app/keuangan
+- Aset Desa: /app/aset
+- Surat Menyurat (SK): /app/manajemen-sk
+- BPD: /app/bpd
+- LPM: /app/lpm
+- PKK: /app/pkk
+- Karang Taruna: /app/karang-taruna
+- RT/RW: /app/rt-rw
+- Laporan: /app/laporan
+- Pengaturan: /app/pengaturan
+`;
 
-  // --- Initial Greeting ---
-  useEffect(() => {
-    const currentPath = location.pathname;
-    const pageInfo = PAGE_KNOWLEDGE[currentPath];
-    
-    let welcomeText = "Halo! Saya Asisten Pintar Simpekdes. Anda bisa bertanya apa saja, cari data, atau minta bantuan navigasi.";
-    let suggestionAction = null;
+// --- HELPER: DETEKSI KONTEKS HALAMAN ---
+const getPageContext = (pathname) => {
+    // Modul Organisasi Desa
+    if (
+        pathname.startsWith('/app/bpd') ||
+        pathname.startsWith('/app/lpm') ||
+        pathname.startsWith('/app/pkk') ||
+        pathname.startsWith('/app/karang-taruna') ||
+        pathname.startsWith('/app/rt-rw')) {
 
-    if (pageInfo) {
-      welcomeText = `Selamat datang di **${pageInfo.title}**. Saya siap membantu Anda di halaman ini.`;
-      suggestionAction = {
-        type: 'suggestion',
-        label: 'Panduan Halaman Ini',
-        action: () => handleAskContext(currentPath)
-      };
-    }
+        switch (true) {
+            // BPD
+            case pathname.startsWith('/app/bpd/data'): return { module: 'organisasi', subModule: 'bpd', title: 'Manajemen Data BPD' };
+            case pathname.startsWith('/app/bpd/berita-acara'): return { module: 'organisasi', subModule: 'bpd', title: 'Berita Acara BPD' };
+            case pathname.startsWith('/app/bpd/pengaturan'): return { module: 'organisasi', subModule: 'bpd', title: 'Setelan Modul BPD' };
+            case pathname.startsWith('/app/bpd'): return { module: 'organisasi', subModule: 'bpd', title: 'Dashboard BPD' };
+            
+            // LPM
+            case pathname.startsWith('/app/lpm/data'): return { module: 'organisasi', subModule: 'lpm', title: 'Manajemen Data LPM' };
+            case pathname.startsWith('/app/lpm/program'): return { module: 'organisasi', subModule: 'lpm', title: 'Program Kerja LPM' };
+            case pathname.startsWith('/app/lpm'): return { module: 'organisasi', subModule: 'lpm', title: 'Dashboard LPM' };
 
-    // Hanya reset pesan jika belum ada pesan (untuk mencegah reset saat re-render)
-    if (messages.length === 0) {
-        setMessages([{ 
-          id: Date.now(), 
-          text: welcomeText, 
-          sender: 'bot',
-          actions: suggestionAction ? [suggestionAction] : []
-        }]);
-    }
-  }, [location.pathname, messages.length]);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, isOpen]);
-
-  // --- FUNGSI MENGHUBUNGI GOOGLE GEMINI API (DENGAN FALLBACK MODEL) ---
-  const callGeminiAI = async (userQuery, pageContext) => {
-    // Validasi API Key yang lebih ketat
-    if (!GEMINI_API_KEY || GEMINI_API_KEY.length < 10) {
-        console.error("API Key Invalid:", GEMINI_API_KEY);
-        return "⚠️ API Key AI belum terpasang dengan benar. Silakan periksa konfigurasi kode.";
-    }
-
-    // Strategi Fallback: Coba beberapa model jika satu gagal (misal karena 404 atau deprecation)
-    // Urutan prioritas: Flash (Cepat) -> Latest -> Pro (Standar Stabil)
-    const modelsToTry = [
-        "gemini-1.5-flash", 
-        "gemini-1.5-flash-latest",
-        "gemini-pro"
-    ];
-    
-    // Prompt Engineering: Memberi "Karakter" dan "Konteks" pada AI
-    const systemPrompt = `
-      Kamu adalah Asisten Cerdas untuk Aplikasi Pemerintahan Desa "Simpekdes".
-      Karaktermu: Ramah, Sopan, Profesional, dan Informatif (selalu menjawab dalam Bahasa Indonesia yang baik).
-      
-      KONTEKS HALAMAN USER SAAT INI:
-      - Judul Halaman: ${pageContext?.title || 'Tidak spesifik'}
-      - Deskripsi Halaman: ${pageContext?.description || '-'}
-      - Tips Penggunaan: ${pageContext?.tips?.join(', ') || '-'}
-
-      INSTRUKSI:
-      1. Jawablah pertanyaan user secara langsung dan ringkas.
-      2. Jika pertanyaan relevan dengan KONTEKS HALAMAN di atas, jelaskan cara penggunaannya.
-      3. Jika user bertanya hal umum (pendidikan, pertanian, teknologi, sapaan), jawablah layaknya asisten pribadi yang pintar.
-      4. Hindari menjawab hal sensitif (SARA, Politik Praktis).
-      5. Jika user meminta data spesifik yang tidak kamu tahu, sarankan untuk menggunakan fitur pencarian di aplikasi.
-    `;
-
-    const requestBody = {
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { text: systemPrompt },
-            { text: `User bertanya: "${userQuery}"` }
-          ]
+            // PKK
+            case pathname.startsWith('/app/pkk/data'): return { module: 'organisasi', subModule: 'pkk', title: 'Manajemen Pengurus PKK' };
+            case pathname.startsWith('/app/pkk/program'): return { module: 'organisasi', subModule: 'pkk', title: 'Program Kerja PKK' };
+            case pathname.startsWith('/app/pkk'): return { module: 'organisasi', subModule: 'pkk', title: 'Dashboard PKK' };
+            
+            // Karang Taruna
+            case pathname.startsWith('/app/karang-taruna/data'): return { module: 'organisasi', subModule: 'karang_taruna', title: 'Manajemen Pengurus Karang Taruna' };
+            case pathname.startsWith('/app/karang-taruna/kegiatan'): return { module: 'organisasi', subModule: 'karang_taruna', title: 'Kegiatan Karang Taruna' };
+            case pathname.startsWith('/app/karang-taruna'): return { module: 'organisasi', subModule: 'karang_taruna', title: 'Dashboard Karang Taruna' };
+            
+            // RT/RW
+            case pathname.startsWith('/app/rt-rw/rt'): return { module: 'organisasi', subModule: 'rt_rw', title: 'Manajemen Data RT' };
+            case pathname.startsWith('/app/rt-rw/rw'): return { module: 'organisasi', subModule: 'rt_rw', title: 'Manajemen Data RW' };
+            case pathname.startsWith('/app/rt-rw/rekapitulasi'): return { module: 'organisasi', subModule: 'rt_rw', title: 'Rekapitulasi RT/RW' };
+            case pathname.startsWith('/app/rt-rw'): return { module: 'organisasi', subModule: 'rt_rw', title: 'Dashboard RT/RW' };
+            
+            default: return { module: 'organisasi', title: 'Organisasi Desa' };
         }
-      ],
-      generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 500,
+    }
+
+    // Modul Keuangan
+    if (pathname.startsWith('/app/keuangan')) {
+        switch (pathname) {
+            case '/app/keuangan': return { module: 'keuangan', title: 'Dashboard Keuangan Desa' };
+            case '/app/keuangan/penganggaran': return { module: 'keuangan', title: 'Penganggaran (APBDes)' };
+            case '/app/keuangan/penatausahaan': return { module: 'keuangan', title: 'Penatausahaan (Buku Kas Umum)' };
+            case '/app/keuangan/laporan': return { module: 'keuangan', title: 'Laporan Realisasi Anggaran' };
+            default: return { module: 'keuangan', title: 'Manajemen Keuangan Desa' };
+        }
+    }
+    
+    // Modul Aset
+    if (pathname.startsWith('/app/aset')) {
+        switch(pathname) {
+            case '/app/aset': return { module: 'aset', title: 'Dashboard Aset Desa' };
+            case '/app/aset/manajemen': return { module: 'aset', title: 'Manajemen Aset (KIB)' };
+            case '/app/aset/peta': return { module: 'aset', title: 'Peta Aset Desa' };
+            default: return { module: 'aset', title: 'Manajemen Aset Desa' };
+        }
+    }
+
+    // Modul E-File / Arsip Digital
+    if (pathname.startsWith('/app/efile') || pathname.startsWith('/app/manajemen-sk') || pathname.startsWith('/app/data-sk')) {
+        const titleMap = {
+            '/app/efile': 'Dashboard Arsip Digital',
+            '/app/manajemen-sk': 'Manajemen Unggah SK',
+            '/app/data-sk/perangkat': 'Data SK Perangkat Desa',
+            '/app/data-sk/bpd': 'Data SK BPD',
+            '/app/data-sk/lpm': 'Data SK LPM',
+            '/app/data-sk/pkk': 'Data SK PKK',
+            '/app/data-sk/karang_taruna': 'Data SK Karang Taruna',
+            '/app/data-sk/rt_rw': 'Data SK RT/RW',
+        };
+        return { module: 'efile', title: titleMap[pathname] || 'Arsip Digital' };
+    }
+    
+    // Modul Pemerintahan (Default)
+    switch (pathname) {
+        case '/app': return { module: 'perangkat', title: 'Dashboard Utama' };
+        case '/app/perangkat': return { module: 'perangkat', title: 'Manajemen Data Perangkat' };
+        case '/app/histori-perangkat': return { module: 'perangkat', title: 'Riwayat Purna Tugas' };
+        case '/app/rekapitulasi-aparatur': return { module: 'perangkat', title: 'Rekapitulasi Aparatur' };
+        case '/app/laporan': return { module: 'perangkat', title: 'Pusat Laporan' };
+        case '/app/manajemen-admin': return { module: 'perangkat', title: 'Manajemen Admin Desa' };
+        case '/app/pengaturan': return { module: 'perangkat', title: 'Pengaturan Aplikasi' };
+        case '/app/kalender-kegiatan': return { module: 'perangkat', title: 'Kalender Kegiatan' };
+        default: return { module: 'umum', title: 'Halaman Umum' };
+    }
+};
+
+
+// --- SYSTEM INSTRUCTION UTAMA (Untuk Fallback API) ---
+const BASE_SYSTEM_INSTRUCTION = `
+Anda adalah "Asisten Cerdas Simpekdes".
+Tugas: Memandu perangkat desa dan membantu navigasi aplikasi.
+
+SITEMAP APLIKASI:
+${APP_SITEMAP}
+
+GAYA KOMUNIKASI:
+- Profesional, sopan, modern.
+- Gunakan format Markdown.
+- Jawablah dengan ringkas dan jelas.
+`;
+
+const AIAssistant = () => {
+  // Hooks
+  const location = useLocation();
+  const navigate = useNavigate();
+  
+  // --- KONFIGURASI USER (REAL) ---
+  const { currentUser } = useAuth() || {}; 
+
+  // State UI
+  const [isOpen, setIsOpen] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true); // Default Dark Mode
+  
+  // State untuk Role yang divalidasi
+  const [verifiedRole, setVerifiedRole] = useState(null);
+
+  // State Logic
+  const [messages, setMessages] = useState([
+    {
+      id: 1,
+      text: "Selamat datang! 👋 Saya siap membantu navigasi dan administrasi desa Anda.",
+      sender: 'ai',
+      timestamp: new Date()
+    }
+  ]);
+  const [inputText, setInputText] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState(""); 
+  const [errorMsg, setErrorMsg] = useState(null);
+  const [isLocalResponse, setIsLocalResponse] = useState(false); // Indikator jika respon dari lokal
+  
+  // API Key Management
+  const defaultEnvKey = process.env.REACT_APP_OpenRouter_API_KEY || "";
+  const [currentApiKey, setCurrentApiKey] = useState(() => {
+    return localStorage.getItem('simpekdes_openrouter_key') || defaultEnvKey;
+  });
+
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // --- LOGIKA FETCH ROLE ---
+  useEffect(() => {
+    const checkUserRole = async () => {
+      if (currentUser?.uid) {
+        try {
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            const userDocSnap = await getDoc(userDocRef);
+            if (userDocSnap.exists()) {
+                setVerifiedRole(userDocSnap.data().role);
+            } else {
+                setVerifiedRole(currentUser.role);
+            }
+        } catch (err) {
+            console.error("Gagal verifikasi role:", err);
+            setVerifiedRole(currentUser.role);
+        }
+      } else {
+        setVerifiedRole(null);
       }
     };
+    checkUserRole();
+  }, [currentUser]);
 
-    // Loop untuk mencoba setiap model sampai berhasil
-    for (const model of modelsToTry) {
-        try {
-            console.log(`Mencoba menghubungi AI dengan model: ${model}...`);
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-            
-            const response = await fetch(apiUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(requestBody)
-            });
+  const canAccessSettings = !!currentUser;
 
-            if (!response.ok) {
-                // Jika error 404 (Model Not Found), lanjutkan ke model berikutnya di list
-                if (response.status === 404) {
-                    console.warn(`Model ${model} tidak ditemukan (404). Mencoba fallback...`);
-                    continue; 
-                }
-                
-                // Jika error 429 (Quota Exceeded), tidak perlu coba model lain karena limit per akun
-                if (response.status === 429) {
-                    return "Maaf, layanan AI sedang sibuk karena batas kuota penggunaan gratis tercapai. Silakan coba lagi nanti.";
-                }
+  // Effects
+  useEffect(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), [messages, isOpen, isLoading]);
+  useEffect(() => { if (isOpen && !isMinimized && !showSettings) inputRef.current?.focus(); }, [isOpen, isMinimized]);
 
-                // Error lain
-                const errorData = await response.json();
-                throw new Error(`API Error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
+  // Fungsi Toggle Tema
+  const toggleTheme = (e) => {
+    e.stopPropagation();
+    setIsDarkMode(!isDarkMode);
+  };
+
+  // Fungsi Simpan Key
+  const handleSaveKey = (newKey) => {
+    const cleanKey = newKey.trim();
+    if (!cleanKey) {
+        localStorage.removeItem('simpekdes_openrouter_key');
+        setCurrentApiKey(defaultEnvKey);
+    } else {
+        localStorage.setItem('simpekdes_openrouter_key', cleanKey);
+        setCurrentApiKey(cleanKey);
+    }
+    setShowSettings(false);
+    setErrorMsg(null);
+    setMessages(prev => [...prev, {
+      id: Date.now(),
+      text: "✅ **Konfigurasi Tersimpan!** Sistem siap digunakan.",
+      sender: 'ai',
+      timestamp: new Date()
+    }]);
+  };
+
+  // --- LOGIKA CERDAS LOKAL (OFFLINE NAVIGATION) ---
+  // Ini adalah fungsi pengganti API untuk navigasi dasar
+  const checkLocalIntent = (text) => {
+    const lower = text.toLowerCase().trim();
+    
+    // Kata kerja pemicu (optional jika user cuma ketik "Keuangan")
+    const actionWords = ['buka', 'lihat', 'pergi', 'tuju', 'akses', 'menu', 'tampilkan', 'ke'];
+    
+    // Cek apakah kalimat mengandung kata kerja ATAU kalimatnya sangat pendek (<= 3 kata)
+    // Contoh: "Keuangan" (1 kata) -> dianggap perintah buka menu
+    // Contoh: "Apa itu keuangan?" (3 kata) -> ada kata tanya "apa", ini bukan navigasi
+    const words = lower.split(' ');
+    const hasAction = actionWords.some(w => lower.includes(w));
+    const isShortCommand = words.length <= 3 && !lower.includes('apa') && !lower.includes('bagaimana') && !lower.includes('kenapa');
+
+    if (!hasAction && !isShortCommand) return null; // Lanjut ke AI API
+
+    // Mapping Kata Kunci -> Respon Lokal
+    // Prioritas urutan pengecekan penting!
+    
+    // 1. Dashboard / Home
+    if (lower.includes('dashboard') || lower.includes('home') || lower.includes('beranda') || (lower.includes('halaman') && lower.includes('utama'))) {
+        return "Siap, kembali ke Dashboard Utama. [NAVIGATE:/app]";
+    }
+
+    // 2. Keuangan
+    if (lower.includes('keuangan') || lower.includes('anggaran') || lower.includes('apbdes') || lower.includes('bku') || lower.includes('kas')) {
+        return "Baik, saya bukakan modul **Keuangan Desa**. [NAVIGATE:/app/keuangan]";
+    }
+
+    // 3. Aset
+    if (lower.includes('aset') || lower.includes('inventaris') || lower.includes('barang') || lower.includes('kib')) {
+        return "Siap, menuju menu **Aset & Inventaris**. [NAVIGATE:/app/aset]";
+    }
+
+    // 4. Perangkat Desa / Pegawai
+    if (lower.includes('perangkat') || lower.includes('staf') || lower.includes('pegawai') || lower.includes('aparatur')) {
+        return "Membuka data **Perangkat Desa**. [NAVIGATE:/app/perangkat]";
+    }
+
+    // 5. Surat / SK / Arsip
+    if (lower.includes('surat') || lower.includes('sk') || lower.includes('arsip') || lower.includes('dokumen')) {
+        return "Membuka manajemen **Surat & SK**. [NAVIGATE:/app/manajemen-sk]";
+    }
+
+    // 6. Lembaga Desa (BPD, LPM, PKK, Karang Taruna)
+    if (lower.includes('bpd')) return "Membuka menu **BPD**. [NAVIGATE:/app/bpd]";
+    if (lower.includes('lpm')) return "Membuka menu **LPM**. [NAVIGATE:/app/lpm]";
+    if (lower.includes('pkk')) return "Membuka menu **PKK**. [NAVIGATE:/app/pkk]";
+    if (lower.includes('karang taruna') || lower.includes('pemuda')) return "Membuka menu **Karang Taruna**. [NAVIGATE:/app/karang-taruna]";
+
+    // 7. RT/RW & Penduduk
+    if (lower.includes('rt') || lower.includes('rw') || lower.includes('penduduk') || lower.includes('warga')) {
+        return "Menuju data **RT/RW & Kependudukan**. [NAVIGATE:/app/rt-rw]";
+    }
+
+    // 8. Laporan
+    if (lower.includes('laporan') || lower.includes('rekap')) {
+        return "Membuka pusat **Laporan**. [NAVIGATE:/app/laporan]";
+    }
+
+    // 9. Pengaturan
+    if (lower.includes('pengaturan') || lower.includes('setting') || lower.includes('konfigurasi')) {
+        return "Membuka halaman **Pengaturan Aplikasi**. [NAVIGATE:/app/pengaturan]";
+    }
+
+    // 10. Kalender
+    if (lower.includes('kalender') || lower.includes('agenda') || lower.includes('jadwal')) {
+        return "Membuka **Kalender Kegiatan**. [NAVIGATE:/app/kalender-kegiatan]";
+    }
+
+    return null; // Tidak ada keyword yang cocok, lempar ke AI API
+  };
+
+  // Fungsi Navigasi Pintar (Parsing Tag)
+  const handleSmartAction = (text) => {
+    const navRegex = /\[NAVIGATE:(.*?)\]/;
+    const match = text.match(navRegex);
+
+    if (match) {
+        const targetPath = match[1];
+        const cleanText = text.replace(navRegex, '').trim();
+        
+        // Eksekusi Navigasi Otomatis
+        setTimeout(() => {
+            navigate(targetPath);
+        }, 800); // Sedikit delay agar user sempat baca
+
+        return { cleanText, navigated: true, path: targetPath };
+    }
+    
+    return { cleanText: text, navigated: false };
+  };
+
+  // Generate Response (API Call)
+  const generateResponse = async (userText) => {
+    if (!currentApiKey) throw new Error("API_KEY_MISSING");
+
+    const pageContext = getPageContext(location.pathname);
+    
+    const DYNAMIC_SYSTEM_PROMPT = `
+${BASE_SYSTEM_INSTRUCTION}
+
+[KONTEKS USER]
+- Halaman Aktif: ${pageContext.title}
+- Role User: ${verifiedRole || 'User'}
+`;
+
+    const conversationHistory = messages
+      .filter(m => !m.isError && m.id !== 1 && !m.text.includes("Konfigurasi Tersimpan"))
+      .map(msg => ({
+        role: msg.sender === 'user' ? 'user' : 'assistant',
+        content: msg.text
+      }));
+
+    const fullMessages = [
+      { role: "system", content: DYNAMIC_SYSTEM_PROMPT },
+      ...conversationHistory,
+      { role: "user", content: userText }
+    ];
+
+    let lastError = null;
+
+    for (const modelName of CANDIDATE_MODELS) {
+      try {
+        setLoadingStatus(`Menghubungi model: ${modelName.split(':')[0]}...`);
+        
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${currentApiKey}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": window.location.origin, 
+            "X-Title": "Simpekdes AI",
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages: fullMessages,
+            temperature: 0.5,
+            max_tokens: 800,
+          })
+        });
+
+        if (!response.ok) {
+            if (response.status === 429 || response.status === 404 || response.status === 503) {
+                continue; 
             }
-
-            const data = await response.json();
-            
-            if (data.candidates && data.candidates[0].content) {
-                return data.candidates[0].content.parts[0].text;
-            } else {
-                // Respons sukses tapi kosong (mungkin terfilter safety), coba model lain
-                console.warn(`Respon kosong dari model ${model}, mencoba fallback...`);
-                continue;
-            }
-        } catch (error) {
-            console.error(`Gagal dengan model ${model}:`, error.message);
-            // Lanjut ke iterasi berikutnya (model selanjutnya)
+            throw new Error(`HTTP Error ${response.status}`);
         }
-    }
 
-    // Jika semua model gagal
-    return "Maaf, saat ini saya tidak dapat terhubung ke server kecerdasan buatan (Semua model sibuk). Mohon periksa koneksi internet Anda atau coba lagi beberapa saat lagi.";
+        const data = await response.json();
+        const aiText = data.choices?.[0]?.message?.content;
+        if (!aiText) throw new Error("Empty Response");
+        
+        return aiText; 
+        
+      } catch (err) {
+        lastError = err;
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+    throw lastError;
   };
 
-  const handleAskContext = (path) => {
-    const info = PAGE_KNOWLEDGE[path];
-    if (info) {
-      const tipsText = info.tips.map((tip, idx) => `• ${tip}`).join('\n');
-      setMessages(prev => [
-        ...prev, 
-        { id: Date.now(), text: "Bisa jelaskan fitur di halaman ini?", sender: 'user' },
-        { id: Date.now() + 1, text: `Tentu! Ini panduan untuk halaman ini:\n\n${tipsText}`, sender: 'bot' }
-      ]);
+  // --- MAIN HANDLER ---
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!inputText.trim()) return;
+
+    setErrorMsg(null);
+    setIsLocalResponse(false); // Reset status
+    
+    const userMessage = { id: Date.now(), text: inputText, sender: 'user', timestamp: new Date() };
+    setMessages(prev => [...prev, userMessage]);
+    setInputText("");
+    setIsLoading(true);
+
+    // 1. CEK INTENT LOKAL DULU (Prioritas Utama)
+    const localReply = checkLocalIntent(userMessage.text);
+
+    if (localReply) {
+        // Jika cocok dengan database lokal, langsung balas (simulasi delay berpikir)
+        setLoadingStatus("Memproses perintah navigasi...");
+        setIsLocalResponse(true);
+
+        setTimeout(() => {
+            const { cleanText, navigated, path } = handleSmartAction(localReply);
+            
+            setMessages(prev => [...prev, {
+                id: Date.now() + 1,
+                text: cleanText,
+                sender: 'ai',
+                timestamp: new Date(),
+                actionPath: navigated ? path : null,
+                isLocal: true // Menandai ini respon lokal
+            }]);
+            
+            setIsLoading(false);
+            setLoadingStatus("");
+        }, 600); // Delay 600ms agar terasa natural
+
+        return; // BERHENTI DI SINI, JANGAN PANGGIL API
     }
-  };
 
-  // --- LOGIC UTAMA: HYBRID (LOCAL + CLOUD) ---
-  const processQuery = async (userText) => {
-    const text = userText.toLowerCase();
-    let responseText = '';
-    let dataResults = [];
-    let actionResults = [];
-    let handledLocally = false;
-
-    setIsTyping(true);
-
+    // 2. JIKA TIDAK COCOK, BARU PANGGIL AI API
     try {
-      // 1. PRIORITAS TERTINGGI: NAVIGASI LOKAL (Cepat & Akurat)
-      if (APP_ROUTES.some(route => route.keywords.some(k => text.includes(k))) && (text.includes('buka') || text.includes('ke') || text.includes('lihat'))) {
-         const routeMatch = APP_ROUTES.find(route => route.keywords.some(k => text.includes(k)));
-         if (routeMatch) {
-            responseText = `Siap! Saya siapkan jalan pintas ke ${routeMatch.label}.`;
-            actionResults.push({
-                type: 'navigation',
-                label: `Buka ${routeMatch.label}`,
-                path: routeMatch.path,
-                action: () => { setIsOpen(false); navigate(routeMatch.path); }
-            });
-            handledLocally = true;
-         }
-      }
+      const rawResponse = await generateResponse(userMessage.text);
+      
+      const { cleanText, navigated, path } = handleSmartAction(rawResponse);
+      
+      const aiResponseMsg = {
+          id: Date.now() + 1,
+          text: cleanText,
+          sender: 'ai',
+          timestamp: new Date(),
+          actionPath: navigated ? path : null
+      };
 
-      // 2. PRIORITAS KEDUA: CARI DATA SPESIFIK (Privasi & Keamanan)
-      else if (text.includes('cari warga') || text.includes('penduduk') || text.includes('siapa')) {
-        const nameMatch = text.match(/bernama\s+(\w+)|cari\s+warga\s+(\w+)|siapa\s+(\w+)/);
-        const searchName = nameMatch ? (nameMatch[1] || nameMatch[2] || nameMatch[3]) : text.split(' ').pop();
-
-        if (searchName && searchName.length > 2) {
-            const q = query(
-                collection(db, "penduduk"), 
-                where("nama", ">=", searchName.toUpperCase()),
-                where("nama", "<=", searchName.toUpperCase() + '\uf8ff'),
-                limit(3)
-            );
-            const querySnapshot = await getDocs(q);
-            
-            if (!querySnapshot.empty) {
-                responseText = `Ditemukan ${querySnapshot.size} warga dengan nama "${searchName}":`;
-                dataResults = querySnapshot.docs.map(doc => ({ type: 'warga', data: doc.data() }));
-                handledLocally = true;
-            } else {
-                // Jika tidak ketemu di DB lokal, biarkan AI menjawab (mungkin user tanya tokoh publik)
-                handledLocally = false; 
-            }
-        }
-      } 
-      else if (text.includes('aset') || text.includes('barang')) {
-        const itemMatch = text.match(/aset\s+(\w+)|barang\s+(\w+)/);
-        const searchItem = itemMatch ? (itemMatch[1] || itemMatch[2]) : text.split(' ').pop();
-
-        if (searchItem && searchItem.length > 2) {
-             const q = query(
-                collection(db, "aset_desa"), 
-                where("nama_barang", ">=", searchItem), 
-                where("nama_barang", "<=", searchItem + '\uf8ff'),
-                limit(3)
-            );
-            const querySnapshot = await getDocs(q);
-
-             if (!querySnapshot.empty) {
-                responseText = `Berikut data aset "${searchItem}" yang ditemukan:`;
-                dataResults = querySnapshot.docs.map(doc => ({ type: 'aset', data: doc.data() }));
-                handledLocally = true;
-             }
-        }
-      }
-
-      // 3. JIKA BELUM DITANGANI LOKAL -> TANYA AI (GEN-AI)
-      if (!handledLocally) {
-          const currentPageContext = PAGE_KNOWLEDGE[location.pathname];
-          // Memastikan kita menunggu respon AI sebelum lanjut
-          const aiResponse = await callGeminiAI(userText, currentPageContext);
-          responseText = aiResponse;
-      }
+      setMessages(prev => [...prev, aiResponseMsg]);
 
     } catch (error) {
-        console.error("System Error:", error);
-        responseText = "Maaf, sistem sedang mengalami gangguan.";
+      console.error("AI Error Full:", error);
+      let friendlyError = "Semua model AI sedang sibuk. Mohon coba lagi nanti.";
+      let isKeyError = false;
+
+      if (error.message === "API_KEY_MISSING") {
+        friendlyError = "API Key belum disetting. Silakan atur di menu Pengaturan.";
+        isKeyError = true;
+      } else if (error.message.includes("401")) {
+        friendlyError = "API Key tidak valid/kadaluarsa.";
+        isKeyError = true;
+      }
+
+      setErrorMsg(friendlyError);
+      setMessages(prev => [...prev, { id: Date.now() + 1, text: `⚠️ **Gagal:** ${friendlyError}`, sender: 'ai', isError: true, timestamp: new Date() }]);
+
+      if (isKeyError && canAccessSettings) {
+        setTimeout(() => setShowSettings(true), 1500);
+      }
+    } finally {
+      setIsLoading(false);
+      setLoadingStatus("");
     }
-
-    // Tampilkan Jawaban
-    setMessages(prev => [
-      ...prev, 
-      { id: Date.now(), text: responseText, sender: 'bot', results: dataResults, actions: actionResults }
-    ]);
-    setIsTyping(false);
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!input.trim()) return;
-    setMessages(prev => [...prev, { id: Date.now(), text: input, sender: 'user' }]);
-    const queryText = input;
-    setInput('');
-    processQuery(queryText);
+  // --- STYLING CLASSES ---
+  const themeClasses = {
+      container: isDarkMode 
+        ? "bg-slate-900/95 border-slate-700 shadow-2xl shadow-black/50" 
+        : "bg-white/95 border-white/50 shadow-2xl shadow-indigo-900/10",
+      header: isDarkMode
+        ? "bg-gradient-to-r from-slate-950 to-slate-900 border-b border-slate-800"
+        : "bg-gradient-to-r from-indigo-600 to-purple-600",
+      body: isDarkMode ? "bg-slate-950" : "bg-slate-50",
+      textMain: isDarkMode ? "text-slate-100" : "text-slate-800",
+      textSub: isDarkMode ? "text-slate-400" : "text-purple-100",
+      inputBg: isDarkMode ? "bg-slate-900 text-white border-slate-700 focus:border-indigo-500" : "bg-white text-gray-800 border-gray-200 focus:border-indigo-500",
+      userBubble: "bg-gradient-to-br from-indigo-600 to-blue-600 text-white shadow-lg shadow-indigo-900/20",
+      aiBubble: isDarkMode ? "bg-slate-800 border border-slate-700 text-slate-200 shadow-sm" : "bg-white border border-gray-100 text-gray-700 shadow-sm",
+      localBadge: isDarkMode ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-emerald-50 text-emerald-600 border-emerald-200"
   };
 
+  // --- RENDER ---
   return (
-    <>
-        {/* Toggle Button */}
-        <button
-            onClick={() => setIsOpen(!isOpen)}
-            className="fixed bottom-6 right-6 z-[1000] p-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-300 flex items-center gap-2 group ring-4 ring-white/50"
+    <div className={`fixed bottom-6 right-6 z-[9999] flex flex-col items-end pointer-events-none font-sans transition-all duration-300`}>
+      
+      {/* WINDOW UTAMA */}
+      <div className={`
+          pointer-events-auto backdrop-blur-md border rounded-2xl overflow-hidden flex flex-col
+          transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] origin-bottom-right
+          ${isOpen ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-75 translate-y-20 pointer-events-none'}
+          ${isMinimized ? 'w-72 h-14 rounded-full' : 'w-[90vw] sm:w-[400px] h-[600px] max-h-[85vh]'}
+          ${themeClasses.container}
+        `}
+      >
+        {/* HEADER */}
+        <div 
+          className={`relative p-4 flex items-center justify-between cursor-pointer shrink-0 ${themeClasses.header}`}
+          onClick={() => !isMinimized ? null : setIsMinimized(false)}
         >
-            {isOpen ? <ChevronDownIcon size={24} /> : <BotIcon size={28} />}
-            <span className={`max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-500 whitespace-nowrap font-medium ${isOpen ? 'hidden' : 'block'}`}>
-                Asisten Admin
-            </span>
-        </button>
+          <div className="flex items-center gap-3 relative z-10">
+            <div className="relative group">
+              <div className="w-9 h-9 bg-white/10 rounded-xl flex items-center justify-center backdrop-blur-md border border-white/20 shadow-inner">
+                <Sparkles size={18} className="text-yellow-300 drop-shadow-md animate-pulse" />
+              </div>
+              <div className={`absolute -bottom-1 -right-1 w-2.5 h-2.5 border-2 border-transparent rounded-full shadow-sm ${errorMsg ? 'bg-red-500' : 'bg-green-400 animate-pulse'}`}></div>
+            </div>
+            <div className="flex flex-col">
+              <h3 className="font-bold text-white text-sm tracking-wide">Asisten Desa</h3>
+              <div className="flex items-center gap-1.5 opacity-80">
+                 <MapPin size={10} className="text-white" />
+                 <p className="text-[10px] text-white truncate max-w-[150px]">
+                    {getPageContext(location.pathname).title}
+                 </p>
+              </div>
+            </div>
+          </div>
 
-        {/* Chat Window */}
-        <div className={`fixed bottom-24 right-4 md:right-6 w-[90vw] md:w-96 max-h-[80vh] bg-white rounded-2xl shadow-2xl z-[1000] flex flex-col transition-all duration-300 transform origin-bottom-right border border-gray-200 ${
-            isOpen ? 'scale-100 opacity-100' : 'scale-0 opacity-0 pointer-events-none'
-        }`}>
-            {/* Header */}
-            <div className="p-4 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-t-2xl flex justify-between items-center text-white shadow-md">
-                <div className="flex items-center gap-3">
-                    <div className="bg-white/20 p-2 rounded-full backdrop-blur-sm border border-white/30">
-                        <BotIcon size={20} />
-                    </div>
-                    <div>
-                        <h3 className="font-bold text-sm tracking-wide">Smart AI Assistant</h3>
-                        <p className="text-[10px] text-blue-100 opacity-90 flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span> Gemini Powered
-                        </p>
-                    </div>
-                </div>
-                <button onClick={() => setIsOpen(false)} className="hover:bg-white/20 p-1.5 rounded-lg transition">
-                    <XIcon size={18} />
+          <div className="flex items-center gap-1 relative z-10">
+            <button 
+                onClick={toggleTheme} 
+                className="p-1.5 hover:bg-white/10 rounded-full text-white transition-all" 
+                title={isDarkMode ? "Mode Terang" : "Mode Gelap"}
+            >
+                {isDarkMode ? <Sun size={14} /> : <Moon size={14} />}
+            </button>
+
+            {canAccessSettings && (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); }} 
+                  className={`p-1.5 rounded-full transition-all ${showSettings ? 'bg-white/20 rotate-90 text-white' : 'hover:bg-white/10 text-white'}`}
+                  title="Pengaturan API Key"
+                >
+                  <Settings size={14} />
                 </button>
-            </div>
+            )}
 
-            {/* Chat Body */}
-            <div className="flex-1 h-96 overflow-y-auto p-4 space-y-4 bg-slate-50 custom-scrollbar">
-                {messages.map((msg) => (
-                    <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-                        {/* Bubble Chat */}
-                        <div className={`max-w-[85%] p-3.5 rounded-2xl text-sm shadow-sm leading-relaxed whitespace-pre-line ${
-                            msg.sender === 'user' 
-                                ? 'bg-indigo-600 text-white rounded-br-none' 
-                                : 'bg-white text-slate-700 border border-slate-200 rounded-bl-none'
-                        }`}>
-                            {/* Render Markdown-like text sederhana */}
-                            {msg.text.split('\n').map((line, i) => (
-                                <span key={i} className="block min-h-[1em]">{line}</span>
-                            ))}
-                        </div>
-                        
-                        {/* Action Buttons (Navigasi / Saran) */}
-                        {msg.actions && msg.actions.length > 0 && (
-                            <div className="mt-2 w-[85%] space-y-2">
-                                {msg.actions.map((action, idx) => (
-                                    <button 
-                                        key={idx}
-                                        onClick={action.action}
-                                        className={`w-full flex items-center justify-between p-2.5 rounded-xl border transition-all text-xs font-semibold group ${
-                                            action.type === 'suggestion' 
-                                            ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
-                                            : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            {action.type === 'suggestion' ? <HelpCircleIcon size={14} /> : <ExternalLinkIcon size={14} />}
-                                            <span>{action.label}</span>
-                                        </div>
-                                        <ChevronDownIcon size={14} className="transform -rotate-90 opacity-50 group-hover:translate-x-1 transition-transform"/>
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* Data Results (Warga/Aset) - Hanya jika pencarian lokal berhasil */}
-                        {msg.results && msg.results.length > 0 && (
-                            <div className="mt-3 w-full max-w-[95%] space-y-2">
-                                {msg.results.map((res, idx) => (
-                                    <div key={idx} className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm text-xs hover:border-indigo-300 transition-all cursor-default relative overflow-hidden group">
-                                        <div className={`absolute top-0 left-0 w-1 h-full ${res.type === 'warga' ? 'bg-indigo-500' : 'bg-emerald-500'}`}></div>
-                                        {res.type === 'warga' && (
-                                            <div className="pl-2 flex flex-col gap-1">
-                                                <div className="font-bold text-indigo-700 text-sm">{res.data.nama}</div>
-                                                <div className="text-slate-500 flex justify-between border-b border-slate-50 pb-1 mb-1">
-                                                    <span>NIK: {res.data.nik}</span>
-                                                </div>
-                                                <div className="text-slate-500 truncate">{res.data.alamat}</div>
-                                            </div>
-                                        )}
-                                        {res.type === 'aset' && (
-                                            <div className="pl-2 flex flex-col gap-1">
-                                                <div className="font-bold text-emerald-700 text-sm">{res.data.nama_barang}</div>
-                                                <div className="text-slate-500 text-[10px]">Kode: {res.data.kode_barang}</div>
-                                                <div className="flex justify-between mt-1 items-center pt-1">
-                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${res.data.kondisi === 'Baik' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{res.data.kondisi}</span>
-                                                    <span className="font-bold text-slate-700">{res.data.jumlah} Unit</span>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                ))}
-                
-                {isTyping && (
-                    <div className="flex items-start animate-pulse">
-                         <div className="bg-white p-3 rounded-2xl rounded-bl-none border border-slate-200 shadow-sm flex items-center gap-2">
-                            <Loader2Icon className="w-4 h-4 animate-spin text-indigo-500" />
-                            <span className="text-xs text-slate-400 font-medium">Sedang berpikir...</span>
-                        </div>
-                    </div>
-                )}
-                <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input Area */}
-            <form onSubmit={handleSubmit} className="p-3 border-t border-slate-100 bg-white rounded-b-2xl">
-                <div className="flex items-center gap-2 bg-slate-100 p-2 rounded-xl focus-within:ring-2 focus-within:ring-indigo-100 focus-within:bg-white transition-all border border-transparent focus-within:border-indigo-200 shadow-inner">
-                    <input
-                        type="text"
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        placeholder="Ketik pertanyaan apa saja..."
-                        className="flex-1 bg-transparent border-none outline-none text-sm px-2 text-slate-700 placeholder-slate-400"
-                    />
-                    <button 
-                        type="submit" 
-                        disabled={!input.trim()}
-                        className={`p-2.5 rounded-lg transition-all duration-200 flex-shrink-0 ${
-                            input.trim() 
-                            ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md transform hover:scale-105' 
-                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                        }`}
-                    >
-                        <SendIcon size={16} />
-                    </button>
-                </div>
-            </form>
+            <button onClick={(e) => { e.stopPropagation(); setIsMinimized(!isMinimized); }} className="p-1.5 hover:bg-white/10 rounded-full text-white">
+              {isMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); setIsOpen(false); }} className="p-1.5 hover:bg-red-500/80 rounded-full text-white">
+              <X size={14} />
+            </button>
+          </div>
         </div>
-    </>
+
+        {/* SETTINGS PANEL */}
+        {showSettings && !isMinimized && canAccessSettings && (
+           <div className={`flex-1 p-6 flex flex-col items-center justify-center text-center space-y-5 animate-in fade-in zoom-in duration-300 ${themeClasses.body}`}>
+             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg mb-2 ${isDarkMode ? 'bg-indigo-900/50 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>
+                <Key size={28} />
+             </div>
+             <div>
+                <h4 className={`font-bold text-lg ${themeClasses.textMain}`}>API Key Configuration</h4>
+                <p className={`text-xs mt-1 ${themeClasses.textSub}`}>Konfigurasi API Key OpenRouter.</p>
+             </div>
+             
+             <div className="w-full text-left bg-blue-500/10 border border-blue-500/20 p-3 rounded-xl flex gap-3">
+                <ShieldCheck size={18} className="text-blue-500 shrink-0 mt-0.5" />
+                <div className="text-[10px] text-blue-400/90 leading-relaxed">
+                    API Key Default telah tertanam. Gunakan key pribadi hanya jika limit harian habis.
+                </div>
+             </div>
+
+             <form onSubmit={(e) => { e.preventDefault(); handleSaveKey(e.target.keyInput.value); }} className="w-full space-y-3">
+               <input 
+                 name="keyInput"
+                 defaultValue={currentApiKey === defaultEnvKey ? "" : currentApiKey}
+                 placeholder="Kosongkan untuk reset ke Default"
+                 className={`w-full px-4 py-3 rounded-xl text-sm font-mono outline-none border transition-all ${themeClasses.inputBg}`}
+                 type="password"
+               />
+               <div className="flex gap-2">
+                 <button type="button" onClick={() => setShowSettings(false)} className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-colors ${isDarkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Batal</button>
+                 <button type="submit" className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-lg hover:shadow-indigo-500/20 transition-all">Simpan</button>
+               </div>
+             </form>
+           </div>
+        )}
+
+        {/* CHAT AREA */}
+        {!isMinimized && !showSettings && (
+          <>
+            <div className={`flex-1 overflow-y-auto p-4 space-y-5 scroll-smooth ${themeClasses.body}`}>
+              
+              {errorMsg && (
+                 <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-xl flex gap-2 text-xs text-red-500 items-start animate-in slide-in-from-top-2">
+                   <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                   <span>{errorMsg}</span>
+                 </div>
+              )}
+
+              {messages.map((msg) => (
+                <div key={msg.id} className={`flex items-end gap-2 group ${msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                  <div className={`
+                    w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-sm transition-transform duration-300 group-hover:-translate-y-1
+                    ${msg.sender === 'user' ? 'bg-indigo-500 text-white' : (isDarkMode ? 'bg-slate-800 text-indigo-400 border border-slate-700' : 'bg-white text-indigo-600 border border-gray-100')}
+                  `}>
+                    {msg.sender === 'user' ? <User size={14} /> : (msg.isLocal ? <Zap size={16} className="text-yellow-400" /> : <Bot size={16} />)}
+                  </div>
+
+                  <div className={`
+                    max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed relative group-hover:shadow-md transition-shadow
+                    ${msg.sender === 'user' ? `${themeClasses.userBubble} rounded-br-none` : `${themeClasses.aiBubble} rounded-bl-none`}
+                  `}>
+                      <ReactMarkdown components={{
+                        strong: ({node, ...props}) => <span className="font-bold text-indigo-400" {...props} />,
+                        ul: ({node, ...props}) => <ul className="list-disc pl-4 my-2 opacity-90" {...props} />,
+                        a: ({node, ...props}) => <a className="text-blue-400 hover:underline cursor-pointer" {...props} />
+                      }}>
+                        {msg.text}
+                      </ReactMarkdown>
+                      
+                      {msg.actionPath && (
+                          <button 
+                            onClick={() => navigate(msg.actionPath)}
+                            className="mt-3 flex items-center gap-2 px-3 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-lg text-xs font-medium text-indigo-400 transition-colors w-full group/btn"
+                          >
+                             <Navigation size={12} />
+                             <span>Buka Halaman Ini</span>
+                             <ChevronRight size={12} className="ml-auto group-hover/btn:translate-x-1 transition-transform" />
+                          </button>
+                      )}
+
+                      <div className={`text-[9px] mt-1.5 opacity-50 flex items-center gap-1 ${msg.sender === 'user' ? 'justify-end text-white' : (isDarkMode ? 'text-slate-400' : 'text-gray-400')}`}>
+                        {msg.isLocal && <span className="flex items-center gap-0.5 mr-2 text-emerald-500"><Zap size={8} /> Offline Mode</span>}
+                        {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                  </div>
+                </div>
+              ))}
+              
+              {isLoading && (
+                <div className="flex flex-col gap-1 ml-1">
+                    <div className={`px-3 py-2 rounded-2xl rounded-bl-none shadow-sm w-fit ${themeClasses.aiBubble}`}>
+                        <div className="flex gap-1">
+                            <span className={`w-1.5 h-1.5 rounded-full animate-bounce [animation-delay:-0.3s] ${isLocalResponse ? 'bg-emerald-400' : 'bg-indigo-400'}`}></span>
+                            <span className={`w-1.5 h-1.5 rounded-full animate-bounce [animation-delay:-0.15s] ${isLocalResponse ? 'bg-emerald-400' : 'bg-indigo-400'}`}></span>
+                            <span className={`w-1.5 h-1.5 rounded-full animate-bounce ${isLocalResponse ? 'bg-emerald-400' : 'bg-indigo-400'}`}></span>
+                        </div>
+                    </div>
+                    {loadingStatus && (
+                        <span className="text-[9px] text-gray-400 ml-1 flex items-center gap-1 animate-pulse">
+                            {isLocalResponse ? <Zap size={8} className="text-emerald-500" /> : <RefreshCcw size={8} />} {loadingStatus}
+                        </span>
+                    )}
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* INPUT AREA */}
+            <div className={`p-3 border-t shrink-0 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-100'}`}>
+              <form onSubmit={handleSendMessage} className="relative">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  placeholder="Ketik perintah... (Contoh: 'Keuangan', 'Buka Aset')"
+                  className={`w-full pl-4 pr-12 py-3.5 rounded-xl text-sm outline-none border transition-all ${themeClasses.inputBg} ${isDarkMode ? 'placeholder-slate-500' : 'placeholder-gray-400'}`}
+                  disabled={isLoading}
+                />
+                <button 
+                    type="submit" 
+                    disabled={!inputText.trim() || isLoading} 
+                    className={`absolute right-2 top-2 p-1.5 rounded-lg transition-all ${!inputText.trim() ? 'opacity-50 cursor-not-allowed text-gray-400' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md'}`}
+                >
+                  {isLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={18} />}
+                </button>
+              </form>
+              <div className={`text-[9px] text-center mt-2 flex justify-center items-center gap-1 ${themeClasses.textSub}`}>
+                 <Sparkles size={8} /> AI Simpekdes • {isDarkMode ? 'Mode Malam' : 'Mode Terang'}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* FLOATING TRIGGER BUTTON */}
+      <button 
+        onClick={() => { setIsOpen(!isOpen); setIsMinimized(false); }} 
+        className={`
+            pointer-events-auto mt-6 relative group
+            w-16 h-16 rounded-full shadow-2xl flex items-center justify-center transform transition-all duration-500 hover:scale-110 active:scale-95 z-50
+            ${isOpen 
+                ? (isDarkMode ? 'bg-slate-700 text-slate-300 rotate-90' : 'bg-gray-800 text-gray-300 rotate-90') 
+                : 'bg-gradient-to-tr from-indigo-600 to-purple-600 text-white'}
+        `}
+      >
+        {!isOpen && (
+            <>
+                <span className="absolute inset-0 rounded-full bg-indigo-500 opacity-75 animate-ping"></span>
+                <span className="absolute -inset-1 rounded-full bg-gradient-to-tr from-indigo-400 to-purple-400 opacity-30 blur-md animate-pulse"></span>
+            </>
+        )}
+        <div className="relative z-10">
+            {isOpen ? <X size={28} /> : <MessageSquare size={28} className="fill-current" />}
+        </div>
+      </button>
+    </div>
   );
 };
 

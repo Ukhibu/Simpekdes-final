@@ -63,7 +63,14 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isAdminKecamatan(); // Hanya camat buat akun
-      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdminKecamatan());
+      
+      // PERBAIKAN PENTING:
+      // Mencegah user biasa mengubah 'role' atau 'desa' mereka sendiri untuk menjadi admin_kecamatan.
+      // User hanya boleh update profil sendiri JIKA tidak menyentuh field 'role' dan 'desa'.
+      allow update: if isAdminKecamatan() || 
+                    (isAuthenticated() && request.auth.uid == userId && 
+                     !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'desa']));
+      
       allow delete: if isAdminKecamatan();
     }
 
@@ -76,6 +83,7 @@ service cloud.firestore {
     }
 
     // 3. PENGATURAN & BRANDING
+    // Menjaga agar pengaturan global (termasuk jika nanti API Key disimpan di DB) aman
     match /settings/{settingId} {
       allow read: if isAuthenticated();
       allow write: if isAdminKecamatan();

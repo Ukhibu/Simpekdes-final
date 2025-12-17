@@ -16,7 +16,8 @@ import Button from '../components/common/Button';
 const StatCard = ({ icon, title, value, colorClass, gradientFrom, gradientTo }) => (
     <div className="relative overflow-hidden bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all duration-300 group">
         <div className={`absolute top-0 right-0 w-32 h-32 -mr-8 -mt-8 rounded-full opacity-10 bg-gradient-to-br ${gradientFrom} ${gradientTo} blur-2xl transition-transform group-hover:scale-150 duration-700`}></div>
-        <div className="flex items-center justify-between relative z-10">
+        {/* PERBAIKAN: Menghapus class 'z-10' agar tidak menutupi header saat scroll */}
+        <div className="flex items-center justify-between relative">
             <div>
                 <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{title}</p>
                 <h3 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">{value}</h3>
@@ -37,7 +38,8 @@ const QuickAccessCard = ({ icon, title, path, count, colorClass, gradientClass }
         >
             <div className={`absolute top-0 right-0 w-20 h-20 -mr-5 -mt-5 rounded-full opacity-5 ${colorClass} group-hover:scale-150 transition-transform duration-500`}></div>
             
-            <div className="flex flex-col h-full justify-between relative z-10">
+            {/* PERBAIKAN: Menghapus class 'z-10' agar tidak menutupi header saat scroll */}
+            <div className="flex flex-col h-full justify-between relative">
                 <div className="flex items-start justify-between mb-4">
                     <div className={`p-3 rounded-xl ${gradientClass} text-white shadow-md transform group-hover:scale-110 transition-transform duration-300`}>
                         {icon}

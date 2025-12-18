@@ -532,7 +532,7 @@ ${BASE_SYSTEM_INSTRUCTION}
             </div>
             <div className="flex flex-col">
               <h3 className="font-bold text-white text-sm tracking-wide flex items-center gap-2">
-                 Asisten Desa <Move size={10} className="opacity-50" />
+                 Asisten Admin <Move size={10} className="opacity-50" />
               </h3>
               <div className="flex items-center gap-1.5 opacity-80">
                  <MapPin size={10} className="text-white" />

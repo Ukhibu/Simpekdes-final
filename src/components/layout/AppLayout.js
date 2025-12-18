@@ -41,6 +41,7 @@ const getPageContext = (pathname) => {
             case pathname.startsWith('/app/karang-taruna/kegiatan'): return { module: 'organisasi', subModule: 'karang_taruna', title: 'Kegiatan Karang Taruna' };
             case pathname.startsWith('/app/karang-taruna'): return { module: 'organisasi', subModule: 'karang_taruna', title: 'Dashboard Karang Taruna' };
             
+            // RT/RW
             case pathname.startsWith('/app/rt-rw/rt'): return { module: 'organisasi', subModule: 'rt_rw', title: 'Manajemen Data RT' };
             case pathname.startsWith('/app/rt-rw/rw'): return { module: 'organisasi', subModule: 'rt_rw', title: 'Manajemen Data RW' };
             case pathname.startsWith('/app/rt-rw/rekapitulasi'): return { module: 'organisasi', subModule: 'rt_rw', title: 'Rekapitulasi RT/RW' };
@@ -88,7 +89,7 @@ const getPageContext = (pathname) => {
     
     // Modul Pemerintahan (Default)
     switch (pathname) {
-        case '/app': return { module: 'perangkat', title: 'Dashboard' };
+        case '/app': return { module: 'perangkat', title: 'Dashboard Utama' };
         case '/app/perangkat': return { module: 'perangkat', title: 'Manajemen Data Perangkat' };
         case '/app/histori-perangkat': return { module: 'perangkat', title: 'Riwayat Purna Tugas' };
         case '/app/rekapitulasi-aparatur': return { module: 'perangkat', title: 'Rekapitulasi Aparatur' };
@@ -96,7 +97,7 @@ const getPageContext = (pathname) => {
         case '/app/manajemen-admin': return { module: 'perangkat', title: 'Manajemen Admin Desa' };
         case '/app/pengaturan': return { module: 'perangkat', title: 'Pengaturan Aplikasi' };
         case '/app/kalender-kegiatan': return { module: 'perangkat', title: 'Kalender Kegiatan' };
-        default: return { module: 'perangkat', title: 'Dashboard' };
+        default: return { module: 'umum', title: 'Halaman Umum' };
     }
 };
 
@@ -130,14 +131,20 @@ const AppLayout = () => {
                 onProfileClick={() => setIsProfileModalOpen(true)}
             />
             
-            <div className="flex-1 flex flex-col md:ml-20 lg:ml-64 transition-all duration-300 ease-in-out">
+            <div className="flex-1 flex flex-col md:ml-20 lg:ml-64 transition-all duration-300 ease-in-out relative">
                 <Header 
                     pageTitle={title} 
                     onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} 
                     onProfileClick={() => setIsProfileModalOpen(true)}
                 />
                 
-                <main className="flex-grow p-4 md:p-8">
+                {/* PERBAIKAN PENTING:
+                   Menambahkan 'pb-32' (Padding Bottom yang besar) pada main content.
+                   Ini memastikan konten halaman (seperti tabel paling bawah) bisa di-scroll
+                   melewati area floating button AI Assistant, sehingga tombol aksi tabel
+                   tidak pernah tertutup dan tetap bisa di-hover/klik.
+                */}
+                <main className="flex-grow p-4 md:p-8 pb-32">
                     <Outlet />
                 </main>
             </div>
@@ -150,8 +157,15 @@ const AppLayout = () => {
                 />
             )}
 
-            {/* 2. Smart Village AI Assistant (Floating) - Muncul di atas elemen lain */}
-            <AIAssistant />
+            {/* 2. Smart Village AI Assistant (Floating) 
+               Dibungkus dalam div dengan 'pointer-events-none' dan 'z-[50]'.
+               Ini memastikan container layout AI tidak memblokir interaksi mouse
+               pada elemen aplikasi di belakangnya. Interaksi hanya aktif pada
+               komponen AI itu sendiri (yang sudah diatur pointer-events-auto di dalamnya).
+            */}
+            <div className="fixed inset-0 pointer-events-none z-[50]">
+                <AIAssistant />
+            </div>
         </div>
     );
 };

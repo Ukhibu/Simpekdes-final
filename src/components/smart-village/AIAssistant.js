@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   MessageSquare, X, Send, Sparkles, User, Bot, Loader2, 
   Minimize2, Maximize2, AlertCircle, Key, Settings, ShieldCheck, 
-  MapPin, Moon, Sun, ChevronRight, Navigation, RefreshCcw, Zap
+  MapPin, Moon, Sun, ChevronRight, Navigation, RefreshCcw, Zap, Move
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -162,7 +162,14 @@ const AIAssistant = () => {
   // State untuk Role yang divalidasi
   const [verifiedRole, setVerifiedRole] = useState(null);
 
-  // State Logic
+  // --- STATE UNTUK DRAGGABLE (FITUR BARU) ---
+  const [position, setPosition] = useState({ x: 0, y: 0 }); // Posisi Offset
+  const isDragging = useRef(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+  const startPos = useRef({ x: 0, y: 0 });
+  const hasMoved = useRef(false);
+
+  // State Logic Chat
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -175,7 +182,7 @@ const AIAssistant = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState(""); 
   const [errorMsg, setErrorMsg] = useState(null);
-  const [isLocalResponse, setIsLocalResponse] = useState(false); // Indikator jika respon dari lokal
+  const [isLocalResponse, setIsLocalResponse] = useState(false); 
   
   // API Key Management
   const defaultEnvKey = process.env.REACT_APP_OpenRouter_API_KEY || "";
@@ -215,6 +222,66 @@ const AIAssistant = () => {
   useEffect(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), [messages, isOpen, isLoading]);
   useEffect(() => { if (isOpen && !isMinimized && !showSettings) inputRef.current?.focus(); }, [isOpen, isMinimized]);
 
+  // --- LOGIKA DRAGGABLE HANDLERS ---
+  const handleDragStart = (e) => {
+    // Hanya bereaksi pada klik kiri atau touch
+    if (e.type === 'mousedown' && e.button !== 0) return;
+
+    isDragging.current = true;
+    hasMoved.current = false;
+    
+    const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+    const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+    
+    dragStart.current = { x: clientX, y: clientY };
+    startPos.current = { ...position };
+
+    // Mencegah seleksi teks saat dragging
+    document.body.style.userSelect = 'none';
+  };
+
+  useEffect(() => {
+    const handleDragging = (e) => {
+        if (!isDragging.current) return;
+
+        const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+        const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+
+        const dx = clientX - dragStart.current.x;
+        const dy = clientY - dragStart.current.y;
+
+        // Jika bergerak lebih dari 5px, anggap sebagai drag (bukan klik)
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+            hasMoved.current = true;
+        }
+
+        setPosition({
+            x: startPos.current.x + dx,
+            y: startPos.current.y + dy
+        });
+    };
+
+    const handleDragEnd = () => {
+        if (isDragging.current) {
+            isDragging.current = false;
+            document.body.style.userSelect = '';
+        }
+    };
+
+    // Pasang listener di window agar drag tidak lepas saat mouse keluar elemen
+    window.addEventListener('mousemove', handleDragging);
+    window.addEventListener('mouseup', handleDragEnd);
+    window.addEventListener('touchmove', handleDragging);
+    window.addEventListener('touchend', handleDragEnd);
+
+    return () => {
+        window.removeEventListener('mousemove', handleDragging);
+        window.removeEventListener('mouseup', handleDragEnd);
+        window.removeEventListener('touchmove', handleDragging);
+        window.removeEventListener('touchend', handleDragEnd);
+    };
+  }, []);
+
   // Fungsi Toggle Tema
   const toggleTheme = (e) => {
     e.stopPropagation();
@@ -242,80 +309,51 @@ const AIAssistant = () => {
   };
 
   // --- LOGIKA CERDAS LOKAL (OFFLINE NAVIGATION) ---
-  // Ini adalah fungsi pengganti API untuk navigasi dasar
   const checkLocalIntent = (text) => {
     const lower = text.toLowerCase().trim();
-    
-    // Kata kerja pemicu (optional jika user cuma ketik "Keuangan")
     const actionWords = ['buka', 'lihat', 'pergi', 'tuju', 'akses', 'menu', 'tampilkan', 'ke'];
-    
-    // Cek apakah kalimat mengandung kata kerja ATAU kalimatnya sangat pendek (<= 3 kata)
-    // Contoh: "Keuangan" (1 kata) -> dianggap perintah buka menu
-    // Contoh: "Apa itu keuangan?" (3 kata) -> ada kata tanya "apa", ini bukan navigasi
     const words = lower.split(' ');
     const hasAction = actionWords.some(w => lower.includes(w));
     const isShortCommand = words.length <= 3 && !lower.includes('apa') && !lower.includes('bagaimana') && !lower.includes('kenapa');
 
-    if (!hasAction && !isShortCommand) return null; // Lanjut ke AI API
+    if (!hasAction && !isShortCommand) return null; 
 
-    // Mapping Kata Kunci -> Respon Lokal
-    // Prioritas urutan pengecekan penting!
-    
-    // 1. Dashboard / Home
     if (lower.includes('dashboard') || lower.includes('home') || lower.includes('beranda') || (lower.includes('halaman') && lower.includes('utama'))) {
         return "Siap, kembali ke Dashboard Utama. [NAVIGATE:/app]";
     }
-
-    // 2. Keuangan
     if (lower.includes('keuangan') || lower.includes('anggaran') || lower.includes('apbdes') || lower.includes('bku') || lower.includes('kas')) {
         return "Baik, saya bukakan modul **Keuangan Desa**. [NAVIGATE:/app/keuangan]";
     }
-
-    // 3. Aset
     if (lower.includes('aset') || lower.includes('inventaris') || lower.includes('barang') || lower.includes('kib')) {
         return "Siap, menuju menu **Aset & Inventaris**. [NAVIGATE:/app/aset]";
     }
-
-    // 4. Perangkat Desa / Pegawai
     if (lower.includes('perangkat') || lower.includes('staf') || lower.includes('pegawai') || lower.includes('aparatur')) {
         return "Membuka data **Perangkat Desa**. [NAVIGATE:/app/perangkat]";
     }
-
-    // 5. Surat / SK / Arsip
     if (lower.includes('surat') || lower.includes('sk') || lower.includes('arsip') || lower.includes('dokumen')) {
         return "Membuka manajemen **Surat & SK**. [NAVIGATE:/app/manajemen-sk]";
     }
-
-    // 6. Lembaga Desa (BPD, LPM, PKK, Karang Taruna)
     if (lower.includes('bpd')) return "Membuka menu **BPD**. [NAVIGATE:/app/bpd]";
     if (lower.includes('lpm')) return "Membuka menu **LPM**. [NAVIGATE:/app/lpm]";
     if (lower.includes('pkk')) return "Membuka menu **PKK**. [NAVIGATE:/app/pkk]";
     if (lower.includes('karang taruna') || lower.includes('pemuda')) return "Membuka menu **Karang Taruna**. [NAVIGATE:/app/karang-taruna]";
-
-    // 7. RT/RW & Penduduk
     if (lower.includes('rt') || lower.includes('rw') || lower.includes('penduduk') || lower.includes('warga')) {
         return "Menuju data **RT/RW & Kependudukan**. [NAVIGATE:/app/rt-rw]";
     }
-
-    // 8. Laporan
     if (lower.includes('laporan') || lower.includes('rekap')) {
         return "Membuka pusat **Laporan**. [NAVIGATE:/app/laporan]";
     }
-
-    // 9. Pengaturan
     if (lower.includes('pengaturan') || lower.includes('setting') || lower.includes('konfigurasi')) {
         return "Membuka halaman **Pengaturan Aplikasi**. [NAVIGATE:/app/pengaturan]";
     }
-
-    // 10. Kalender
     if (lower.includes('kalender') || lower.includes('agenda') || lower.includes('jadwal')) {
         return "Membuka **Kalender Kegiatan**. [NAVIGATE:/app/kalender-kegiatan]";
     }
 
-    return null; // Tidak ada keyword yang cocok, lempar ke AI API
+    return null;
   };
 
-  // Fungsi Navigasi Pintar (Parsing Tag)
+  // Fungsi Navigasi Pintar
   const handleSmartAction = (text) => {
     const navRegex = /\[NAVIGATE:(.*?)\]/;
     const match = text.match(navRegex);
@@ -323,27 +361,19 @@ const AIAssistant = () => {
     if (match) {
         const targetPath = match[1];
         const cleanText = text.replace(navRegex, '').trim();
-        
-        // Eksekusi Navigasi Otomatis
-        setTimeout(() => {
-            navigate(targetPath);
-        }, 800); // Sedikit delay agar user sempat baca
-
+        setTimeout(() => { navigate(targetPath); }, 800); 
         return { cleanText, navigated: true, path: targetPath };
     }
-    
     return { cleanText: text, navigated: false };
   };
 
-  // Generate Response (API Call)
+  // Generate Response
   const generateResponse = async (userText) => {
     if (!currentApiKey) throw new Error("API_KEY_MISSING");
 
     const pageContext = getPageContext(location.pathname);
-    
     const DYNAMIC_SYSTEM_PROMPT = `
 ${BASE_SYSTEM_INSTRUCTION}
-
 [KONTEKS USER]
 - Halaman Aktif: ${pageContext.title}
 - Role User: ${verifiedRole || 'User'}
@@ -351,10 +381,7 @@ ${BASE_SYSTEM_INSTRUCTION}
 
     const conversationHistory = messages
       .filter(m => !m.isError && m.id !== 1 && !m.text.includes("Konfigurasi Tersimpan"))
-      .map(msg => ({
-        role: msg.sender === 'user' ? 'user' : 'assistant',
-        content: msg.text
-      }));
+      .map(msg => ({ role: msg.sender === 'user' ? 'user' : 'assistant', content: msg.text }));
 
     const fullMessages = [
       { role: "system", content: DYNAMIC_SYSTEM_PROMPT },
@@ -363,11 +390,9 @@ ${BASE_SYSTEM_INSTRUCTION}
     ];
 
     let lastError = null;
-
     for (const modelName of CANDIDATE_MODELS) {
       try {
         setLoadingStatus(`Menghubungi model: ${modelName.split(':')[0]}...`);
-        
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -376,27 +401,18 @@ ${BASE_SYSTEM_INSTRUCTION}
             "HTTP-Referer": window.location.origin, 
             "X-Title": "Simpekdes AI",
           },
-          body: JSON.stringify({
-            model: modelName,
-            messages: fullMessages,
-            temperature: 0.5,
-            max_tokens: 800,
-          })
+          body: JSON.stringify({ model: modelName, messages: fullMessages, temperature: 0.5, max_tokens: 800 })
         });
 
         if (!response.ok) {
-            if (response.status === 429 || response.status === 404 || response.status === 503) {
-                continue; 
-            }
+            if (response.status === 429 || response.status === 404 || response.status === 503) { continue; }
             throw new Error(`HTTP Error ${response.status}`);
         }
 
         const data = await response.json();
         const aiText = data.choices?.[0]?.message?.content;
         if (!aiText) throw new Error("Empty Response");
-        
         return aiText; 
-        
       } catch (err) {
         lastError = err;
         await new Promise(r => setTimeout(r, 500));
@@ -405,52 +421,41 @@ ${BASE_SYSTEM_INSTRUCTION}
     throw lastError;
   };
 
-  // --- MAIN HANDLER ---
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!inputText.trim()) return;
 
     setErrorMsg(null);
-    setIsLocalResponse(false); // Reset status
+    setIsLocalResponse(false); 
     
     const userMessage = { id: Date.now(), text: inputText, sender: 'user', timestamp: new Date() };
     setMessages(prev => [...prev, userMessage]);
     setInputText("");
     setIsLoading(true);
 
-    // 1. CEK INTENT LOKAL DULU (Prioritas Utama)
     const localReply = checkLocalIntent(userMessage.text);
-
     if (localReply) {
-        // Jika cocok dengan database lokal, langsung balas (simulasi delay berpikir)
         setLoadingStatus("Memproses perintah navigasi...");
         setIsLocalResponse(true);
-
         setTimeout(() => {
             const { cleanText, navigated, path } = handleSmartAction(localReply);
-            
             setMessages(prev => [...prev, {
                 id: Date.now() + 1,
                 text: cleanText,
                 sender: 'ai',
                 timestamp: new Date(),
                 actionPath: navigated ? path : null,
-                isLocal: true // Menandai ini respon lokal
+                isLocal: true 
             }]);
-            
             setIsLoading(false);
             setLoadingStatus("");
-        }, 600); // Delay 600ms agar terasa natural
-
-        return; // BERHENTI DI SINI, JANGAN PANGGIL API
+        }, 600); 
+        return; 
     }
 
-    // 2. JIKA TIDAK COCOK, BARU PANGGIL AI API
     try {
       const rawResponse = await generateResponse(userMessage.text);
-      
       const { cleanText, navigated, path } = handleSmartAction(rawResponse);
-      
       const aiResponseMsg = {
           id: Date.now() + 1,
           text: cleanText,
@@ -458,14 +463,11 @@ ${BASE_SYSTEM_INSTRUCTION}
           timestamp: new Date(),
           actionPath: navigated ? path : null
       };
-
       setMessages(prev => [...prev, aiResponseMsg]);
-
     } catch (error) {
       console.error("AI Error Full:", error);
       let friendlyError = "Semua model AI sedang sibuk. Mohon coba lagi nanti.";
       let isKeyError = false;
-
       if (error.message === "API_KEY_MISSING") {
         friendlyError = "API Key belum disetting. Silakan atur di menu Pengaturan.";
         isKeyError = true;
@@ -473,13 +475,9 @@ ${BASE_SYSTEM_INSTRUCTION}
         friendlyError = "API Key tidak valid/kadaluarsa.";
         isKeyError = true;
       }
-
       setErrorMsg(friendlyError);
       setMessages(prev => [...prev, { id: Date.now() + 1, text: `⚠️ **Gagal:** ${friendlyError}`, sender: 'ai', isError: true, timestamp: new Date() }]);
-
-      if (isKeyError && canAccessSettings) {
-        setTimeout(() => setShowSettings(true), 1500);
-      }
+      if (isKeyError && canAccessSettings) { setTimeout(() => setShowSettings(true), 1500); }
     } finally {
       setIsLoading(false);
       setLoadingStatus("");
@@ -505,21 +503,25 @@ ${BASE_SYSTEM_INSTRUCTION}
 
   // --- RENDER ---
   return (
-    <div className={`fixed bottom-6 right-6 z-[9999] flex flex-col items-end pointer-events-none font-sans transition-all duration-300`}>
+    <div 
+        className={`fixed bottom-6 right-6 z-[9999] flex flex-col items-end font-sans transition-transform duration-75`}
+        style={{ transform: `translate(${position.x}px, ${position.y}px)` }} // Aplikasi Posisi Drag
+    >
       
       {/* WINDOW UTAMA */}
       <div className={`
-          pointer-events-auto backdrop-blur-md border rounded-2xl overflow-hidden flex flex-col
+          backdrop-blur-md border rounded-2xl overflow-hidden flex flex-col
           transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] origin-bottom-right
-          ${isOpen ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-75 translate-y-20 pointer-events-none'}
+          ${isOpen ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-75 translate-y-20 pointer-events-none'}
           ${isMinimized ? 'w-72 h-14 rounded-full' : 'w-[90vw] sm:w-[400px] h-[600px] max-h-[85vh]'}
           ${themeClasses.container}
         `}
       >
-        {/* HEADER */}
+        {/* HEADER (DRAGGABLE AREA SAAT OPEN) */}
         <div 
-          className={`relative p-4 flex items-center justify-between cursor-pointer shrink-0 ${themeClasses.header}`}
-          onClick={() => !isMinimized ? null : setIsMinimized(false)}
+          className={`relative p-4 flex items-center justify-between shrink-0 ${themeClasses.header} cursor-move select-none`}
+          onMouseDown={handleDragStart}
+          onTouchStart={handleDragStart}
         >
           <div className="flex items-center gap-3 relative z-10">
             <div className="relative group">
@@ -529,7 +531,9 @@ ${BASE_SYSTEM_INSTRUCTION}
               <div className={`absolute -bottom-1 -right-1 w-2.5 h-2.5 border-2 border-transparent rounded-full shadow-sm ${errorMsg ? 'bg-red-500' : 'bg-green-400 animate-pulse'}`}></div>
             </div>
             <div className="flex flex-col">
-              <h3 className="font-bold text-white text-sm tracking-wide">Asisten Desa</h3>
+              <h3 className="font-bold text-white text-sm tracking-wide flex items-center gap-2">
+                 Asisten Desa <Move size={10} className="opacity-50" />
+              </h3>
               <div className="flex items-center gap-1.5 opacity-80">
                  <MapPin size={10} className="text-white" />
                  <p className="text-[10px] text-white truncate max-w-[150px]">
@@ -539,7 +543,7 @@ ${BASE_SYSTEM_INSTRUCTION}
             </div>
           </div>
 
-          <div className="flex items-center gap-1 relative z-10">
+          <div className="flex items-center gap-1 relative z-10" onMouseDown={(e) => e.stopPropagation()}> 
             <button 
                 onClick={toggleTheme} 
                 className="p-1.5 hover:bg-white/10 rounded-full text-white transition-all" 
@@ -700,12 +704,18 @@ ${BASE_SYSTEM_INSTRUCTION}
         )}
       </div>
 
-      {/* FLOATING TRIGGER BUTTON */}
+      {/* FLOATING TRIGGER BUTTON (DRAGGABLE AREA SAAT CLOSED) */}
       <button 
-        onClick={() => { setIsOpen(!isOpen); setIsMinimized(false); }} 
+        onMouseDown={handleDragStart}
+        onTouchStart={handleDragStart}
+        onClick={() => { 
+            if (hasMoved.current) return; // JANGAN BUKA JIKA HABIS DIGESER
+            setIsOpen(!isOpen); 
+            setIsMinimized(false); 
+        }} 
         className={`
-            pointer-events-auto mt-6 relative group
-            w-16 h-16 rounded-full shadow-2xl flex items-center justify-center transform transition-all duration-500 hover:scale-110 active:scale-95 z-50
+            pointer-events-auto mt-6 relative group cursor-move
+            w-16 h-16 rounded-full shadow-2xl flex items-center justify-center transform transition-all duration-300 active:scale-95 z-50
             ${isOpen 
                 ? (isDarkMode ? 'bg-slate-700 text-slate-300 rotate-90' : 'bg-gray-800 text-gray-300 rotate-90') 
                 : 'bg-gradient-to-tr from-indigo-600 to-purple-600 text-white'}
@@ -713,8 +723,8 @@ ${BASE_SYSTEM_INSTRUCTION}
       >
         {!isOpen && (
             <>
-                <span className="absolute inset-0 rounded-full bg-indigo-500 opacity-75 animate-ping"></span>
-                <span className="absolute -inset-1 rounded-full bg-gradient-to-tr from-indigo-400 to-purple-400 opacity-30 blur-md animate-pulse"></span>
+                <span className="absolute inset-0 rounded-full bg-indigo-500 opacity-75 animate-ping pointer-events-none"></span>
+                <span className="absolute -inset-1 rounded-full bg-gradient-to-tr from-indigo-400 to-purple-400 opacity-30 blur-md animate-pulse pointer-events-none"></span>
             </>
         )}
         <div className="relative z-10">

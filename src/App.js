@@ -7,6 +7,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement,
 
 import NotificationContainer from './components/common/NotificationContainer';
 import LoadingScreen from './components/common/LoadingScreen';
+import Spinner from './components/common/Spinner';
 
 // Layout (Lazy Load agar login lebih cepat)
 const AppLayout = React.lazy(() => import('./components/layout/AppLayout'));
@@ -74,7 +75,7 @@ function PrivateRoute({ children }) {
   if (loading) {
     // Saat auth loading (misal refresh halaman di url dalam),
     // KITA TETAP TAMPILKAN LoadingScreen agar tidak white screen
-    return <LoadingScreen />;
+    return <Spinner />;
   }
   
   return currentUser ? children : <Navigate to="/login" replace />;
@@ -108,7 +109,7 @@ function App() {
             ) : (
               // 2. Jika false, tampilkan routing aplikasi dengan Suspense
               // Suspense akan menampilkan LoadingScreen saat modul sedang di-download (lazy loaded)
-              <Suspense fallback={<LoadingScreen />}>
+              <Suspense fallback={<Spinner />}>
                 <Routes>
                   <Route path="/login" element={<LoginPage />} />
                   

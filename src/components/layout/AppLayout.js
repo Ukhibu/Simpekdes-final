@@ -138,18 +138,15 @@ const AppLayout = () => {
                     onProfileClick={() => setIsProfileModalOpen(true)}
                 />
                 
-                {/* PERBAIKAN PENTING:
-                   Menambahkan 'pb-32' (Padding Bottom yang besar) pada main content.
-                   Ini memastikan konten halaman (seperti tabel paling bawah) bisa di-scroll
-                   melewati area floating button AI Assistant, sehingga tombol aksi tabel
-                   tidak pernah tertutup dan tetap bisa di-hover/klik.
+                {/* Padding bottom (pb-32) ditambahkan agar konten paling bawah 
+                    (seperti pagination tabel) tidak tertutup oleh tombol floating AIAssistant.
                 */}
                 <main className="flex-grow p-4 md:p-8 pb-32">
                     <Outlet />
                 </main>
             </div>
 
-            {/* Modal profil sekarang dipanggil di sini */}
+            {/* Modal profil */}
             {currentUser && (
                 <ProfileModal
                     isOpen={isProfileModalOpen}
@@ -158,14 +155,11 @@ const AppLayout = () => {
             )}
 
             {/* 2. Smart Village AI Assistant (Floating) 
-               Dibungkus dalam div dengan 'pointer-events-none' dan 'z-[50]'.
-               Ini memastikan container layout AI tidak memblokir interaksi mouse
-               pada elemen aplikasi di belakangnya. Interaksi hanya aktif pada
-               komponen AI itu sendiri (yang sudah diatur pointer-events-auto di dalamnya).
+                PERBAIKAN: Ditempatkan langsung tanpa wrapper 'pointer-events-none'
+                agar fitur drag dan klik berfungsi normal. Posisi fixed sudah diatur
+                di dalam komponen AIAssistant itu sendiri.
             */}
-            <div className="fixed inset-0 pointer-events-none z-[50]">
-                <AIAssistant />
-            </div>
+            <AIAssistant />
         </div>
     );
 };

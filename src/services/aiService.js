@@ -3,40 +3,48 @@ import { db } from '../firebase';
 import { AI_PROVIDERS } from './aiModels';
 
 // --- 1. CONTEXT AWARENESS (DATA DESA) ---
+// Mengambil data real-time dari Firestore untuk memberi konteks pada AI
 export const fetchVillageContext = async () => {
   try {
-    const contextData = {
-      penduduk: { total: 0 },
-      surat: { total: 0, terbaru: [] },
-      aset: { total: 0 }
-    };
+    const contextData = { penduduk: 0, surat: 0, aset: 0, suratTerbaru: '-' };
 
-    // Data Surat
+    // Coba ambil snapshot data (Safe Mode - Try Catch per item agar satu error tidak menghentikan semua)
+    
+    // A. Data Perangkat Desa
     try {
-      const suratSnap = await getDocs(query(collection(db, 'surat_keluar'), orderBy('tanggal_surat', 'desc'), limit(3)));
-      contextData.surat.total = suratSnap.size;
-      contextData.surat.terbaru = suratSnap.docs.map(d => d.data().nomor_surat);
-    } catch (e) {}
+        const staffSnap = await getDocs(collection(db, 'perangkat_desa'));
+        contextData.penduduk = staffSnap.size;
+    } catch (e) {
+        console.warn("AI Context: Gagal ambil data perangkat", e);
+    }
 
-    // Data Perangkat
+    // B. Data Aset
     try {
-      const staffSnap = await getDocs(collection(db, 'perangkat_desa'));
-      contextData.penduduk.total = staffSnap.size;
-    } catch (e) {}
+        const asetSnap = await getDocs(collection(db, 'aset_desa'));
+        contextData.aset = asetSnap.size;
+    } catch (e) {
+        console.warn("AI Context: Gagal ambil data aset", e);
+    }
 
-    // Data Aset
+    // C. Surat Terakhir
     try {
-      const asetSnap = await getDocs(collection(db, 'aset_desa'));
-      contextData.aset.total = asetSnap.size;
-    } catch (e) {}
+        const suratSnap = await getDocs(query(collection(db, 'surat_keluar'), orderBy('tanggal_surat', 'desc'), limit(1)));
+        if (!suratSnap.empty) {
+            const data = suratSnap.docs[0].data();
+            contextData.suratTerbaru = data.nomor_surat || 'Tanpa Nomor';
+        }
+    } catch (e) {
+        console.warn("AI Context: Gagal ambil data surat", e);
+    }
 
     return `
-[DATA DESA REAL-TIME]
-- Perangkat Desa: ${contextData.penduduk.total || 0} orang.
-- Aset Terdata: ${contextData.aset.total || 0} item.
-- Surat Terbaru: ${contextData.surat.terbaru.join(', ') || '-'}.
+[DATA DESA LIVE]
+- Jumlah Perangkat Desa: ${contextData.penduduk} orang
+- Jumlah Aset Terdata: ${contextData.aset} item
+- Surat Keluar Terakhir: ${contextData.suratTerbaru}
 `;
   } catch (error) {
+    console.error("Context Error:", error);
     return ""; 
   }
 };
@@ -48,11 +56,22 @@ export const callAIModel = async (messages, config, systemPromptPlusData) => {
     ...messages
   ];
 
-  // Helper function untuk fetch API standar (OpenAI compatible)
+  // LOGIKA KUNCI DEFAULT:
+  // Jika config.apiKey kosong/tidak diatur user, gunakan dari .env
+  const activeApiKey = config.apiKey && config.apiKey.trim() !== '' 
+    ? config.apiKey 
+    : process.env.REACT_APP_DEFAULT_OPENROUTER_KEY;
+
+  // Validasi: Kecuali provider 'custom' (mungkin localhost/ollama), API Key wajib ada
+  if (!activeApiKey && config.provider !== 'custom') {
+      throw new Error("API Key tidak ditemukan. Mohon atur di pengaturan atau hubungi developer untuk Default Key.");
+  }
+
+  // Helper Fetch
   const executeFetch = async (url, key, modelName) => {
-    // Normalisasi URL endpoint (tambah /chat/completions jika belum ada)
     let endpoint = url;
-    if (!endpoint.endsWith('/chat/completions')) {
+    // Normalisasi URL endpoint (tambah /chat/completions jika belum ada)
+    if (!endpoint.endsWith('/chat/completions') && !endpoint.includes('generateContent')) {
        endpoint = endpoint.replace(/\/+$/, '') + '/chat/completions';
     }
 
@@ -61,7 +80,6 @@ export const callAIModel = async (messages, config, systemPromptPlusData) => {
       "Authorization": `Bearer ${key}`
     };
 
-    // Header khusus OpenRouter agar masuk statistik 'Simpekdes AI'
     if (url.includes("openrouter.ai")) {
       headers["HTTP-Referer"] = window.location.origin;
       headers["X-Title"] = "Simpekdes AI";
@@ -83,51 +101,39 @@ export const callAIModel = async (messages, config, systemPromptPlusData) => {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error?.message || `Error ${response.status}: ${response.statusText}`);
+      throw new Error(data.error?.message || `Error ${response.status}`);
     }
-
+    
     if (!data.choices || data.choices.length === 0) {
-      throw new Error("Model merespons kosong.");
+        throw new Error("Model tidak memberikan respon (Empty Response).");
     }
 
-    return data.choices[0].message.content;
+    return data.choices[0].message?.content || "Tidak ada respon.";
   };
 
-  // --- LOGIKA UTAMA: AUTO-SWITCHING ATAU DIRECT CALL ---
-  
-  // A. Jika Provider = OpenRouter, gunakan logika "Cari Model Hidup"
+  // --- EKSEKUSI ---
   if (config.provider === 'openrouter') {
-    const candidateModels = AI_PROVIDERS.openrouter.models;
+    // Auto-Switch Logic untuk OpenRouter: Cari model gratis yang aktif dari daftar aiModels.js
+    const models = AI_PROVIDERS.openrouter?.models || [];
     let lastError = null;
 
-    // Coba model satu per satu dari daftar prioritas
-    for (const modelName of candidateModels) {
+    // Loop mencoba model satu per satu
+    for (const model of models) {
       try {
-        console.log(`🤖 Mencoba model: ${modelName}...`);
-        const result = await executeFetch(config.baseUrl, config.apiKey, modelName);
-        
-        // Jika berhasil, kembalikan hasil + info model yang dipakai (opsional, agar admin tahu)
-        return result; // Bersih tanpa embel-embel, sesuai request
+        // console.log(`Mencoba model: ${model}...`);
+        return await executeFetch(config.baseUrl, activeApiKey, model);
       } catch (err) {
-        console.warn(`❌ Gagal ${modelName}:`, err.message);
+        console.warn(`Model ${model} gagal, mencoba berikutnya... (${err.message})`);
         lastError = err;
-        // Delay sedikit sebelum coba model berikutnya agar tidak spam
-        await new Promise(r => setTimeout(r, 500)); 
+        // Delay sedikit agar tidak spam request
+        await new Promise(r => setTimeout(r, 500));
       }
     }
-    // Jika semua model gagal
-    throw new Error(`Semua model OpenRouter sibuk/down. Terakhir: ${lastError?.message}`);
-  } 
-  
-  // B. Provider Lain (Google, Groq, Mistral, dll) - Langsung panggil model yang dipilih
-  else {
-    try {
-      const selectedProvider = AI_PROVIDERS[config.provider] || AI_PROVIDERS.custom;
-      const baseUrl = config.provider === 'custom' ? config.baseUrl : selectedProvider.baseUrl;
-      
-      return await executeFetch(baseUrl, config.apiKey, config.model);
-    } catch (error) {
-      throw new Error(`Provider Error (${config.provider}): ${error.message}`);
-    }
+    throw new Error(`Semua model AI sedang sibuk/down. Error terakhir: ${lastError?.message}`);
+  } else {
+    // Provider Lain (Google, Groq, dll) - Langsung panggil tanpa fallback
+    const providerInfo = AI_PROVIDERS[config.provider] || AI_PROVIDERS.custom;
+    const url = config.provider === 'custom' ? config.baseUrl : providerInfo.baseUrl;
+    return await executeFetch(url, activeApiKey, config.model);
   }
 };
